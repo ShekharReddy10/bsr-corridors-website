@@ -30,7 +30,13 @@ export default function Gallery({ photos }: { photos: Photo[] }) {
     <>
       <div className="gallery-grid">
         {photos.map((p, i) => (
-          <button key={p.src} className={`gallery-item${p.tall ? " is-tall" : ""}`} onClick={() => setIndex(i)} aria-label={`View photo: ${p.alt}`}>
+          <button
+            key={p.src}
+            className={`gallery-item reveal${p.tall ? " is-tall" : ""}`}
+            style={{ "--d": i % 3 } as React.CSSProperties}
+            onClick={() => setIndex(i)}
+            aria-label={`View photo: ${p.alt}`}
+          >
             <img src={p.src} alt={p.alt} loading="lazy" />
           </button>
         ))}

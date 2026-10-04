@@ -1,6 +1,7 @@
 import Header from "@/components/Header";
 import Gallery from "@/components/Gallery";
 import Text from "@/components/Text";
+import Reveal from "@/components/Reveal";
 import { hotel, phoneHref, whatsappHref } from "@/content/hotel";
 
 function ContactButtons({ light = false }: { light?: boolean }) {
@@ -36,6 +37,7 @@ export default function Home() {
   return (
     <>
       <Header />
+      <Reveal />
 
       <main id="top">
         {/* Hero */}
@@ -64,7 +66,7 @@ export default function Home() {
             </div>
             <ul className="highlights">
               {hotel.highlights.map((h, i) => (
-                <li key={i}>
+                <li key={i} className="reveal" style={{ "--d": i } as React.CSSProperties}>
                   <h3>
                     <Text value={h.title} />
                   </h3>
@@ -84,7 +86,7 @@ export default function Home() {
             <h2>Rooms</h2>
             <div className="rooms-grid">
               {hotel.rooms.map((r, i) => (
-                <article key={i} className="room-card">
+                <article key={i} className="room-card reveal" style={{ "--d": i } as React.CSSProperties}>
                   <img src={r.photo.src} alt={r.photo.alt} loading="lazy" />
                   <div className="room-body">
                     <h3>
@@ -132,7 +134,7 @@ export default function Home() {
                 ))}
               </ul>
             </div>
-            <aside className="policy-card">
+            <aside className="policy-card reveal">
               <h3>Good to know</h3>
               <dl>
                 {hotel.policies.map((p) => (
@@ -144,6 +146,19 @@ export default function Home() {
                   </div>
                 ))}
               </dl>
+              {hotel.houseRules.length > 0 && (
+                <>
+                  <h3 className="rules-title">House rules</h3>
+                  <ul className="rules">
+                    {hotel.houseRules.map((r, i) => (
+                      <li key={i}>
+                        <Text value={r} />
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="rules-thanks">Thank you for your cooperation 🙏</p>
+                </>
+              )}
             </aside>
           </div>
         </section>
@@ -185,7 +200,7 @@ export default function Home() {
                 </a>
               )}
             </div>
-            <div className="map-frame">
+            <div className="map-frame reveal">
               {location.mapsEmbedUrl ? (
                 <iframe
                   src={location.mapsEmbedUrl}

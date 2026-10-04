@@ -29,6 +29,11 @@ export type Room = {
 
 export const hotel = {
   name: "BSR Corridors",
+  /**
+   * The website's public address, e.g. "https://bsrcorridors.com" — used for link previews and Google.
+   * On Netlify this is filled in automatically; set it here once you have your own domain.
+   */
+  siteUrl: "",
   tagline: "Comfortable stays in the heart of Gachibowli",
   intro:
     "Stay comfortable and feel at home in Gachibowli, Hyderabad. With only four rooms on each floor and a shared kitchen on every floor, BSR Corridors offers a peaceful, spacious and homely stay with fewer guests around — ideal for business trips, families, medical visits, tourists and long stays.",
@@ -58,6 +63,8 @@ export const hotel = {
      * Google Maps embed URL (Share → Embed a map → copy only the src="…" URL).
      * Leave "" to show a placeholder instead of the map.
      */
+    /** Map pin, taken from the Google Maps link above. */
+    coordinates: { lat: 17.448337, lng: 78.364701 },
     mapsEmbedUrl: "https://www.google.com/maps?q=17.448337,78.364701&z=16&output=embed",
     /** Nearby places guests ask about. Use real distances only. */
     nearby: [
@@ -86,7 +93,7 @@ export const hotel = {
       name: "Luxury Non-AC Room",
       description: "A luxury non-AC room with a king-size bed, for up to 2 guests.",
       features: ["King-size bed", "Up to 2 guests", "Non-AC"],
-      photo: { src: "/images/room-non-ac.webp", alt: "Luxury Non-AC Room with king-size bed, ceiling fan, TV and work desk" },
+      photo: { src: "/images/room-non-ac.webp", alt: "Luxury Non-AC Room with king-size bed, work desk and wardrobe" },
     },
   ] satisfies Room[],
 
@@ -114,6 +121,13 @@ export const hotel = {
     { label: "ID required", value: "Aadhaar or another government photo ID showing your full address, for every guest" },
   ],
 
+  /** Shown under "House rules" in the Good to know box. */
+  houseRules: [
+    "No smoking inside the rooms — please use the terrace.",
+    "Please don't eat on the beds, as it stains the white bedsheets. Use the dining table in the kitchen or the table and chair in your room.",
+    "Please don't take towels, TV remotes, AC remotes or cupboard keys when checking out.",
+  ],
+
   heroPhoto: { src: "/images/hero-lounge.webp", alt: "BSR Corridors lounge with sofa seating and a floral wall mural" } as Photo,
 
   gallery: [
@@ -122,7 +136,7 @@ export const hotel = {
     { src: "/images/hero-lounge.webp", alt: "Lounge with sofa seating" },
     { src: "/images/room-wide.webp", alt: "Bedroom with king-size bed, wardrobe and work desk" },
     { src: "/images/room-portrait.webp", alt: "Bedroom with king-size bed and wardrobe", tall: true },
-    { src: "/images/room-desk.webp", alt: "Bedroom with work desk and chair" },
+    { src: "/images/room-desk.webp", alt: "Bedroom with ceiling fan, TV and work desk" },
     { src: "/images/room-window.webp", alt: "Bedroom with mirror and work desk" },
     { src: "/images/bathroom.webp", alt: "Attached bathroom with geyser", tall: true },
     { src: "/images/kitchen.webp", alt: "Shared kitchen with gas stove, cooking utensils and cutlery" },
@@ -132,6 +146,9 @@ export const hotel = {
     { src: "/images/laundry.webp", alt: "Laundry area with two washing machines" },
   ] as Photo[],
 };
+
+/** Public site address: Netlify's URL at build time, else `hotel.siteUrl`, else local dev. */
+export const siteUrl = (process.env.URL || hotel.siteUrl || "http://localhost:3000").replace(/\/$/, "");
 
 /** True for text still wrapped in [brackets]. */
 export const isPlaceholder = (text: string) => /^\[.*\]$/s.test(text.trim());
