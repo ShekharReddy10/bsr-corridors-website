@@ -59,6 +59,7 @@ def build_workbook(start: date | None = None, end: date | None = None, full_ids:
              s.get_payment_mode_display(), s.get_status_display(), s.guest.nationality,
              s.guest.get_id_type_display(), _id(s.guest.id_number, full_ids), s.guest.address,
              "; ".join(f"{o.name or 'Guest ' + str(o.position)}"
+                       + (f", {o.phone}" if o.phone else "")
                        + (f" ({o.get_id_type_display()} {_id(o.id_number, full_ids)})" if o.id_number else "")
                        for o in s.other_guests.all()),
              "Yes" if s.form_c_filed else ("No" if s.guest.is_foreign else ""), s.notes]

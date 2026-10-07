@@ -125,8 +125,11 @@ class StayGuestForm(forms.ModelForm):
 
     class Meta:
         model = StayGuest
-        fields = ["name", "id_type", "id_number"]
-        widgets = {"id_number": forms.TextInput(attrs={"autocomplete": "off"})}
+        fields = ["name", "phone", "id_type", "id_number"]
+        widgets = {
+            "id_number": forms.TextInput(attrs={"autocomplete": "off"}),
+            "phone": forms.TextInput(attrs={"inputmode": "tel", "autocomplete": "off", "placeholder": "+91 98765 43210"}),
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -139,6 +142,12 @@ class StayGuestForm(forms.ModelForm):
     def clean_id_type(self):
         return self.cleaned_data.get("id_type") or Guest.IdType.AADHAAR
 
+    def clean_phone(self):
+        phone = (self.cleaned_data.get("phone") or "").strip()
+        if phone and sum(c.isdigit() for c in phone) < 10:
+            raise forms.ValidationError("Enter a valid phone number (at least 10 digits).")
+        return phone
+
     def clean_id_number(self):
         value = self.cleaned_data.get("id_number", "").strip()
         if not value and self.instance.pk:
@@ -148,7 +157,7 @@ class StayGuestForm(forms.ModelForm):
     @property
     def is_blank(self) -> bool:
         data = getattr(self, "cleaned_data", {}) or {}
-        return not (data.get("name") or "").strip() and not (data.get("id_number") or "").strip()
+        return not any((data.get(k) or "").strip() for k in ("name", "phone", "id_number"))
 
 
 MAX_OTHER_GUESTS = 9

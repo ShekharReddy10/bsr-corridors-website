@@ -279,16 +279,18 @@ class ViewTests(TestCase):
     def test_other_guests_ids_optional(self):
         RoomType.objects.filter(pk=self.ac.pk).update(max_guests=3)
         # 2 guests: second guest's ID saved (encrypted), third row ignored
-        r = self._new_stay_post(**{"o-0-name": "Sita Kumar", "o-0-id_number": "5678 5678 5678",
+        r = self._new_stay_post(**{"o-0-name": "Sita Kumar", "o-0-phone": "+91 91234 56789", "o-0-id_number": "5678 5678 5678",
                                    "o-1-name": "Ignored", "o-1-id_number": "1111"})
         s = Stay.objects.get()
         others = list(s.other_guests.all())
-        self.assertEqual([(o.position, o.name, o.id_number) for o in others], [(2, "Sita Kumar", "567856785678")])
+        self.assertEqual([(o.position, o.name, o.phone, o.id_number) for o in others],
+                         [(2, "Sita Kumar", "+91 91234 56789", "567856785678")])
         with connection.cursor() as cur:
             cur.execute(f"SELECT id_number FROM {StayGuest._meta.db_table}")
             self.assertTrue(cur.fetchone()[0].startswith("enc:"))
         page = self.client.get(f"/stays/{s.pk}/")
         self.assertContains(page, "Sita Kumar")
+        self.assertContains(page, 'href="tel:+91 91234 56789"')
         self.assertNotContains(page, "567856785678")
         r = self.client.post(f"/stays/{s.pk}/reveal-id/", {"field": f"other:{others[0].pk}"})
         self.assertContains(r, "567856785678")
@@ -298,17 +300,22 @@ class ViewTests(TestCase):
         r = self.client.post(f"/stays/{s.pk}/edit/", {
             **{k: v for k, v in self._post_data().items()}, "s-num_guests": 3,
             "o-TOTAL_FORMS": "2", "o-INITIAL_FORMS": "1", "o-0-id": o.pk, "o-0-stay": s.pk, "o-0-name": "Sita Kumar",
-            "o-0-id_type": "aadhaar", "o-0-id_number": "", "o-1-name": "Raju", "o-1-id_type": "aadhaar", "o-1-id_number": "",
+            "o-0-phone": "+91 91234 56789", "o-0-id_type": "aadhaar", "o-0-id_number": "",
+            "o-1-name": "", "o-1-phone": "+91 99999 00000", "o-1-id_type": "aadhaar", "o-1-id_number": "",
         })
         self.assertRedirects(r, f"/stays/{s.pk}/")
         self.assertEqual([(x.position, x.name, x.id_number) for x in s.other_guests.all()],
-                         [(2, "Sita Kumar", "567856785678"), (3, "Raju", "")])
+                         [(2, "Sita Kumar", "567856785678"), (3, "", "")])
+        self.assertEqual(s.other_guests.get(position=3).phone, "+91 99999 00000")  # phone only is enough
 
         # Bad Aadhaar on an extra guest is rejected
         r = self.client.post(f"/stays/{s.pk}/edit/", {**self._post_data(), "s-num_guests": 2, "o-TOTAL_FORMS": "1",
                                                       "o-INITIAL_FORMS": "0", "o-0-name": "X", "o-0-id_type": "aadhaar",
                                                       "o-0-id_number": "12"})
         self.assertContains(r, "Aadhaar number must be 12 digits")
+        r = self.client.post(f"/stays/{s.pk}/edit/", {**self._post_data(), "s-num_guests": 2, "o-TOTAL_FORMS": "1",
+                                                      "o-INITIAL_FORMS": "0", "o-0-phone": "123"})
+        self.assertContains(r, "at least 10 digits")
 
         # Back to 1 guest → extra guests removed
         r = self.client.post(f"/stays/{s.pk}/edit/", {**self._post_data(), "s-num_guests": 1})

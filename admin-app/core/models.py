@@ -201,6 +201,7 @@ class StayGuest(models.Model):
     stay = models.ForeignKey(Stay, on_delete=models.CASCADE, related_name="other_guests")
     position = models.PositiveSmallIntegerField(default=2, help_text="2 = second guest, 3 = third, …")
     name = models.CharField(max_length=120, blank=True)
+    phone = models.CharField(max_length=20, blank=True, help_text="With country code, e.g. +91 98765 43210")
     id_type = models.CharField("ID proof", max_length=20, choices=Guest.IdType.choices, default=Guest.IdType.AADHAAR)
     id_number = EncryptedTextField("ID number", blank=True)
 
@@ -214,6 +215,10 @@ class StayGuest(models.Model):
     @property
     def id_masked(self) -> str:
         return mask(self.id_number)
+
+    @property
+    def phone_digits(self) -> str:
+        return "".join(c for c in self.phone if c.isdigit())
 
 
 class AuditLog(models.Model):
