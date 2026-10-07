@@ -59,6 +59,21 @@
     </div>
   </section>
 
+  <section class="card" id="other-guests">
+    <h2>Other guests <span class="muted small">(optional)</span></h2>
+    <p class="muted small" id="other-guests-none">Only one guest — set “Number of guests” above to add details for more guests.</p>
+    {{ others.management_form }}
+    {% for f in others.forms %}
+      <div class="other-guest form-grid" data-row="{{ forloop.counter0 }}">
+        {% for h in f.hidden_fields %}{{ h }}{% endfor %}
+        <h3 class="span-2 other-guest-title">Guest {{ forloop.counter|add:1 }}</h3>
+        {% field f.name "span-2" %}
+        {% field f.id_type %}
+        {% field f.id_number %}
+      </div>
+    {% endfor %}
+  </section>
+
   <div class="form-actions">
     <button class="btn btn-primary" type="submit">Save stay</button>
     <a class="btn btn-ghost" href="{% if stay %}{% url 'stay_detail' stay.pk %}{% else %}{% url 'dashboard' %}{% endif %}">Cancel</a>

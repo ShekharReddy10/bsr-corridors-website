@@ -56,6 +56,18 @@
   );
   roomSel.addEventListener("change", () => { if (roomMax[roomSel.value]) f("s-num_guests").max = roomMax[roomSel.value]; });
 
+  // ── Other guests: one row per guest beyond the first ──
+  const guestsInput = f("s-num_guests");
+  const rows = Array.from(document.querySelectorAll(".other-guest"));
+  const syncRows = () => {
+    const wanted = Math.max(0, (parseInt(guestsInput.value, 10) || 1) - 1);
+    rows.forEach((r, i) => { r.hidden = i >= wanted; });
+    const none = $("#other-guests-none");
+    if (none) none.hidden = wanted > 0;
+  };
+  guestsInput.addEventListener("input", syncRows);
+  syncRows();
+
   // ── Nights / total / balance ──
   const ci = f("s-check_in"), co = f("s-check_out");
   const update = () => {

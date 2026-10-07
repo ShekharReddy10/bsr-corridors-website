@@ -2,15 +2,17 @@ from datetime import timedelta
 
 from django.contrib import messages
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.db.models import Q
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.dateparse import parse_date
+from django.utils.html import escape
 from django.views.decorators.http import require_POST
 
 from .. import services
 from ..fields import mask
-from ..forms import ExtendForm, GuestForm, PaymentForm, ShortenForm, StayForm
+from ..forms import ExtendForm, GuestForm, PaymentForm, ShortenForm, StayForm, other_guests_formset
 from ..models import AuditLog, Guest, Room, Stay
 
 
@@ -87,14 +89,21 @@ def stay_form(request, pk=None):
         guest = _guest_instance(request, stay)
         gform = GuestForm(request.POST, instance=guest, prefix="g")
         sform = StayForm(request.POST, instance=stay or Stay(), prefix="s")
-        if gform.is_valid() and sform.is_valid():
+        others = other_guests_formset(sform.instance, request.POST)
+        # Only rows for guests 2…N count; rows beyond the number of guests are ignored.
+        n = request.POST.get("s-num_guests", "1")
+        wanted = max(0, int(n) - 1) if n.isdigit() else 0
+        others_ok = wanted == 0 or (others.management_form.is_valid() and all(f.is_valid() for f in others.forms[:wanted]))
+        if gform.is_valid() and sform.is_valid() and others_ok:
             try:
-                guest = gform.save()
-                new = sform.save(commit=False)
-                new.guest = guest
-                services.save_stay(new, action="update" if stay else "create",
-                                   summary=f"{'Updated' if stay else 'Created'} stay: {new.room}, "
-                                           f"{new.check_in:%d-%m-%Y} → {new.check_out:%d-%m-%Y}, ₹{new.amount_paid:,.0f} paid")
+                with transaction.atomic():
+                    guest = gform.save()
+                    new = sform.save(commit=False)
+                    new.guest = guest
+                    services.save_stay(new, action="update" if stay else "create",
+                                       summary=f"{'Updated' if stay else 'Created'} stay: {new.room}, "
+                                               f"{new.check_in:%d-%m-%Y} → {new.check_out:%d-%m-%Y}, ₹{new.amount_paid:,.0f} paid")
+                    _save_other_guests(new, others.forms if others.management_form.is_valid() else [], wanted)
                 messages.success(request, f"Stay for {guest.name} saved.")
                 return redirect("stay_detail", pk=new.pk)
             except services.StayConflict as exc:
@@ -110,7 +119,22 @@ def stay_form(request, pk=None):
         guest = stay.guest if stay else Guest.objects.filter(pk=request.GET.get("guest") or 0).first()
         gform = GuestForm(instance=guest, prefix="g")
         sform = StayForm(instance=stay, initial=initial, prefix="s")
-    return render(request, "core/stay_form.html", {"stay": stay, "gform": gform, "sform": sform})
+        others = other_guests_formset(stay or Stay())
+    return render(request, "core/stay_form.html", {"stay": stay, "gform": gform, "sform": sform, "others": others})
+
+
+def _save_other_guests(stay: Stay, forms, wanted: int) -> None:
+    """Save rows for guests 2…(wanted+1); remove blank rows and any beyond the number of guests."""
+    kept, position = [], 2
+    for f in forms[:wanted]:
+        if f.is_blank:
+            continue
+        obj = f.save(commit=False)
+        obj.stay, obj.position = stay, position
+        obj.save()
+        kept.append(obj.pk)
+        position += 1
+    stay.other_guests.exclude(pk__in=kept).delete()
 
 
 def stay_detail(request, pk):
@@ -182,10 +206,14 @@ def reveal_id(request, pk):
     """Show a guest's full ID number (logged)."""
     stay = get_object_or_404(Stay.objects.select_related("guest"), pk=pk)
     field = request.POST.get("field", "id_number")
+    if field.startswith("other:"):
+        other = get_object_or_404(stay.other_guests, pk=field.split(":", 1)[1])
+        AuditLog.record("reveal_id", f"Viewed full ID number of guest {other.position} ({other.name or 'no name'})", stay)
+        return HttpResponse(f'<span class="id-full">{escape(other.id_number)}</span>')
     if field not in {"id_number", "passport_number"}:
         raise Http404
     AuditLog.record("reveal_id", f"Viewed full {field.replace('_', ' ')} of {stay.guest.name}", stay)
-    return HttpResponse(f'<span class="id-full">{getattr(stay.guest, field)}</span>')
+    return HttpResponse(f'<span class="id-full">{escape(getattr(stay.guest, field))}</span>')
 
 
 def extend(request, pk):

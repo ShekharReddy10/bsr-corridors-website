@@ -195,6 +195,27 @@ class Stay(models.Model):
         return self.guest.is_foreign and not self.form_c_filed and self.status == self.Status.CHECKED_IN
 
 
+class StayGuest(models.Model):
+    """Guest 2, 3, … on a stay (the main guest is Stay.guest). All fields optional."""
+
+    stay = models.ForeignKey(Stay, on_delete=models.CASCADE, related_name="other_guests")
+    position = models.PositiveSmallIntegerField(default=2, help_text="2 = second guest, 3 = third, …")
+    name = models.CharField(max_length=120, blank=True)
+    id_type = models.CharField("ID proof", max_length=20, choices=Guest.IdType.choices, default=Guest.IdType.AADHAAR)
+    id_number = EncryptedTextField("ID number", blank=True)
+
+    class Meta:
+        db_table = "stay_guests"
+        ordering = ["position"]
+
+    def __str__(self):
+        return f"Guest {self.position} of stay {self.stay_id}"
+
+    @property
+    def id_masked(self) -> str:
+        return mask(self.id_number)
+
+
 class AuditLog(models.Model):
     at = models.DateTimeField(default=timezone.now, db_index=True)
     action = models.CharField(max_length=40)

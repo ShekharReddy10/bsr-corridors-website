@@ -8,7 +8,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from .models import AuditLog, Guest, Room, RoomType, Stay
+from .models import AuditLog, Guest, Room, RoomType, Stay, StayGuest
 
 HEADER_FILL = PatternFill("solid", fgColor="1F2A30")
 HEADER_FONT = Font(bold=True, color="FFFFFF")
@@ -37,7 +37,8 @@ def _id(value: str, full: bool) -> str:
 
 
 def stays_in_range(start: date | None = None, end: date | None = None):
-    stays = Stay.objects.select_related("guest", "room", "room__room_type").order_by("check_in", "room__number")
+    stays = (Stay.objects.select_related("guest", "room", "room__room_type").prefetch_related("other_guests")
+             .order_by("check_in", "room__number"))
     if start and end:
         stays = stays.filter(check_in__lte=end, check_out__gte=start)
     return stays
@@ -51,12 +52,15 @@ def build_workbook(start: date | None = None, end: date | None = None, full_ids:
         "Stays",
         ["Stay ID", "Guest", "Phone", "Room", "Room type", "Check-in", "Check-out", "Nights", "Guests",
          "Booked via", "Booking ref", "Total", "Paid", "Balance", "Payment mode", "Status", "Nationality",
-         "ID proof", "ID number", "Address", "Form C filed", "Notes"],
+         "ID proof", "ID number", "Address", "Other guests", "Form C filed", "Notes"],
         [
             [s.pk, s.guest.name, s.guest.phone, s.room.number, s.room.room_type.name, s.check_in, s.check_out,
              s.nights, s.num_guests, s.get_source_display(), s.source_ref, float(s.total), float(s.amount_paid), float(s.balance),
              s.get_payment_mode_display(), s.get_status_display(), s.guest.nationality,
              s.guest.get_id_type_display(), _id(s.guest.id_number, full_ids), s.guest.address,
+             "; ".join(f"{o.name or 'Guest ' + str(o.position)}"
+                       + (f" ({o.get_id_type_display()} {_id(o.id_number, full_ids)})" if o.id_number else "")
+                       for o in s.other_guests.all()),
              "Yes" if s.form_c_filed else ("No" if s.guest.is_foreign else ""), s.notes]
             for s in stays
         ],
@@ -94,7 +98,7 @@ def build_workbook(start: date | None = None, end: date | None = None, full_ids:
     return buf.getvalue()
 
 
-BACKUP_MODELS = [RoomType, Room, Guest, Stay, AuditLog]
+BACKUP_MODELS = [RoomType, Room, Guest, Stay, StayGuest, AuditLog]
 
 
 def backup_json() -> bytes:

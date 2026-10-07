@@ -10,7 +10,7 @@ from django.test import TestCase, override_settings
 
 from core import services
 from core.exports import backup_json, build_workbook
-from core.models import AuditLog, Guest, Room, RoomType, Stay
+from core.models import AuditLog, Guest, Room, RoomType, Stay, StayGuest
 
 T = services.today()
 
@@ -180,15 +180,22 @@ class ViewTests(TestCase):
         self.ac, _, self.rooms = make_rooms()
 
     def _new_stay_post(self, **over):
+        return self.client.post("/stays/new/", {**self._post_data(edit=False), **over})
+
+    def _post_data(self, edit=True):
+        stay = Stay.objects.first() if edit else None
         data = {
             "g-phone": "+91 98765 43210", "g-name": "Ravi Kumar", "g-address": "Hyderabad", "g-nationality": "Indian",
             "g-id_type": "aadhaar", "g-id_number": "1234 1234 1234",
             "s-room": self.rooms["101"].pk, "s-check_in": T.isoformat(), "s-check_out": (T + timedelta(days=2)).isoformat(),
             "s-num_guests": 2, "s-total_amount": "3000", "s-amount_paid": "1000", "s-payment_mode": "upi",
             "s-source": "airbnb", "s-source_ref": "HMABC123",
+            "o-TOTAL_FORMS": "2", "o-INITIAL_FORMS": "0", "o-MIN_NUM_FORMS": "0", "o-MAX_NUM_FORMS": "9",
+            "o-0-id_type": "aadhaar", "o-1-id_type": "aadhaar",
         }
-        data.update(over)
-        return self.client.post("/stays/new/", data)
+        if stay:  # editing: keep the same guest record
+            data["g-guest_id"] = stay.guest_id
+        return data
 
     def test_pages_render(self):
         s = stay(make_guest(), self.rooms["101"], 0, 2)
@@ -268,6 +275,44 @@ class ViewTests(TestCase):
         r = self.client.post(f"/stays/{s.pk}/reveal-id/", {"field": "id_number"})
         self.assertContains(r, "123412341234")
         self.assertTrue(AuditLog.objects.filter(action="reveal_id").exists())
+
+    def test_other_guests_ids_optional(self):
+        RoomType.objects.filter(pk=self.ac.pk).update(max_guests=3)
+        # 2 guests: second guest's ID saved (encrypted), third row ignored
+        r = self._new_stay_post(**{"o-0-name": "Sita Kumar", "o-0-id_number": "5678 5678 5678",
+                                   "o-1-name": "Ignored", "o-1-id_number": "1111"})
+        s = Stay.objects.get()
+        others = list(s.other_guests.all())
+        self.assertEqual([(o.position, o.name, o.id_number) for o in others], [(2, "Sita Kumar", "567856785678")])
+        with connection.cursor() as cur:
+            cur.execute(f"SELECT id_number FROM {StayGuest._meta.db_table}")
+            self.assertTrue(cur.fetchone()[0].startswith("enc:"))
+        page = self.client.get(f"/stays/{s.pk}/")
+        self.assertContains(page, "Sita Kumar")
+        self.assertNotContains(page, "567856785678")
+        r = self.client.post(f"/stays/{s.pk}/reveal-id/", {"field": f"other:{others[0].pk}"})
+        self.assertContains(r, "567856785678")
+
+        # Edit: 3 guests, guest 2 ID left blank → kept; guest 3 name only (ID optional)
+        o = others[0]
+        r = self.client.post(f"/stays/{s.pk}/edit/", {
+            **{k: v for k, v in self._post_data().items()}, "s-num_guests": 3,
+            "o-TOTAL_FORMS": "2", "o-INITIAL_FORMS": "1", "o-0-id": o.pk, "o-0-stay": s.pk, "o-0-name": "Sita Kumar",
+            "o-0-id_type": "aadhaar", "o-0-id_number": "", "o-1-name": "Raju", "o-1-id_type": "aadhaar", "o-1-id_number": "",
+        })
+        self.assertRedirects(r, f"/stays/{s.pk}/")
+        self.assertEqual([(x.position, x.name, x.id_number) for x in s.other_guests.all()],
+                         [(2, "Sita Kumar", "567856785678"), (3, "Raju", "")])
+
+        # Bad Aadhaar on an extra guest is rejected
+        r = self.client.post(f"/stays/{s.pk}/edit/", {**self._post_data(), "s-num_guests": 2, "o-TOTAL_FORMS": "1",
+                                                      "o-INITIAL_FORMS": "0", "o-0-name": "X", "o-0-id_type": "aadhaar",
+                                                      "o-0-id_number": "12"})
+        self.assertContains(r, "Aadhaar number must be 12 digits")
+
+        # Back to 1 guest → extra guests removed
+        r = self.client.post(f"/stays/{s.pk}/edit/", {**self._post_data(), "s-num_guests": 1})
+        self.assertFalse(StayGuest.objects.exists())
 
     def test_guest_search_and_rebook(self):
         g = make_guest()

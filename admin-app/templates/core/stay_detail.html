@@ -46,6 +46,11 @@
         <dt>Form C</dt><dd>{% if stay.form_c_filed %}Filed ✓{% else %}Not filed{% endif %}
           <form method="post" action="{% url 'stay_action' stay.pk 'form-c' %}" class="inline-form">{% csrf_token %}<button class="btn btn-ghost btn-sm">{% if stay.form_c_filed %}Mark not filed{% else %}Mark filed{% endif %}</button></form></dd>
       {% endif %}
+      {% for o in stay.other_guests.all %}
+        <dt>Guest {{ o.position }}</dt>
+        <dd id="other-{{ o.pk }}">{{ o.name|default:"(no name)" }}{% if o.id_number %} · {{ o.get_id_type_display }} {{ o.id_masked }}
+          <button class="btn btn-ghost btn-sm" hx-post="{% url 'stay_reveal_id' stay.pk %}" hx-vals='{"field": "other:{{ o.pk }}"}' hx-target="#other-{{ o.pk }}" hx-swap="innerHTML">Show</button>{% endif %}</dd>
+      {% endfor %}
       <dt>Previous stays</dt><dd>{{ g.stays.count|add:"-1" }} · <a href="{% url 'guest_detail' g.pk %}">Guest history</a> · <a href="{% url 'stay_new' %}?guest={{ g.pk }}">New booking</a></dd>
     </dl>
   </section>

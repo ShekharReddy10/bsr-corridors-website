@@ -156,6 +156,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .inline-form input, .inline-form select { width: auto; }
 .foreign { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); }
 .foreign[hidden] { display: none; }
+.other-guest { padding-top: 12px; margin-top: 12px; border-top: 1px dashed var(--line); }
+.other-guest[hidden] { display: none; }
+.other-guest-title { margin: 0; font-size: .95rem; }
+#other-guests-none[hidden] { display: none; }
 .returning { grid-column: 1 / -1; background: #eef6f0; border: 1px solid #cfe6d6; border-radius: 10px; padding: 10px 12px; font-size: .9rem; }
 .returning[hidden] { display: none; }
 .nights-line, .total-line { margin: 0; color: var(--ink-soft); font-size: .9rem; }

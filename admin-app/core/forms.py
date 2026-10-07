@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from django import forms
 
-from .models import Guest, Room, RoomType, Stay
+from .models import Guest, Room, RoomType, Stay, StayGuest
 
 DATE = forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")
 
@@ -53,12 +53,7 @@ class GuestForm(forms.ModelForm):
         value = self.cleaned_data.get("id_number", "").strip()
         if not value and self.instance.pk:
             return self.instance.id_number
-        if value and self.cleaned_data.get("id_type") == Guest.IdType.AADHAAR:
-            digits = value.replace(" ", "")
-            if not (digits.isdigit() and len(digits) == 12):
-                raise forms.ValidationError("Aadhaar number must be 12 digits.")
-            return digits
-        return value
+        return clean_aadhaar(value, self.cleaned_data.get("id_type"))
 
     def clean_passport_number(self):
         value = self.cleaned_data.get("passport_number", "").strip()
@@ -114,6 +109,62 @@ class StayForm(forms.ModelForm):
         if room and room.status == Room.Status.MAINTENANCE and (not self.instance.pk or self.instance.room_id != room.pk):
             self.add_error("room", "This room is under maintenance.")
         return data
+
+
+def clean_aadhaar(value: str, id_type: str) -> str:
+    if value and id_type == Guest.IdType.AADHAAR:
+        digits = value.replace(" ", "")
+        if not (digits.isdigit() and len(digits) == 12):
+            raise forms.ValidationError("Aadhaar number must be 12 digits.")
+        return digits
+    return value
+
+
+class StayGuestForm(forms.ModelForm):
+    """One additional guest (Guest 2, 3, …). Everything optional; blank ID on edit keeps the saved one."""
+
+    class Meta:
+        model = StayGuest
+        fields = ["name", "id_type", "id_number"]
+        widgets = {"id_number": forms.TextInput(attrs={"autocomplete": "off"})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["id_number"].required = False
+        self.fields["id_type"].required = False
+        if self.instance.pk and self.instance.id_number:
+            self.initial["id_number"] = ""
+            self.fields["id_number"].widget.attrs["placeholder"] = f"Saved: ••••{self.instance.id_number[-4:]} — leave blank to keep"
+
+    def clean_id_type(self):
+        return self.cleaned_data.get("id_type") or Guest.IdType.AADHAAR
+
+    def clean_id_number(self):
+        value = self.cleaned_data.get("id_number", "").strip()
+        if not value and self.instance.pk:
+            return self.instance.id_number
+        return clean_aadhaar(value, self.cleaned_data.get("id_type"))
+
+    @property
+    def is_blank(self) -> bool:
+        data = getattr(self, "cleaned_data", {}) or {}
+        return not (data.get("name") or "").strip() and not (data.get("id_number") or "").strip()
+
+
+MAX_OTHER_GUESTS = 9
+
+
+def other_guests_formset(stay: Stay, data=None):
+    """Rows for guests 2…N. Enough empty rows for the largest room type."""
+    from django.db.models import Max
+    from django.forms import inlineformset_factory
+
+    largest = RoomType.objects.aggregate(m=Max("max_guests"))["m"] or 2
+    rows = max(1, min(MAX_OTHER_GUESTS, largest - 1))
+    existing = stay.other_guests.count() if stay.pk else 0
+    FormSet = inlineformset_factory(Stay, StayGuest, form=StayGuestForm, extra=max(0, rows - existing),
+                                    can_delete=False, max_num=MAX_OTHER_GUESTS)
+    return FormSet(data, instance=stay, prefix="o")
 
 
 class ExtendForm(forms.Form):
