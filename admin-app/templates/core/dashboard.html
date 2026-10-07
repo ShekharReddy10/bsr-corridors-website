@@ -19,6 +19,7 @@
   <a class="stat" href="#in-house"><b>{{ in_house|length }}</b><span>In-house</span></a>
   <a class="stat" href="#departures"><b>{{ departing_count }}</b><span>Departing</span></a>
   <a class="stat" href="#vacant"><b>{{ vacant|length }}</b><span>Vacant of {{ room_count }}</span></a>
+  <a class="stat" href="#tomorrow"><b>{{ vacant_tomorrow|length }}</b><span>Vacant tomorrow</span></a>
   <a class="stat {% if unpaid_total > 0 %}stat-warn{% endif %}" href="#unpaid"><b>{{ unpaid_total|inr }}</b><span>Unpaid</span></a>
 </div>
 
@@ -56,6 +57,22 @@
       {% for r in vacant %}<a class="chip" href="{% url 'stay_new' %}?room={{ r.pk }}&check_in={{ today|date:'Y-m-d' }}" title="New stay in {{ r }}">{{ r.number }} · {{ r.room_type.name }}</a>{% empty %}<p class="muted">All rooms are occupied.</p>{% endfor %}
     </div>
     {% if maintenance %}<p class="muted small">Under maintenance: {% for r in maintenance %}{{ r.number }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+  </section>
+</div>
+
+<div class="grid-2" id="tomorrow">
+  <section class="card">
+    <h2>Departing tomorrow <span class="count">{{ departing_tomorrow|length }}</span></h2>
+    <p class="muted small">{{ tomorrow|date:"l, d F" }} — rooms to be vacated</p>
+    {% for s in departing_tomorrow %}{% include "partials/stay_line.html" with s=s note="Leaves" d1=s.check_out %}{% empty %}<p class="muted">No departures tomorrow.</p>{% endfor %}
+  </section>
+
+  <section class="card">
+    <h2>Vacant tomorrow night <span class="count">{{ vacant_tomorrow|length }}</span></h2>
+    <p class="muted small">{{ tomorrow|date:"l, d F" }} — includes rooms freed by tomorrow’s departures</p>
+    <div class="chips">
+      {% for r in vacant_tomorrow %}<a class="chip" href="{% url 'stay_new' %}?room={{ r.pk }}&check_in={{ tomorrow|date:'Y-m-d' }}" title="New stay in {{ r }} from tomorrow">{{ r.number }} · {{ r.room_type.name }}</a>{% empty %}<p class="muted">All rooms are booked for tomorrow night.</p>{% endfor %}
+    </div>
   </section>
 </div>
 

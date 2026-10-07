@@ -11,7 +11,9 @@ def dashboard(request):
     t = today()
     live = Stay.objects.live().select_related("guest", "room", "room__room_type")
     in_house = live.filter(status=Stay.Status.CHECKED_IN).order_by("check_out", "room__number")
-    occupied = set(live.overlapping(t, t + timedelta(days=1)).values_list("room_id", flat=True))
+    tomorrow = t + timedelta(days=1)
+    occupied = set(live.overlapping(t, tomorrow).values_list("room_id", flat=True))
+    occupied_tomorrow = set(live.overlapping(tomorrow, tomorrow + timedelta(days=1)).values_list("room_id", flat=True))
     rooms = list(Room.objects.filter(is_active=True).select_related("room_type"))
 
     unpaid = [
@@ -33,6 +35,11 @@ def dashboard(request):
         "overdue_departures": overdue_departures,
         "departing_count": len(departures) + len(overdue_departures),
         "vacant": [r for r in rooms if r.pk not in occupied and r.status == Room.Status.ACTIVE],
+        "tomorrow": tomorrow,
+        "departing_tomorrow": list(
+            live.filter(status__in=[Stay.Status.UPCOMING, Stay.Status.CHECKED_IN], check_out=tomorrow).order_by("room__number")
+        ),
+        "vacant_tomorrow": [r for r in rooms if r.pk not in occupied_tomorrow and r.status == Room.Status.ACTIVE],
         "maintenance": [r for r in rooms if r.status == Room.Status.MAINTENANCE],
         "occupied_count": len(occupied),
         "room_count": len(rooms),

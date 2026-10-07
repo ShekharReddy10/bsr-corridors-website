@@ -116,7 +116,7 @@ h2 { font-size: 1.05rem; margin: 0 0 12px; }
 .stat span { color: var(--ink-soft); font-size: .85rem; }
 .stat-warn b { color: var(--red); }
 .stats .stat:last-child { grid-column: 1 / -1; }
-@media (min-width: 768px) { .stats { grid-template-columns: repeat(5, 1fr); } .stats .stat:last-child { grid-column: auto; } }
+@media (min-width: 768px) { .stats { grid-template-columns: repeat(6, 1fr); } .stats .stat:last-child { grid-column: auto; } }
 
 /* Buttons & forms */
 .btn {

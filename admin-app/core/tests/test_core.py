@@ -321,6 +321,15 @@ class ViewTests(TestCase):
         r = self.client.post(f"/stays/{s.pk}/edit/", {**self._post_data(), "s-num_guests": 1})
         self.assertFalse(StayGuest.objects.exists())
 
+    def test_dashboard_tomorrow(self):
+        leaving = stay(make_guest(), self.rooms["101"], -1, 2)           # leaves tomorrow → 101 free tomorrow night
+        stay(make_guest("Anita", "+91 90000 00021"), self.rooms["102"], 0, 3)   # stays through tomorrow
+        stay(make_guest("Kiran", "+91 90000 00022"), self.rooms["103"], 1, 2)   # arrives tomorrow
+        r = self.client.get("/")
+        self.assertEqual([s.pk for s in r.context["departing_tomorrow"]], [leaving.pk])
+        self.assertEqual(sorted(x.number for x in r.context["vacant_tomorrow"]), ["101", "201"])
+        self.assertContains(r, "Vacant tomorrow night")
+
     def test_guest_search_and_rebook(self):
         g = make_guest()
         stay(g, self.rooms["101"], -10, 2)
