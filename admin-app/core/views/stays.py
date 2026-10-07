@@ -36,7 +36,7 @@ def stay_list(request):
         stays = stays.filter(source=source)
     start, end = parse_date(request.GET.get("start") or ""), parse_date(request.GET.get("end") or "")
     if start:
-        stays = stays.filter(check_out__gt=start)
+        stays = stays.filter(Q(check_out__gt=start) | Q(check_out__isnull=True))
     if end:
         stays = stays.filter(check_in__lte=end)
 
@@ -85,9 +85,12 @@ def _guest_instance(request, stay: Stay | None):
 
 def stay_form(request, pk=None):
     stay = get_object_or_404(Stay.objects.select_related("guest", "room"), pk=pk) if pk else None
+    # Checking in (or already in-house): the guest's phone and address are required.
+    checking_in = (request.GET.get("checkin") or request.POST.get("checkin")) == "1"
+    require_contact = checking_in or (stay is not None and stay.status == Stay.Status.CHECKED_IN)
     if request.method == "POST":
         guest = _guest_instance(request, stay)
-        gform = GuestForm(request.POST, instance=guest, prefix="g")
+        gform = GuestForm(request.POST, instance=guest, prefix="g", require_contact=require_contact)
         sform = StayForm(request.POST, instance=stay or Stay(), prefix="s")
         others = other_guests_formset(sform.instance, request.POST)
         # Only rows for guests 2…N count; rows beyond the number of guests are ignored.
@@ -102,9 +105,11 @@ def stay_form(request, pk=None):
                     new.guest = guest
                     services.save_stay(new, action="update" if stay else "create",
                                        summary=f"{'Updated' if stay else 'Created'} stay: {new.room}, "
-                                               f"{new.check_in:%d-%m-%Y} → {new.check_out:%d-%m-%Y}, ₹{new.amount_paid:,.0f} paid")
+                                               f"{new.dates_label}, ₹{new.amount_paid:,.0f} paid")
                     _save_other_guests(new, others.forms if others.management_form.is_valid() else [], wanted)
-                messages.success(request, f"Stay for {guest.name} saved.")
+                    if checking_in and new.status == Stay.Status.UPCOMING:
+                        services.check_in(new)
+                messages.success(request, f"{guest.name} checked in to {new.room}." if checking_in else f"Stay for {guest.name} saved.")
                 return redirect("stay_detail", pk=new.pk)
             except services.StayConflict as exc:
                 sform.add_error("room", str(exc))
@@ -117,10 +122,23 @@ def stay_form(request, pk=None):
             if room:
                 initial["room"] = room
         guest = stay.guest if stay else Guest.objects.filter(pk=request.GET.get("guest") or 0).first()
-        gform = GuestForm(instance=guest, prefix="g")
+        gform = GuestForm(instance=guest, prefix="g", require_contact=require_contact)
         sform = StayForm(instance=stay, initial=initial, prefix="s")
         others = other_guests_formset(stay or Stay())
-    return render(request, "core/stay_form.html", {"stay": stay, "gform": gform, "sform": sform, "others": others})
+    return render(request, "core/stay_form.html",
+                  {"stay": stay, "gform": gform, "sform": sform, "others": others, "checking_in": checking_in})
+
+
+def upcoming(request):
+    """Every future booking, grouped by arrival date."""
+    t = services.today()
+    stays = (Stay.objects.filter(status=Stay.Status.UPCOMING).select_related("guest", "room", "room__room_type")
+             .order_by("check_in", "room__number"))
+    return render(request, "core/upcoming.html", {
+        "late": [s for s in stays if s.check_in < t],
+        "future": [s for s in stays if s.check_in >= t],
+        "today": t,
+    })
 
 
 def _save_other_guests(stay: Stay, forms, wanted: int) -> None:
@@ -159,8 +177,14 @@ def stay_action(request, pk, action):
     stay = get_object_or_404(Stay.objects.select_related("guest", "room"), pk=pk)
     try:
         if action == "check-in":
+            if not stay.guest.has_contact_details:
+                messages.info(request, f"Add {stay.guest.name}’s phone and address to check in.")
+                return redirect(f"/stays/{stay.pk}/edit/?checkin=1")
             services.check_in(stay)
             messages.success(request, f"{stay.guest.name} checked in to {stay.room}.")
+        elif action == "add-rent":
+            services.add_month_rent(stay)
+            messages.success(request, f"Added a month’s rent ₹{stay.monthly_rent:,.0f}. Total is now ₹{stay.total:,.0f}.")
         elif action == "check-out":
             services.check_out(stay)
             messages.success(request, f"{stay.guest.name} checked out of {stay.room}.")
@@ -221,6 +245,9 @@ def extend(request, pk):
     if not stay.is_active:
         messages.error(request, "Only upcoming or checked-in stays can be extended.")
         return redirect("stay_detail", pk=pk)
+    if stay.is_open_ended:
+        messages.info(request, "This is a monthly stay with no check-out yet — use “Add month’s rent”, or set a leaving date.")
+        return redirect("stay_detail", pk=pk)
 
     plan = None
     if request.method == "POST":
@@ -236,14 +263,21 @@ def extend(request, pk):
                         cont = services.extend_split(stay, new_co, room, *money)
                         messages.success(request, f"Extended: {stay.guest.name} moves to {room} on {cont.check_in:%d-%m-%Y}.")
                     else:
-                        plan = services.plan_extension(stay, new_co)
-                        services.extend_move(stay, new_co, room, plan.move_start, *money)
+                        move_start = min(max(stay.check_in, services.today()), stay.check_out)
+                        services.extend_move(stay, new_co, room, move_start, *money)
                         messages.success(request, f"Extended: {stay.guest.name} moved to {room}, until {new_co:%d-%m-%Y}.")
                     return redirect("stay_detail", pk=stay.root.pk)
                 plan = services.plan_extension(stay, new_co)
-                if plan.free:
-                    services.extend_in_place(stay, new_co, *money)
-                    messages.success(request, f"Extended in {stay.room} until {new_co:%d-%m-%Y} (+{plan.extra_nights} night{'s' if plan.extra_nights != 1 else ''}).")
+                if plan.can_extend_in_place:
+                    nights = f"+{plan.extra_nights} night{'s' if plan.extra_nights != 1 else ''}"
+                    if plan.free:
+                        services.extend_in_place(stay, new_co, *money)
+                        messages.success(request, f"Extended in {stay.room} until {new_co:%d-%m-%Y} ({nights}).")
+                    else:
+                        moved = [f"{b.guest.name}’s booking moved from {b.room} to {r}" for b, r in plan.moves]
+                        services.extend_with_moves(stay, new_co, plan.moves, *money)
+                        messages.success(request, f"Extended in {stay.room} until {new_co:%d-%m-%Y} ({nights}). "
+                                                  + "; ".join(moved) + ".")
                     return redirect("stay_detail", pk=stay.pk)
             except (services.StayConflict, ValueError) as exc:
                 messages.error(request, f"{exc} Please choose again.")

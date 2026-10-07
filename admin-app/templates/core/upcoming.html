@@ -1,0 +1,39 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}Upcoming bookings{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Upcoming bookings</h1><p class="muted">All future arrivals, by date.</p></div>
+  <a class="btn btn-primary" href="{% url 'stay_new' %}">+ New booking</a>
+</div>
+
+{% if late %}
+<section class="card">
+  <h2>Not yet checked in <span class="count">{{ late|length }}</span></h2>
+  <p class="muted small">Arrival date has passed — check in, or cancel if they didn’t come.</p>
+  {% for s in late %}{% include "partials/stay_line.html" with s=s warn=True note="Expected" d1=s.check_in action="check-in" %}{% endfor %}
+</section>
+{% endif %}
+
+{% regroup future by check_in as days %}
+{% for day in days %}
+<section class="card">
+  <h2>{% if day.grouper == today %}Today{% else %}{{ day.grouper|date:"l, d F Y" }}{% endif %} <span class="count">{{ day.list|length }}</span></h2>
+  {% for s in day.list %}
+    <div class="stay-line">
+      <a class="stay-line-main" href="{% url 'stay_detail' s.pk %}">
+        <span class="room-badge">{{ s.room.number }}</span>
+        <span><b>{{ s.guest.name }}</b>
+          <small>{{ s.room.room_type.name }} · {% if s.check_out %}until {{ s.check_out|date:"d-m" }} ({{ s.nights }} night{{ s.nights|pluralize }}){% else %}monthly{% endif %}
+            · {{ s.get_source_display }}{% if s.total %} · {{ s.total|inr }}{% endif %}{% if s.amount_paid %} · advance {{ s.amount_paid|inr }}{% endif %}
+            {% if not s.guest.has_contact_details %} · <span class="warn">details at check-in</span>{% endif %}</small></span>
+      </a>
+      {% if day.grouper == today %}
+      <form method="post" action="{% url 'stay_action' s.pk 'check-in' %}">{% csrf_token %}<button class="btn btn-sm btn-primary">Check in</button></form>
+      {% endif %}
+    </div>
+  {% endfor %}
+</section>
+{% empty %}
+  {% if not late %}<div class="card empty"><p>No upcoming bookings.</p><a class="btn btn-primary" href="{% url 'stay_new' %}">+ New booking</a></div>{% endif %}
+{% endfor %}
+{% endblock %}

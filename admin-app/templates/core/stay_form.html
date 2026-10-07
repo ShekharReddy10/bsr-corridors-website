@@ -9,6 +9,9 @@
 <form method="post" class="stay-form" novalidate>
   {% csrf_token %}
   {{ gform.guest_id }}
+  {% if checking_in %}<input type="hidden" name="checkin" value="1">
+    <div class="alert"><b>Checking in {{ stay.guest.name }}.</b> Add the guest’s phone number and address (ID is optional), then save to check in.</div>
+  {% endif %}
   {% if gform.non_field_errors or sform.non_field_errors %}<div class="msg msg-error">{{ gform.non_field_errors }}{{ sform.non_field_errors }}</div>{% endif %}
 
   <section class="card">
@@ -16,7 +19,8 @@
     {% if gform.instance.pk and not stay %}
       <div class="returning">Booking for <b>{{ gform.instance.name }}</b> ({{ gform.instance.phone }}) — saved details are filled in. Edit anything that changed. <a href="{% url 'stay_new' %}">Different guest?</a></div>
     {% elif not stay %}
-      <p class="muted small">Start with the phone number — if the guest has stayed before, their details are filled in. Or <a href="{% url 'guest_list' %}">search guests</a>.</p>
+      <p class="muted small">For a future booking only the <b>name</b> is needed — add phone, address and ID at check-in.
+        If you have the phone number, enter it first: returning guests are filled in automatically. Or <a href="{% url 'guest_list' %}">search guests</a>.</p>
     {% endif %}
     <div class="form-grid">
       {% field gform.phone %}
@@ -46,7 +50,8 @@
     <div class="form-grid">
       {% field sform.source %}
       {% field sform.source_ref %}
-      {% field sform.room "span-2" %}
+      {% field sform.kind %}
+      {% field sform.room %}
       {% field sform.check_in %}
       {% field sform.check_out %}
       <p class="span-2 nights-line" id="nights-line"></p>
@@ -54,6 +59,10 @@
       {% field sform.total_amount %}
       {% field sform.amount_paid %}
       {% field sform.payment_mode %}
+      <div class="span-2 form-grid monthly-only" id="monthly-fields">
+        {% field sform.monthly_rent %}
+        {% field sform.deposit_amount %}
+      </div>
       <p class="span-2 total-line" id="total-line"></p>
       {% field sform.notes "span-2" %}
     </div>
@@ -76,7 +85,7 @@
   </section>
 
   <div class="form-actions">
-    <button class="btn btn-primary" type="submit">Save stay</button>
+    <button class="btn btn-primary" type="submit">{% if checking_in %}Save &amp; check in{% else %}Save stay{% endif %}</button>
     <a class="btn btn-ghost" href="{% if stay %}{% url 'stay_detail' stay.pk %}{% else %}{% url 'dashboard' %}{% endif %}">Cancel</a>
   </div>
 </form>

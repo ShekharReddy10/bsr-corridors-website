@@ -1,7 +1,7 @@
 """Business rules for stays: availability, safe saves, extensions, check-in/out."""
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
@@ -15,7 +15,7 @@ class StayConflict(Exception):
 
     def __init__(self, conflicts):
         self.conflicts = list(conflicts)
-        names = ", ".join(f"{s.guest.name} ({s.check_in:%d-%m} → {s.check_out:%d-%m})" for s in self.conflicts)
+        names = ", ".join(f"{s.guest.name} ({s.dates_label})" for s in self.conflicts)
         super().__init__(f"Room is already booked for some of these nights: {names or 'another stay'}.")
 
 
@@ -23,7 +23,7 @@ def today() -> date:
     return timezone.localdate()
 
 
-def conflicts(room: Room, start: date, end: date, exclude_ids=()):
+def conflicts(room: Room, start: date, end: date | None, exclude_ids=()):
     return (
         Stay.objects.live()
         .overlapping(start, end)
@@ -34,7 +34,7 @@ def conflicts(room: Room, start: date, end: date, exclude_ids=()):
     )
 
 
-def free_rooms(start: date, end: date, *, room_type=None, exclude_room=None):
+def free_rooms(start: date, end: date | None, *, room_type=None, exclude_room=None):
     """Active rooms with no live stay in [start, end)."""
     busy = Stay.objects.live().overlapping(start, end).values("room_id")
     rooms = Room.objects.filter(is_active=True, status=Room.Status.ACTIVE).exclude(pk__in=busy)
@@ -79,18 +79,73 @@ class ExtensionPlan:
     split_rooms: list = field(default_factory=list)  # same type, free for the extra nights only
     move_rooms: list = field(default_factory=list)  # free from move_start to the new check-out
     move_start: date | None = None
+    # Room-type check: nights on which every room of this type is taken, and future bookings
+    # that can be moved to another room of the same type so the guest can stay in their room.
+    full_nights: list = field(default_factory=list)
+    moves: list | None = None  # [(blocking_stay, new_room), …] or None if not possible
 
     @property
     def extra_nights(self) -> int:
         return (self.new_check_out - self.stay.check_out).days
 
+    @property
+    def can_extend_in_place(self) -> bool:
+        return self.free or self.moves is not None
+
+
+def _rooms_of_type(room_type):
+    return Room.objects.filter(room_type=room_type, is_active=True, status=Room.Status.ACTIVE)
+
+
+def type_full_nights(stay: Stay, start: date, end: date) -> list[date]:
+    """Nights in [start, end) on which all rooms of the stay's type are taken by other stays."""
+    capacity = _rooms_of_type(stay.room.room_type).count()
+    others = list(
+        Stay.objects.live().overlapping(start, end).filter(room__room_type=stay.room.room_type)
+        .exclude(pk=stay.pk).values_list("check_in", "check_out")
+    )
+    full, d = [], start
+    while d < end:
+        taken = sum(1 for ci, co in others if ci <= d and (co is None or d < co))
+        if taken + 1 > capacity:
+            full.append(d)
+        d += timedelta(days=1)
+    return full
+
+
+def _reassign_blocking(stay: Stay, blocking: list) -> list | None:
+    """Find rooms of the same type for future bookings in the guest's room, so the guest can stay put."""
+    if any(b.status != Stay.Status.UPCOMING for b in blocking):
+        return None  # never move someone who is already in-house
+    candidates = list(_rooms_of_type(stay.room.room_type).exclude(pk=stay.room_id).order_by("sort_order", "number"))
+    planned: dict[int, list] = {}
+    moves = []
+    for b in sorted(blocking, key=lambda x: x.check_in):
+        def fits(room, b=b):
+            if conflicts(room, b.check_in, b.check_out, exclude_ids=[b.pk]).exists():
+                return False
+            return not any(b.check_in < (co or date.max) and ci < (b.check_out or date.max)
+                           for ci, co in planned.get(room.pk, []))
+        room = next((r for r in candidates if fits(r)), None)
+        if room is None:
+            return None
+        planned.setdefault(room.pk, []).append((b.check_in, b.check_out))
+        moves.append((b, room))
+    return moves
+
 
 def plan_extension(stay: Stay, new_check_out: date) -> ExtensionPlan:
+    if stay.is_open_ended:
+        raise ValueError("Monthly stays have no check-out to extend — use “Add month’s rent”, or set a check-out date.")
     if new_check_out <= stay.check_out:
         raise ValueError("The new check-out date must be after the current one.")
     blocking = list(conflicts(stay.room, stay.check_out, new_check_out, exclude_ids=[stay.pk]))
     plan = ExtensionPlan(stay=stay, new_check_out=new_check_out, free=not blocking, blocking=blocking)
     if blocking:
+        plan.full_nights = type_full_nights(stay, stay.check_out, new_check_out)
+        if not plan.full_nights:
+            plan.moves = _reassign_blocking(stay, blocking)
+    if not plan.can_extend_in_place:
         plan.split_rooms = list(
             free_rooms(stay.check_out, new_check_out, room_type=stay.room.room_type, exclude_room=stay.room)
         )
@@ -121,6 +176,16 @@ def extend_in_place(stay: Stay, new_check_out: date, amount=Decimal(0), paid=Dec
     _apply_payment(stay, paid, mode)
     return save_stay(stay, action="extend",
                      summary=f"Extended in {stay.room}: check-out {old:%d-%m-%Y} → {new_check_out:%d-%m-%Y}{_money(amount, paid)}")
+
+
+def extend_with_moves(stay: Stay, new_check_out: date, moves: list, amount=Decimal(0), paid=Decimal(0), mode="") -> Stay:
+    """Move future bookings out of the guest's room (to rooms of the same type), then extend in place."""
+    with transaction.atomic():
+        for b, room in moves:
+            old = b.room
+            b.room = room
+            save_stay(b, action="move", summary=f"Room changed {old} → {room} so {stay.guest.name} could extend in {old}")
+        return extend_in_place(stay, new_check_out, amount, paid, mode)
 
 
 def extend_split(stay: Stay, new_check_out: date, room: Room, amount=Decimal(0), paid=Decimal(0), mode="") -> Stay:
@@ -207,7 +272,10 @@ def check_out(stay: Stay) -> Stay:
     """Check out now. If the guest leaves before the booked date, the stay is shortened (early checkout)."""
     note = ""
     t = today()
-    if stay.check_in < t < stay.check_out:
+    if stay.is_open_ended:
+        stay.check_out = max(t, stay.check_in + timedelta(days=1))
+        note = f" — monthly stay ended {stay.check_out:%d-%m-%Y}"
+    elif stay.check_in < t < stay.check_out:
         note = f" — early checkout, was booked until {stay.check_out:%d-%m-%Y}"
         stay.check_out = t
     stay.status = Stay.Status.CHECKED_OUT
@@ -216,11 +284,20 @@ def check_out(stay: Stay) -> Stay:
 
 
 def shorten(stay: Stay, new_check_out: date) -> Stay:
-    if not (stay.check_in < new_check_out < stay.check_out):
-        raise ValueError("Early check-out must be after check-in and before the current check-out.")
-    old = stay.check_out
+    """Set an earlier check-out (or, for a monthly stay, its leaving date)."""
+    if new_check_out <= stay.check_in or (stay.check_out and new_check_out >= stay.check_out):
+        raise ValueError("The leaving date must be after check-in and before the current check-out.")
+    old = f"{stay.check_out:%d-%m-%Y}" if stay.check_out else "open"
     stay.check_out = new_check_out
-    return save_stay(stay, action="shorten", summary=f"Shortened: check-out {old:%d-%m-%Y} → {new_check_out:%d-%m-%Y}")
+    return save_stay(stay, action="shorten", summary=f"Check-out set: {old} → {new_check_out:%d-%m-%Y}")
+
+
+def add_month_rent(stay: Stay) -> Stay:
+    """Monthly guests: add one month's rent to the stay total."""
+    if not stay.monthly_rent:
+        raise ValueError("Set the monthly rent on the stay first (Edit).")
+    stay.total_amount = (stay.total_amount or Decimal(0)) + stay.monthly_rent
+    return save_stay(stay, action="rent", summary=f"Added a month’s rent ₹{stay.monthly_rent:,.0f} to the total")
 
 
 def add_payment(stay: Stay, amount: Decimal, mode: str) -> Stay:

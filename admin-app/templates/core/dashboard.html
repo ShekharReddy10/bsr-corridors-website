@@ -60,6 +60,20 @@
   </section>
 </div>
 
+<div class="grid-2" id="upcoming">
+  <section class="card">
+    <h2>Arriving tomorrow <span class="count">{{ arriving_tomorrow|length }}</span></h2>
+    <p class="muted small">{{ tomorrow|date:"l, d F" }}</p>
+    {% for s in arriving_tomorrow %}{% include "partials/stay_line.html" with s=s note="Until" d1=s.check_out %}{% empty %}<p class="muted">No arrivals tomorrow.</p>{% endfor %}
+  </section>
+  <section class="card">
+    <h2>Arriving day after tomorrow <span class="count">{{ arriving_day_after|length }}</span></h2>
+    <p class="muted small">{{ day_after|date:"l, d F" }}</p>
+    {% for s in arriving_day_after %}{% include "partials/stay_line.html" with s=s note="Until" d1=s.check_out %}{% empty %}<p class="muted">No arrivals that day.</p>{% endfor %}
+  </section>
+</div>
+<p class="see-all"><a class="btn btn-outline" href="{% url 'upcoming' %}">All upcoming bookings ({{ upcoming_count }}) →</a></p>
+
 <div class="grid-2" id="tomorrow">
   <section class="card">
     <h2>Departing tomorrow <span class="count">{{ departing_tomorrow|length }}</span></h2>
@@ -85,7 +99,7 @@
       {% for s in unpaid %}
       <tr>
         <td data-label="Guest"><a href="{% url 'stay_detail' s.pk %}">{{ s.guest.name }}</a></td><td data-label="Room">{{ s.room.number }}</td>
-        <td data-label="Dates">{{ s.check_in|date:"d-m" }} → {{ s.check_out|date:"d-m" }}</td>
+        <td data-label="Dates">{{ s.check_in|date:"d-m" }} → {{ s.check_out|date:"d-m"|default:"monthly" }}</td>
         <td data-label="Total" class="num">{{ s.total|inr }}</td><td data-label="Paid" class="num">{{ s.amount_paid|inr }}</td><td data-label="Balance" class="num warn">{{ s.balance|inr }}</td>
       </tr>
       {% endfor %}

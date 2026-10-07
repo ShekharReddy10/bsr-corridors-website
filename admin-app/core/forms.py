@@ -1,4 +1,5 @@
 from datetime import timedelta
+from decimal import Decimal
 
 from django import forms
 
@@ -27,8 +28,15 @@ class GuestForm(forms.ModelForm):
             "arrival_in_india": DATE,
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, require_contact: bool = False, **kwargs):
+        """require_contact: phone and address are needed (checking in). Otherwise only the name is required,
+        so future bookings can be saved before the guest's details are known."""
         super().__init__(*args, **kwargs)
+        self.require_contact = require_contact
+        for name in ("phone", "address", "id_number"):
+            self.fields[name].required = False
+        if require_contact:
+            self.fields["phone"].required = self.fields["address"].required = True
         if self.instance.pk:
             self.fields["guest_id"].initial = self.instance.pk
             for name in ("id_number", "passport_number"):
@@ -39,7 +47,9 @@ class GuestForm(forms.ModelForm):
                     self.fields[name].widget.attrs["placeholder"] = f"Saved: ••••{stored[-4:]} — leave blank to keep"
 
     def clean_phone(self):
-        phone = self.cleaned_data["phone"].strip()
+        phone = (self.cleaned_data.get("phone") or "").strip()
+        if not phone:
+            return phone
         if sum(c.isdigit() for c in phone) < 10:
             raise forms.ValidationError("Enter a valid phone number (at least 10 digits).")
         other = Guest.objects.filter(phone_key=Guest.key_for(phone)).exclude(pk=self.instance.pk or 0).first()
@@ -64,7 +74,7 @@ class GuestForm(forms.ModelForm):
     def clean(self):
         data = super().clean()
         nationality = (data.get("nationality") or "").strip().lower()
-        if nationality and nationality not in {"indian", "india"}:
+        if self.require_contact and nationality and nationality not in {"indian", "india"}:
             for name in ("passport_number", "visa_number", "arrival_in_india"):
                 if not data.get(name):
                     self.add_error(name, "Required for foreign nationals (Form C).")
@@ -74,13 +84,15 @@ class GuestForm(forms.ModelForm):
 class StayForm(forms.ModelForm):
     class Meta:
         model = Stay
-        fields = ["source", "source_ref", "room", "check_in", "check_out", "num_guests",
-                  "total_amount", "amount_paid", "payment_mode", "notes"]
+        fields = ["source", "source_ref", "kind", "room", "check_in", "check_out", "num_guests",
+                  "total_amount", "amount_paid", "payment_mode", "monthly_rent", "deposit_amount", "notes"]
         widgets = {
             "check_in": DATE,
             "check_out": DATE,
             "notes": forms.Textarea(attrs={"rows": 2}),
             "total_amount": forms.NumberInput(attrs={"inputmode": "decimal", "step": "1", "min": "0"}),
+            "monthly_rent": forms.NumberInput(attrs={"inputmode": "decimal", "step": "1", "min": "0"}),
+            "deposit_amount": forms.NumberInput(attrs={"inputmode": "decimal", "step": "1", "min": "0"}),
             "amount_paid": forms.NumberInput(attrs={"inputmode": "decimal", "step": "1"}),
         }
 
@@ -97,13 +109,43 @@ class StayForm(forms.ModelForm):
         self.fields["room"].widget.attrs["data-rooms"] = ",".join(
             f"{r.pk}:{r.room_type.max_guests}" for r in self.fields["room"].queryset
         )
-        self.fields["total_amount"].help_text = "Agreed price for the whole stay"
+        self.fields["total_amount"].help_text = "Agreed price for the whole stay (monthly: rent added so far)"
+        self.fields["check_out"].required = False
+        # Only room and dates are essential; empty amounts count as ₹0, stay type defaults to Daily.
+        for name in ("kind", "total_amount", "amount_paid", "monthly_rent", "deposit_amount", "num_guests", "source"):
+            self.fields[name].required = False
+
+    def _zero(self, name):
+        return self.cleaned_data.get(name) or Decimal(0)
+
+    def clean_total_amount(self):
+        return self._zero("total_amount")
+
+    def clean_amount_paid(self):
+        return self._zero("amount_paid")
+
+    def clean_monthly_rent(self):
+        return self._zero("monthly_rent")
+
+    def clean_deposit_amount(self):
+        return self._zero("deposit_amount")
+
+    def clean_kind(self):
+        return self.cleaned_data.get("kind") or Stay.Kind.DAILY
+
+    def clean_source(self):
+        return self.cleaned_data.get("source") or Stay.Source.WALK_IN
+
+    def clean_num_guests(self):
+        return self.cleaned_data.get("num_guests") or 1
 
     def clean(self):
         data = super().clean()
         check_in, check_out, room = data.get("check_in"), data.get("check_out"), data.get("room")
         if check_in and check_out and check_out <= check_in:
             self.add_error("check_out", "Check-out must be at least one day after check-in.")
+        if not check_out and data.get("kind") != Stay.Kind.MONTHLY:
+            self.add_error("check_out", "Enter a check-out date, or choose “Monthly” for an open-ended stay.")
         if room and data.get("num_guests") and data["num_guests"] > room.room_type.max_guests:
             self.add_error("num_guests", f"{room.room_type.name} allows up to {room.room_type.max_guests} guests.")
         if room and room.status == Room.Status.MAINTENANCE and (not self.instance.pk or self.instance.room_id != room.pk):

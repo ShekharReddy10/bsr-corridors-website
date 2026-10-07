@@ -29,9 +29,15 @@
 {% with amount=form.cleaned_data.amount paid=form.cleaned_data.paid_now mode=form.cleaned_data.payment_mode %}
 <section class="card">
   <div class="alert">
-    <b>{{ stay.room }} is booked</b> for part of {{ stay.check_out|date:"d-m" }} → {{ plan.new_check_out|date:"d-m-Y" }}
-    ({{ plan.extra_nights }} extra night{{ plan.extra_nights|pluralize }}):
-    {% for b in plan.blocking %}<a href="{% url 'stay_detail' b.pk %}">{{ b.guest.name }}</a> from {{ b.check_in|date:"d-m" }}{% if not forloop.last %}, {% endif %}{% endfor %}.
+    {% if plan.full_nights %}
+      <b>All {{ stay.room.room_type.name }} rooms are booked</b> on
+      {% for d in plan.full_nights %}{{ d|date:"D d-m" }}{% if not forloop.last %}, {% endif %}{% endfor %}
+      ({{ plan.extra_nights }} extra night{{ plan.extra_nights|pluralize }} requested).
+    {% else %}
+      <b>{{ stay.room }} is booked</b> for part of {{ stay.check_out|date:"d-m" }} → {{ plan.new_check_out|date:"d-m-Y" }},
+      and the booking couldn’t be moved to another {{ stay.room.room_type.name }} room automatically.
+    {% endif %}
+    {% for b in plan.blocking %}<a href="{% url 'stay_detail' b.pk %}">{{ b.guest.name }}</a> ({{ b.get_status_display|lower }}) from {{ b.check_in|date:"d-m" }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if plan.blocking %} has {{ stay.room }}.{% endif %}
   </div>
   <p class="muted small">Extension amount {{ amount|inr }}{% if paid %}, paid now {{ paid|inr }}{% endif %} — kept whichever option you choose.</p>
 

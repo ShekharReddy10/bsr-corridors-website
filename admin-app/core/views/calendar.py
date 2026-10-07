@@ -39,7 +39,7 @@ def tape_chart(request):
     )
     bars: dict[int, list] = {r.pk: [] for r in rooms}
     for s in stays:
-        first, last = max(s.check_in, start), min(s.check_out, end)
+        first, last = max(s.check_in, start), min(s.check_out or end, end)
         bars[s.room_id].append(
             {
                 "stay": s,
@@ -47,7 +47,7 @@ def tape_chart(request):
                 "span": (last - first).days,
                 "cls": _bar_class(s),
                 "cut_left": s.check_in < start,
-                "cut_right": s.check_out > end,
+                "cut_right": s.check_out is None or s.check_out > end,
             }
         )
 
@@ -85,7 +85,7 @@ def room_month(request, pk):
     stays = list(Stay.objects.live().overlapping(grid_start, grid_end).filter(room=room).select_related("guest"))
 
     def stay_on(d):
-        return next((s for s in stays if s.check_in <= d < s.check_out), None)
+        return next((s for s in stays if s.check_in <= d and (s.check_out is None or d < s.check_out)), None)
 
     prev_month = (first - timedelta(days=1)).replace(day=1)
     next_month = (first + timedelta(days=32)).replace(day=1)
@@ -100,6 +100,6 @@ def room_month(request, pk):
         "prev": prev_month.strftime("%Y-%m"),
         "next": next_month.strftime("%Y-%m"),
         "rooms": Room.objects.filter(is_active=True),
-        "month_stays": [s for s in stays if s.check_in < next_month and s.check_out > first],
+        "month_stays": [s for s in stays if s.check_in < next_month and (s.check_out is None or s.check_out > first)],
     }
     return render(request, "core/room_month.html", context)

@@ -1,7 +1,7 @@
 {% load bsr %}<div class="stay-line{% if warn %} is-warn{% endif %}">
   <a class="stay-line-main" href="{% url 'stay_detail' s.pk %}">
     <span class="room-badge">{{ s.room.number }}</span>
-    <span><b>{{ s.guest.name }}</b><small>{{ s.guest.phone }}{% if note %} · {{ note }}{% if d1 %} {{ d1|date:"d-m" }}{% endif %}{% if d2 %} → {{ d2|date:"d-m" }}{% endif %}{% endif %}{% if s.balance > 0 and s.status != 'upcoming' %} · <span class="warn">{{ s.balance|inr }} due</span>{% endif %}</small></span>
+    <span><b>{{ s.guest.name }}</b><small>{{ s.guest.phone|default:"No phone yet" }}{% if note and d1 %} · {{ note }} {{ d1|date:"d-m" }}{% if d2 %} → {{ d2|date:"d-m" }}{% endif %}{% elif note and not s.is_open_ended %} · {{ note }}{% endif %}{% if s.is_open_ended %} · Monthly{% endif %}{% if s.balance > 0 and s.status != 'upcoming' %} · <span class="warn">{{ s.balance|inr }} due</span>{% endif %}</small></span>
   </a>
   {% if action %}
   <form method="post" action="{% url 'stay_action' s.pk action %}">{% csrf_token %}

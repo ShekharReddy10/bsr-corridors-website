@@ -56,6 +56,22 @@
   );
   roomSel.addEventListener("change", () => { if (roomMax[roomSel.value]) f("s-num_guests").max = roomMax[roomSel.value]; });
 
+  // ── Monthly (open-ended) stays: show rent & deposit, check-out optional ──
+  const kind = f("s-kind");
+  const monthly = $("#monthly-fields");
+  const syncKind = () => {
+    const isMonthly = kind.value === "monthly";
+    monthly.hidden = !isMonthly;
+    const lbl = form.querySelector('label[for="id_s-check_out"]');
+    if (lbl) lbl.firstChild.textContent = isMonthly ? "Check out (leave empty until they leave) " : "Check out ";
+  };
+  kind.addEventListener("change", () => {
+    if (kind.value === "monthly") f("s-check_out").value = "";  // open-ended until they leave
+    syncKind();
+    update();
+  });
+  syncKind();
+
   // ── Other guests: one row per guest beyond the first ──
   const guestsInput = f("s-num_guests");
   const rows = Array.from(document.querySelectorAll(".other-guest"));
@@ -79,7 +95,7 @@
     $("#total-line").innerHTML = `Total <b>${inr(total)}</b> · Paid <b>${inr(paid)}</b> · Balance <b>${inr(total - paid)}</b>`;
   };
   ci.addEventListener("change", () => {
-    if (ci.value && (!co.value || co.value <= ci.value)) {
+    if (ci.value && kind.value !== "monthly" && (!co.value || co.value <= ci.value)) {
       const d = ci.valueAsDate; d.setUTCDate(d.getUTCDate() + 1); co.valueAsDate = d;
     }
     co.min = ci.value;

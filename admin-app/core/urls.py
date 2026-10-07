@@ -12,6 +12,7 @@ urlpatterns = [
     path("calendar/room/<int:pk>/", calendar.room_month, name="room_month"),
     path("stays/", stays.stay_list, name="stay_list"),
     path("stays/new/", stays.stay_form, name="stay_new"),
+    path("upcoming/", stays.upcoming, name="upcoming"),
     path("stays/<int:pk>/", stays.stay_detail, name="stay_detail"),
     path("stays/<int:pk>/edit/", stays.stay_form, name="stay_edit"),
     path("stays/<int:pk>/extend/", stays.extend, name="stay_extend"),

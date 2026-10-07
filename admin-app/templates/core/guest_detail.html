@@ -36,7 +36,7 @@
   {% for s in stays %}
     <div class="stay-line">
       <a class="stay-line-main" href="{% url 'stay_detail' s.pk %}"><span class="room-badge">{{ s.room.number }}</span>
-        <span><b>{{ s.check_in|date:"d-m-Y" }} → {{ s.check_out|date:"d-m-Y" }}</b>
+        <span><b>{{ s.dates_label }}</b>
         <small>{{ s.get_status_display }} · {{ s.get_source_display }} · {{ s.total|inr }} · paid {{ s.amount_paid|inr }}{% if s.balance > 0 and s.status != 'cancelled' %} · <span class="warn">{{ s.balance|inr }} due</span>{% endif %}</small></span></a>
     </div>
   {% empty %}<p class="muted">No stays.</p>{% endfor %}

@@ -118,27 +118,49 @@ class ExtensionTests(TestCase):
         self.assertEqual((s.total, s.amount_paid, s.balance), (Decimal("5500"), Decimal("1000"), Decimal("4500")))
         self.assertTrue(AuditLog.objects.filter(stay=s, action="extend").exists())
 
-    def test_blocked_offers_same_type_rooms_and_split(self):
+    def test_type_has_space_moves_future_booking(self):
+        """Room 101 is booked after; another AC room is free → extend in 101 and move the future booking."""
         s = stay(self.g, self.rooms["101"], 0, 2)
-        stay(make_guest("Next", "+91 90000 00002"), self.rooms["101"], 2, 3)  # room taken after
+        nxt = stay(make_guest("Next", "+91 90000 00002"), self.rooms["101"], 2, 3)
         stay(make_guest("Busy", "+91 90000 00003"), self.rooms["102"], 2, 1)  # 102 busy on first extra night
         plan = services.plan_extension(s, s.check_out + timedelta(days=2))
         self.assertFalse(plan.free)
-        self.assertEqual([r.number for r in plan.split_rooms], ["103"])  # same type only, and free
-        self.assertEqual(plan.move_rooms[0].room_type, self.ac)  # same type first
-        cont = services.extend_split(s, plan.new_check_out, self.rooms["103"], Decimal("2000"))
-        self.assertEqual(cont.check_in, s.check_out)
-        self.assertEqual(cont.total, Decimal("2000"))
-        self.assertEqual(cont.linked_to, s)
+        self.assertEqual(plan.full_nights, [])
+        self.assertTrue(plan.can_extend_in_place)
+        self.assertEqual([(b.pk, r.number) for b, r in plan.moves], [(nxt.pk, "103")])  # 103 free for Next's whole stay
+        services.extend_with_moves(s, plan.new_check_out, plan.moves, Decimal("3000"))
+        s.refresh_from_db(); nxt.refresh_from_db()
+        self.assertEqual((s.room.number, s.nights, s.total), ("101", 4, Decimal("6000")))
+        self.assertEqual(nxt.room.number, "103")
+        self.assertTrue(AuditLog.objects.filter(stay=nxt, action="move").exists())
+
+    def test_type_full_offers_options(self):
+        """All AC rooms taken on an extra night → no automatic extension; split/move options offered."""
+        s = stay(self.g, self.rooms["101"], 0, 2)
+        stay(make_guest("Next", "+91 90000 00002"), self.rooms["101"], 2, 3)
+        stay(make_guest("B2", "+91 90000 00003"), self.rooms["102"], 2, 1)
+        stay(make_guest("B3", "+91 90000 00004"), self.rooms["103"], 2, 1)
+        plan = services.plan_extension(s, s.check_out + timedelta(days=2))
+        self.assertEqual(plan.full_nights, [T + timedelta(days=2)])
+        self.assertFalse(plan.can_extend_in_place)
+        self.assertEqual(plan.split_rooms, [])  # no AC room free for the extra nights
+        self.assertEqual([r.number for r in plan.move_rooms], ["201"])  # other type offered
+        cont = services.extend_split(s, plan.new_check_out, self.rooms["201"], Decimal("2000"))
+        self.assertEqual((cont.check_in, cont.total, cont.linked_to), (s.check_out, Decimal("2000"), s))
         self.assertEqual(len(s.chain()), 2)
+
+    def test_in_house_guest_never_moved_automatically(self):
+        s = stay(self.g, self.rooms["101"], 0, 2)
+        other = stay(make_guest("In", "+91 90000 00005"), self.rooms["102"], 0, 5)
+        services.check_in(other)
+        # nothing blocks 101 itself → simple extension
+        self.assertTrue(services.plan_extension(s, s.check_out + timedelta(days=1)).free)
 
     def test_move_mid_stay_splits_at_today(self):
         s = stay(self.g, self.rooms["101"], -2, 3)  # arrived 2 days ago, leaves tomorrow
         services.check_in(s)
         stay(make_guest("Next", "+91 90000 00002"), self.rooms["101"], 1, 3)
-        plan = services.plan_extension(s, T + timedelta(days=4))
-        self.assertEqual(plan.move_start, T)
-        cont = services.extend_move(s, plan.new_check_out, self.rooms["102"], plan.move_start)
+        cont = services.extend_move(s, T + timedelta(days=4), self.rooms["102"], T)
         s.refresh_from_db()
         self.assertEqual(s.check_out, T)
         self.assertEqual(s.status, Stay.Status.CHECKED_OUT)
@@ -243,7 +265,9 @@ class ViewTests(TestCase):
         self.assertEqual(Stay.objects.get().guest.id_number, "")
         self.assertContains(self.client.get(f"/stays/{Stay.objects.get().pk}/"), "Not provided")
         Stay.objects.all().delete(); Guest.objects.all().delete()
-        r = self._new_stay_post(**{"g-nationality": "British", "g-id_type": "passport", "g-id_number": "X1"})
+        # Foreign national details are required at check-in (not when booking ahead)
+        r = self._new_stay_post(**{"g-nationality": "British", "g-id_type": "passport", "g-id_number": "X1",
+                                   "g-phone": "+44 7700 900111", "checkin": "1"})
         self.assertContains(r, "Required for foreign nationals")
         r = self._new_stay_post(**{"s-num_guests": 3})
         self.assertContains(r, "allows up to 2 guests")
@@ -256,15 +280,26 @@ class ViewTests(TestCase):
         self.assertRedirects(r, f"/stays/{s.pk}/")
         s.refresh_from_db()
         self.assertEqual((s.total, s.amount_paid), (Decimal("4200"), Decimal("1200")))
-        stay(make_guest("Next", "+91 90000 00002"), self.rooms["101"], 3, 2)
-        r = self.client.post(f"/stays/{s.pk}/extend/", {"new_check_out": (T + timedelta(days=5)).isoformat(), "amount": "2000"})
-        self.assertContains(r, "is booked")
-        self.assertContains(r, 'name="amount" value="2000')
-        self.assertContains(r, "Move to <b>Room 102</b>")
-        r = self.client.post(f"/stays/{s.pk}/extend/", {"new_check_out": (T + timedelta(days=5)).isoformat(), "amount": "2000",
-                                                         "choice": "split", "room": self.rooms["102"].pk})
+        # Room 101 booked by a future guest, but other AC rooms are free → extended, future booking moved
+        nxt = stay(make_guest("Next", "+91 90000 00002"), self.rooms["101"], 3, 2)
+        r = self.client.post(f"/stays/{s.pk}/extend/", {"new_check_out": (T + timedelta(days=5)).isoformat(), "amount": "2000"},
+                             follow=True)
+        self.assertContains(r, "Next’s booking moved from Room 101 to Room 102")
+        s.refresh_from_db(); nxt.refresh_from_db()
+        self.assertEqual((s.room.number, s.check_out, nxt.room.number), ("101", T + timedelta(days=5), "102"))
+
+        # Every AC room taken on the next extra night → options page instead
+        stay(make_guest("Block1", "+91 90000 00006"), self.rooms["101"], 5, 2)
+        stay(make_guest("Block2", "+91 90000 00007"), self.rooms["102"], 5, 2)
+        stay(make_guest("Block3", "+91 90000 00008"), self.rooms["103"], 5, 2)
+        r = self.client.post(f"/stays/{s.pk}/extend/", {"new_check_out": (T + timedelta(days=6)).isoformat(), "amount": "1500"})
+        self.assertContains(r, "All Luxury AC rooms are booked")
+        self.assertContains(r, 'name="amount" value="1500')
+        self.assertContains(r, "Room <b>201</b>")
+        r = self.client.post(f"/stays/{s.pk}/extend/", {"new_check_out": (T + timedelta(days=6)).isoformat(), "amount": "1500",
+                                                         "choice": "split", "room": self.rooms["201"].pk})
         cont = Stay.objects.get(linked_to=s)
-        self.assertEqual((cont.total, cont.source), (Decimal("2000"), s.source))
+        self.assertEqual((cont.room.number, cont.total, cont.source), ("201", Decimal("1500"), s.source))
 
     def test_actions_and_reveal(self):
         s = stay(make_guest(), self.rooms["101"], 0, 2)
@@ -329,6 +364,79 @@ class ViewTests(TestCase):
         self.assertEqual([s.pk for s in r.context["departing_tomorrow"]], [leaving.pk])
         self.assertEqual(sorted(x.number for x in r.context["vacant_tomorrow"]), ["101", "201"])
         self.assertContains(r, "Vacant tomorrow night")
+
+    def _quick(self, name, room, start, nights=None, **over):
+        data = {"g-name": name, "g-nationality": "Indian", "g-id_type": "aadhaar",
+                "s-source": "airbnb", "s-kind": "daily", "s-room": room.pk, "s-check_in": (T + timedelta(days=start)).isoformat(),
+                "s-check_out": (T + timedelta(days=start + nights)).isoformat() if nights else "",
+                "s-num_guests": 1, "s-total_amount": "2000", "s-amount_paid": "500", "o-TOTAL_FORMS": "0", "o-INITIAL_FORMS": "0"}
+        data.update(over)
+        return self.client.post("/stays/new/", data)
+
+    def test_quick_future_booking_then_check_in(self):
+        self._quick("Meena", self.rooms["101"], 5, 2)
+        self._quick("Arun", self.rooms["102"], 1, 3)          # second guest without phone: allowed
+        meena = Stay.objects.get(guest__name="Meena")
+        self.assertEqual((meena.guest.phone, meena.guest.phone_key, meena.amount_paid), ("", None, Decimal("500")))
+        # Check in without details → asked to add them
+        r = self.client.post(f"/stays/{meena.pk}/check-in/")
+        self.assertRedirects(r, f"/stays/{meena.pk}/edit/?checkin=1", fetch_redirect_response=False)
+        page = self.client.get(f"/stays/{meena.pk}/edit/?checkin=1")
+        self.assertContains(page, "Save &amp; check in")
+        base = {**self._quick_data(meena), "checkin": "1"}
+        r = self.client.post(f"/stays/{meena.pk}/edit/", base)
+        self.assertContains(r, "This field is required")
+        r = self.client.post(f"/stays/{meena.pk}/edit/", {**base, "g-phone": "+91 90000 12345", "g-address": "Kukatpally"})
+        meena.refresh_from_db()
+        self.assertEqual(meena.status, Stay.Status.CHECKED_IN)
+
+    def _quick_data(self, stay):
+        return {"g-guest_id": stay.guest_id, "g-name": stay.guest.name, "g-nationality": "Indian", "g-id_type": "aadhaar",
+                "s-source": stay.source, "s-kind": stay.kind, "s-room": stay.room_id, "s-check_in": stay.check_in.isoformat(),
+                "s-check_out": stay.check_out.isoformat() if stay.check_out else "", "s-num_guests": 1,
+                "s-total_amount": str(stay.total_amount), "s-amount_paid": str(stay.amount_paid),
+                "o-TOTAL_FORMS": "0", "o-INITIAL_FORMS": "0"}
+
+    def test_monthly_open_ended(self):
+        r = self._quick("Long Stay", self.rooms["201"], -10, **{"s-kind": "monthly", "s-monthly_rent": "12000",
+                                                               "s-deposit_amount": "5000", "s-total_amount": "12000"})
+        m = Stay.objects.get()
+        self.assertIsNone(m.check_out)
+        self.assertEqual((m.nights, m.deposit_amount), (10, Decimal("5000")))
+        # Daily stay needs a check-out
+        r = self._quick("No Date", self.rooms["103"], 1)
+        self.assertContains(r, "choose “Monthly”")
+        # Room blocked far in the future while open-ended
+        r = self._quick("Later", self.rooms["201"], 60, 2)
+        self.assertContains(r, "already booked")
+        self.assertIn(self.rooms["201"].pk, [b.room_id for b in Stay.objects.live().overlapping(T + timedelta(days=400))])
+        # Pages render with an open-ended stay
+        for url in ["/", "/calendar/", f"/calendar/room/{self.rooms['201'].pk}/", "/stays/", f"/stays/{m.pk}/", "/upcoming/"]:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 200)
+        self.client.post(f"/stays/{m.pk}/check-in/")  # no phone → redirected, still upcoming
+        m.guest.phone, m.guest.address = "+91 90000 33333", "Hyd"; m.guest.save()
+        self.client.post(f"/stays/{m.pk}/check-in/")
+        self.client.post(f"/stays/{m.pk}/add-rent/")
+        m.refresh_from_db()
+        self.assertEqual((m.status, m.total), (Stay.Status.CHECKED_IN, Decimal("24000")))
+        r = self.client.post("/export/", {"start": T.isoformat(), "end": T.isoformat(), "action": "download"})
+        self.assertEqual(r.status_code, 200)
+        self.client.post(f"/stays/{m.pk}/check-out/")
+        m.refresh_from_db()
+        self.assertEqual((m.check_out, m.status), (T, Stay.Status.CHECKED_OUT))
+
+    def test_upcoming_lists(self):
+        a = self._quick("Tomorrow Guest", self.rooms["101"], 1, 2)
+        self._quick("Day After", self.rooms["102"], 2, 1)
+        self._quick("Next Month", self.rooms["103"], 30, 3)
+        r = self.client.get("/")
+        self.assertEqual([s.guest.name for s in r.context["arriving_tomorrow"]], ["Tomorrow Guest"])
+        self.assertEqual([s.guest.name for s in r.context["arriving_day_after"]], ["Day After"])
+        self.assertEqual(r.context["upcoming_count"], 3)
+        r = self.client.get("/upcoming/")
+        for name in ["Tomorrow Guest", "Day After", "Next Month"]:
+            self.assertContains(r, name)
 
     def test_guest_search_and_rebook(self):
         g = make_guest()

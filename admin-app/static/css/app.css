@@ -160,6 +160,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .other-guest[hidden] { display: none; }
 .other-guest-title { margin: 0; font-size: .95rem; }
 #other-guests-none[hidden] { display: none; }
+.monthly-only[hidden] { display: none; }
+.see-all { margin: -4px 0 16px; text-align: right; }
 .returning { grid-column: 1 / -1; background: #eef6f0; border: 1px solid #cfe6d6; border-radius: 10px; padding: 10px 12px; font-size: .9rem; }
 .returning[hidden] { display: none; }
 .nights-line, .total-line { margin: 0; color: var(--ink-soft); font-size: .9rem; }

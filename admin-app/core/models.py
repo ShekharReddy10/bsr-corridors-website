@@ -53,10 +53,10 @@ class Guest(models.Model):
         OTHER = "other", "Other"
 
     name = models.CharField(max_length=120)
-    phone = models.CharField(max_length=20, help_text="With country code, e.g. +91 98765 43210")
-    # Last 10 digits of the phone — one guest per number, used for fast lookups.
-    phone_key = models.CharField(max_length=15, unique=True, editable=False)
-    address = models.TextField(help_text="As shown on the ID proof")
+    phone = models.CharField(max_length=20, blank=True, help_text="With country code, e.g. +91 98765 43210")
+    # Last 10 digits of the phone — one guest per number, used for fast lookups. Empty for bookings without a phone.
+    phone_key = models.CharField(max_length=15, unique=True, null=True, editable=False)
+    address = models.TextField(blank=True, help_text="As shown on the ID proof")
     nationality = models.CharField(max_length=60, default="Indian")
     id_type = models.CharField("ID proof", max_length=20, choices=IdType.choices, default=IdType.AADHAAR)
     id_number = EncryptedTextField("ID number", blank=True)
@@ -73,15 +73,19 @@ class Guest(models.Model):
         ordering = ["name"]
 
     def __str__(self):
-        return f"{self.name} ({self.phone})"
+        return f"{self.name} ({self.phone})" if self.phone else self.name
 
     @staticmethod
     def key_for(phone: str) -> str:
         return "".join(c for c in phone if c.isdigit())[-10:]
 
     def save(self, *args, **kwargs):
-        self.phone_key = self.key_for(self.phone)
+        self.phone_key = self.key_for(self.phone) or None
         super().save(*args, **kwargs)
+
+    @property
+    def has_contact_details(self) -> bool:
+        return bool(self.phone.strip() and self.address.strip())
 
     @property
     def is_foreign(self) -> bool:
@@ -101,9 +105,11 @@ class StayQuerySet(models.QuerySet):
         """Everything except cancelled stays."""
         return self.exclude(status=Stay.Status.CANCELLED)
 
-    def overlapping(self, start, end):
-        """Stays occupying at least one night in [start, end)."""
-        return self.filter(check_in__lt=end, check_out__gt=start)
+    def overlapping(self, start, end=None):
+        """Stays occupying at least one night in [start, end). end=None means "from start onwards".
+        Open-ended (monthly) stays with no check-out occupy every night from check-in."""
+        qs = self.filter(Q(check_out__gt=start) | Q(check_out__isnull=True))
+        return qs.filter(check_in__lt=end) if end else qs
 
 
 class Stay(models.Model):
@@ -112,6 +118,10 @@ class Stay(models.Model):
         CHECKED_IN = "checked_in", "Checked in"
         CHECKED_OUT = "checked_out", "Checked out"
         CANCELLED = "cancelled", "Cancelled"
+
+    class Kind(models.TextChoices):
+        DAILY = "daily", "Daily"
+        MONTHLY = "monthly", "Monthly (open-ended)"
 
     class Source(models.TextChoices):
         WALK_IN = "walk_in", "Walk-in"
@@ -130,15 +140,19 @@ class Stay(models.Model):
 
     guest = models.ForeignKey(Guest, on_delete=models.PROTECT, related_name="stays")
     room = models.ForeignKey(Room, on_delete=models.PROTECT, related_name="stays")
+    kind = models.CharField("Stay type", max_length=10, choices=Kind.choices, default=Kind.DAILY)
     check_in = models.DateField()
-    check_out = models.DateField()
+    check_out = models.DateField(null=True, blank=True, help_text="Leave empty for monthly guests until they leave")
     num_guests = models.PositiveSmallIntegerField("Number of guests", default=1)
     source = models.CharField("Booked via", max_length=20, choices=Source.choices, default=Source.WALK_IN, db_index=True)
     source_ref = models.CharField("Booking reference", max_length=60, blank=True,
                                   help_text="e.g. Airbnb / Booking.com confirmation code")
     # Agreed price for the whole stay (not per night). Extensions add their amount to it.
     total_amount = models.DecimalField("Total amount (₹)", max_digits=10, decimal_places=2, default=0)
-    amount_paid = models.DecimalField("Amount paid (₹)", max_digits=10, decimal_places=2, default=0)
+    amount_paid = models.DecimalField("Advance / amount paid (₹)", max_digits=10, decimal_places=2, default=0)
+    monthly_rent = models.DecimalField("Monthly rent (₹)", max_digits=10, decimal_places=2, default=0)
+    deposit_amount = models.DecimalField("Advance / security deposit (₹)", max_digits=10, decimal_places=2, default=0,
+                                         help_text="Refundable; not counted as rent paid")
     payment_mode = models.CharField(max_length=20, choices=PaymentMode.choices, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.UPCOMING, db_index=True)
     form_c_filed = models.BooleanField("Form C filed", default=False)
@@ -157,17 +171,28 @@ class Stay(models.Model):
         ordering = ["-check_in"]
         indexes = [models.Index(fields=["room", "check_in", "check_out"])]
         constraints = [
-            models.CheckConstraint(condition=Q(check_out__gt=models.F("check_in")), name="stay_checkout_after_checkin"),
+            models.CheckConstraint(condition=Q(check_out__isnull=True) | Q(check_out__gt=models.F("check_in")),
+                                   name="stay_checkout_after_checkin"),
         ]
         # Postgres also has an exclusion constraint (migration 0002) that makes overlapping stays in the
         # same room impossible, even if two saves happen at the same moment.
 
     def __str__(self):
-        return f"{self.guest.name} · {self.room} · {self.check_in:%d-%m} → {self.check_out:%d-%m}"
+        return f"{self.guest.name} · {self.room} · {self.dates_label}"
+
+    @property
+    def is_open_ended(self) -> bool:
+        return self.check_out is None
+
+    @property
+    def dates_label(self) -> str:
+        return f"{self.check_in:%d-%m-%Y} → " + (f"{self.check_out:%d-%m-%Y}" if self.check_out else "open (monthly)")
 
     @property
     def nights(self) -> int:
-        return (self.check_out - self.check_in).days
+        """Booked nights; for open-ended stays, nights so far."""
+        end = self.check_out or max(timezone.localdate(), self.check_in)
+        return (end - self.check_in).days
 
     @property
     def total(self) -> Decimal:

@@ -69,6 +69,16 @@ Each **stay** records:
 - FR-12 **Balance due** = total amount − amount paid; highlighted when unpaid.
 - FR-13 [Suggested] **Status:** Upcoming → Checked in → Checked out, or Cancelled. One-tap "Check in" / "Check out".
 
+### 3.3a Future bookings, monthly guests, upcoming
+- FR-13a **Quick future booking:** only guest name, room and dates are required (amount optional). Phone, address
+  and ID can be added later; **at check-in the phone and address are required** (ID stays optional).
+- FR-13b **Monthly (open-ended) stays:** no check-out date until the guest leaves; the room stays blocked until then.
+  Monthly rent, an "Add month's rent" button (adds to the total) and a refundable **advance / security deposit** kept
+  separate from payments. "Advance / amount paid" records money received before or during the stay.
+- FR-13c **Upcoming:** Today page shows arrivals **tomorrow** and **the day after**, rooms departing/vacant tomorrow,
+  and links to an **Upcoming bookings** page listing all future arrivals by date.
+- FR-13d **Extra guests:** optional name, phone, ID type and ID number for guest 2…N (rows follow "Number of guests").
+
 ### 3.4 Smart stay extension
 - FR-14 "Extend stay" on any active stay: pick a new check-out date, or quick buttons **+1 / +2 / +7 nights**,
   enter the **amount for the extra days** (added to the stay total) and optionally an amount **paid now**.
