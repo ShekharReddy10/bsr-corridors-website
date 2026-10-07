@@ -1,0 +1,79 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}Today{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Today</h1><p class="muted">{{ today|date:"l, d F Y" }}</p></div>
+  <a class="btn btn-primary hide-mobile" href="{% url 'stay_new' %}">+ New stay</a>
+</div>
+
+{% if not room_count %}
+  <div class="card empty">
+    <h2>Welcome! Let’s set up your rooms.</h2>
+    <p>Add your room types (e.g. Luxury AC, Luxury Non-AC) and then each room. After that, the calendar and stays are ready to use.</p>
+    <a class="btn btn-primary" href="{% url 'roomtype_new' %}">Add a room type</a>
+  </div>
+{% endif %}
+
+<div class="stats">
+  <a class="stat" href="#arrivals"><b>{{ arriving_count }}</b><span>Arriving</span></a>
+  <a class="stat" href="#in-house"><b>{{ in_house|length }}</b><span>In-house</span></a>
+  <a class="stat" href="#departures"><b>{{ departing_count }}</b><span>Departing</span></a>
+  <a class="stat" href="#vacant"><b>{{ vacant|length }}</b><span>Vacant of {{ room_count }}</span></a>
+  <a class="stat {% if unpaid_total > 0 %}stat-warn{% endif %}" href="#unpaid"><b>{{ unpaid_total|inr }}</b><span>Unpaid</span></a>
+</div>
+
+{% if form_c_due %}
+  <div class="alert">
+    <b>Form C due:</b> file with the FRRO within 24 hours of check-in for
+    {% for s in form_c_due %}<a href="{% url 'stay_detail' s.pk %}">{{ s.guest.name }} ({{ s.room.number }})</a>{% if not forloop.last %}, {% endif %}{% endfor %}.
+  </div>
+{% endif %}
+{% if last_backup and not last_backup.ok %}
+  <div class="alert alert-error"><b>Last backup failed</b> ({{ last_backup.started_at|date:"d-m H:i" }}): {{ last_backup.message|truncatechars:160 }} — <a href="{% url 'backups' %}">see backups</a></div>
+{% endif %}
+
+<div class="grid-2">
+  <section class="card" id="arrivals">
+    <h2>Arriving today</h2>
+    {% for s in late_arrivals %}{% include "partials/stay_line.html" with s=s note="Expected" d1=s.check_in warn=True action="check-in" %}{% endfor %}
+    {% for s in arrivals %}{% include "partials/stay_line.html" with s=s action="check-in" %}{% empty %}{% if not late_arrivals %}<p class="muted">No arrivals today.</p>{% endif %}{% endfor %}
+  </section>
+
+  <section class="card" id="departures">
+    <h2>Departing today</h2>
+    {% for s in overdue_departures %}{% include "partials/stay_line.html" with s=s warn=True note="Was due" d1=s.check_out action="check-out" %}{% endfor %}
+    {% for s in departures %}{% include "partials/stay_line.html" with s=s action="check-out" %}{% empty %}{% if not overdue_departures %}<p class="muted">No departures today.</p>{% endif %}{% endfor %}
+  </section>
+
+  <section class="card" id="in-house">
+    <h2>In-house <span class="count">{{ in_house|length }}</span></h2>
+    {% for s in in_house %}{% include "partials/stay_line.html" with s=s note="Until" d1=s.check_out %}{% empty %}<p class="muted">No guests checked in.</p>{% endfor %}
+  </section>
+
+  <section class="card" id="vacant">
+    <h2>Vacant tonight <span class="count">{{ vacant|length }}</span></h2>
+    <div class="chips">
+      {% for r in vacant %}<a class="chip" href="{% url 'stay_new' %}?room={{ r.pk }}&check_in={{ today|date:'Y-m-d' }}" title="New stay in {{ r }}">{{ r.number }} · {{ r.room_type.name }}</a>{% empty %}<p class="muted">All rooms are occupied.</p>{% endfor %}
+    </div>
+    {% if maintenance %}<p class="muted small">Under maintenance: {% for r in maintenance %}{{ r.number }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+  </section>
+</div>
+
+<section class="card" id="unpaid">
+  <h2>Balance due <span class="count">{{ unpaid|length }}</span></h2>
+  {% if unpaid %}
+  <div class="table-wrap"><table class="table table-cards">
+    <thead><tr><th>Guest</th><th>Room</th><th>Dates</th><th class="num">Total</th><th class="num">Paid</th><th class="num">Balance</th></tr></thead>
+    <tbody>
+      {% for s in unpaid %}
+      <tr>
+        <td data-label="Guest"><a href="{% url 'stay_detail' s.pk %}">{{ s.guest.name }}</a></td><td data-label="Room">{{ s.room.number }}</td>
+        <td data-label="Dates">{{ s.check_in|date:"d-m" }} → {{ s.check_out|date:"d-m" }}</td>
+        <td data-label="Total" class="num">{{ s.total|inr }}</td><td data-label="Paid" class="num">{{ s.amount_paid|inr }}</td><td data-label="Balance" class="num warn">{{ s.balance|inr }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="muted">Nothing outstanding.</p>{% endif %}
+</section>
+{% endblock %}

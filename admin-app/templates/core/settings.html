@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Settings &amp; log</h1></div>
+<section class="card">
+  <h2>Status</h2>
+  <dl class="dl">
+    <dt>Google Drive</dt><dd>{% if drive_ready %}Connected ✓{% else %}<span class="warn">Not connected</span> — set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN{% endif %}</dd>
+    <dt>ID encryption key</dt><dd>{% if encryption_set %}Set ✓{% else %}<span class="warn">Not set</span> (development key in use){% endif %}</dd>
+    <dt>Nightly backup token</dt><dd>{% if backup_hook_set %}Set ✓{% else %}<span class="warn">Not set</span> — nightly backups won’t run{% endif %}</dd>
+  </dl>
+</section>
+<form method="post" class="card danger-zone" data-confirm="Permanently delete old stays and guests?">{% csrf_token %}
+  <h2>Delete old records</h2>
+  <p class="muted small">Removes finished or cancelled stays that ended more than the chosen number of years ago, and guests with no remaining stays. Back up first.</p>
+  <div class="inline-form">
+    <label>Older than <select name="years">{% for y in "12345" %}<option value="{{ y }}" {% if y == "3" %}selected{% endif %}>{{ y }} year{{ y|pluralize }}</option>{% endfor %}</select></label>
+    <label>Type PURGE <input name="confirm" autocomplete="off" size="8"></label>
+    <button class="btn btn-danger btn-sm">Delete</button>
+  </div>
+</form>
+<section class="card"><h2>Activity log</h2>
+  <ul class="log">{% for l in logs %}<li><time>{{ l.at|date:"d-m-Y H:i" }}</time> {% if l.stay %}<a href="{% url 'stay_detail' l.stay_id %}">{{ l.summary }}</a>{% else %}{{ l.summary }}{% endif %}</li>{% empty %}<li class="muted">Nothing yet.</li>{% endfor %}</ul>
+</section>
+{% endblock %}

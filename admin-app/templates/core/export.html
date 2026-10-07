@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}Export{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Export</h1></div>
+<form method="post" class="card" novalidate>{% csrf_token %}
+  <h2>Stays in a date range</h2>
+  <p class="muted small">Includes every stay overlapping the range, with guest details and payments. Sheets: Stays, Guests, Rooms.</p>
+  <div class="form-grid">{% field form.start %}{% field form.end %}{% field form.include_full_ids "span-2" %}</div>
+  <p class="muted small">Without “full ID numbers”, only the last 4 digits are included.</p>
+  <div class="form-actions">
+    <button class="btn btn-primary" name="action" value="download">Download Excel</button>
+    <button class="btn btn-outline" name="action" value="drive" {% if not drive_ready %}disabled title="Connect Google Drive first (see Settings)"{% endif %}>Save to Google Drive</button>
+  </div>
+  {% if not drive_ready %}<p class="muted small">Google Drive isn’t connected yet — see <a href="{% url 'settings' %}">Settings</a>.</p>{% endif %}
+</form>
+{% if recent %}
+<section class="card"><h2>Recent Drive exports</h2>
+  <ul class="log">{% for r in recent %}<li><time>{{ r.started_at|date:"d-m-Y H:i" }}</time> {% if r.ok %}✓ {{ r.message }} {% if r.link %}<a href="{{ r.link }}" target="_blank" rel="noopener">Open</a>{% endif %}{% else %}<span class="warn">Failed: {{ r.message|truncatechars:200 }}</span>{% endif %}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,108 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}{{ stay.guest.name }}{% endblock %}
+{% block content %}
+{% with g=stay.guest %}
+<div class="page-head">
+  <div>
+    <h1>{{ g.name }} <span class="status status-{{ stay.status }}">{{ stay.get_status_display }}</span></h1>
+    <p class="muted">{{ stay.room }} · {{ stay.room.room_type.name }} · {{ stay.check_in|date:"D d-m-Y" }} → {{ stay.check_out|date:"D d-m-Y" }} · {{ stay.nights }} night{{ stay.nights|pluralize }}</p>
+  </div>
+  <a class="btn btn-outline" href="{% url 'stay_edit' stay.pk %}">Edit</a>
+</div>
+
+<div class="action-bar">
+  {% if stay.status == 'upcoming' %}
+    <form method="post" action="{% url 'stay_action' stay.pk 'check-in' %}">{% csrf_token %}<button class="btn btn-primary">Check in</button></form>
+  {% elif stay.status == 'checked_in' %}
+    <form method="post" action="{% url 'stay_action' stay.pk 'check-out' %}" data-confirm="{% if today < stay.check_out and today > stay.check_in %}Guest is booked until {{ stay.check_out|date:'d-m-Y' }}. Check out today (early checkout)?{% endif %}">{% csrf_token %}<button class="btn btn-primary">Check out</button></form>
+  {% endif %}
+  {% if stay.is_active %}<a class="btn btn-outline" href="{% url 'stay_extend' stay.pk %}">Extend stay</a>{% endif %}
+  <a class="btn btn-outline" href="https://wa.me/{{ g.phone_digits }}" target="_blank" rel="noopener">WhatsApp</a>
+  <a class="btn btn-outline" href="tel:{{ g.phone }}">Call</a>
+</div>
+
+{% if stay.form_c_due %}
+  <div class="alert"><b>Form C due.</b> Foreign national — file Form C with the FRRO within 24 hours of check-in.
+    <form method="post" action="{% url 'stay_action' stay.pk 'form-c' %}" class="inline-form">{% csrf_token %}<button class="btn btn-sm btn-outline">Mark as filed</button></form>
+  </div>
+{% endif %}
+
+<div class="grid-2">
+  <section class="card">
+    <h2>Guest</h2>
+    <dl class="dl">
+      <dt>Phone</dt><dd><a href="tel:{{ g.phone }}">{{ g.phone }}</a></dd>
+      <dt>Address</dt><dd>{{ g.address|linebreaksbr }}</dd>
+      <dt>Nationality</dt><dd>{{ g.nationality }}</dd>
+      <dt>{{ g.get_id_type_display }}</dt>
+      <dd id="id-number">{{ g.id_masked }}
+        <button class="btn btn-ghost btn-sm" hx-post="{% url 'stay_reveal_id' stay.pk %}" hx-vals='{"field": "id_number"}' hx-target="#id-number" hx-swap="innerHTML">Show</button></dd>
+      {% if g.is_foreign %}
+        <dt>Passport</dt>
+        <dd id="passport">{% if g.passport_number %}••••{{ g.passport_number|slice:"-4:" }} <button class="btn btn-ghost btn-sm" hx-post="{% url 'stay_reveal_id' stay.pk %}" hx-vals='{"field": "passport_number"}' hx-target="#passport" hx-swap="innerHTML">Show</button>{% else %}—{% endif %}</dd>
+        <dt>Visa</dt><dd>{{ g.visa_number|default:"—" }} {% if g.visa_type %}({{ g.visa_type }}){% endif %}</dd>
+        <dt>Arrived in India</dt><dd>{{ g.arrival_in_india|date:"d-m-Y"|default:"—" }}</dd>
+        <dt>Form C</dt><dd>{% if stay.form_c_filed %}Filed ✓{% else %}Not filed{% endif %}
+          <form method="post" action="{% url 'stay_action' stay.pk 'form-c' %}" class="inline-form">{% csrf_token %}<button class="btn btn-ghost btn-sm">{% if stay.form_c_filed %}Mark not filed{% else %}Mark filed{% endif %}</button></form></dd>
+      {% endif %}
+      <dt>Previous stays</dt><dd>{{ g.stays.count|add:"-1" }}</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>Payment</h2>
+    <dl class="dl">
+      <dt>Rate</dt><dd>{{ stay.nightly_rate|inr }} × {{ stay.nights }} night{{ stay.nights|pluralize }}</dd>
+      <dt>Total</dt><dd>{{ stay.total|inr }}</dd>
+      <dt>Paid</dt><dd>{{ stay.amount_paid|inr }}{% if stay.payment_mode %} · {{ stay.get_payment_mode_display }}{% endif %}</dd>
+      <dt>Balance</dt><dd class="{% if stay.balance > 0 %}warn{% endif %}"><b>{{ stay.balance|inr }}</b></dd>
+      <dt>Guests</dt><dd>{{ stay.num_guests }}</dd>
+    </dl>
+    {% if stay.status != 'cancelled' %}
+    <form method="post" action="{% url 'stay_action' stay.pk 'payment' %}" class="pay-form">{% csrf_token %}
+      <input name="amount" type="number" min="1" step="1" inputmode="decimal" placeholder="Amount ₹" required aria-label="Payment amount"
+             {% if stay.balance > 0 %}value="{{ stay.balance|floatformat:0 }}"{% endif %}>
+      <select name="mode" aria-label="Payment mode">{% for v, l in payment_form.fields.mode.choices %}<option value="{{ v }}" {% if v == stay.payment_mode %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      <button class="btn btn-primary btn-sm">Record payment</button>
+    </form>
+    {% endif %}
+  </section>
+</div>
+
+{% if chain %}
+<section class="card">
+  <h2>Linked stays (room moves)</h2>
+  {% for s in chain %}
+    <div class="stay-line{% if s.pk == stay.pk %} is-current{% endif %}">
+      <a class="stay-line-main" href="{% url 'stay_detail' s.pk %}"><span class="room-badge">{{ s.room.number }}</span>
+        <span><b>{{ s.check_in|date:"d-m-Y" }} → {{ s.check_out|date:"d-m-Y" }}</b><small>{{ s.get_status_display }} · {{ s.total|inr }} · paid {{ s.amount_paid|inr }}</small></span></a>
+    </div>
+  {% endfor %}
+  <p><b>All rooms together:</b> total {{ chain_total|inr }}, paid {{ chain_paid|inr }}, balance <span class="{% if chain_balance > 0 %}warn{% endif %}">{{ chain_balance|inr }}</span></p>
+</section>
+{% endif %}
+
+{% if stay.notes %}<section class="card"><h2>Notes</h2><p>{{ stay.notes|linebreaksbr }}</p></section>{% endif %}
+
+<section class="card">
+  <h2>History</h2>
+  <ul class="log">
+    {% for l in logs %}<li><time>{{ l.at|date:"d-m-Y H:i" }}</time> {{ l.summary }}</li>{% empty %}<li class="muted">No history.</li>{% endfor %}
+  </ul>
+</section>
+
+<details class="card danger-zone">
+  <summary>More actions</summary>
+  {% if stay.status == 'checked_in' or stay.status == 'upcoming' %}
+  <form method="post" action="{% url 'stay_action' stay.pk 'shorten' %}" class="inline-form">{% csrf_token %}
+    <label>Leaving early on <input type="date" name="new_check_out" value="{{ today|date:'Y-m-d' }}"></label>
+    <button class="btn btn-outline btn-sm">Shorten stay</button>
+  </form>
+  <form method="post" action="{% url 'stay_action' stay.pk 'cancel' %}" class="inline-form" data-confirm="Cancel this stay? The room becomes free.">{% csrf_token %}<button class="btn btn-outline btn-sm">Cancel stay</button></form>
+  {% elif stay.status == 'cancelled' %}
+  <form method="post" action="{% url 'stay_action' stay.pk 'undo-cancel' %}" class="inline-form">{% csrf_token %}<button class="btn btn-outline btn-sm">Restore stay</button></form>
+  {% endif %}
+  <form method="post" action="{% url 'stay_action' stay.pk 'delete' %}" class="inline-form" data-confirm="Delete this stay permanently? This cannot be undone.">{% csrf_token %}<button class="btn btn-danger btn-sm">Delete stay</button></form>
+</details>
+{% endwith %}
+{% endblock %}

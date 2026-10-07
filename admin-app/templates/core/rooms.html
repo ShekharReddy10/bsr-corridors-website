@@ -1,0 +1,44 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}Rooms{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Rooms</h1></div>
+
+<section class="card">
+  <div class="card-head"><h2>Room types</h2><a class="btn btn-primary btn-sm" href="{% url 'roomtype_new' %}">+ Add type</a></div>
+  {% if types %}
+  <div class="table-wrap"><table class="table table-cards">
+    <thead><tr><th>Name</th><th>AC</th><th>Bed</th><th>Max guests</th><th class="num">Default rate</th><th>Rooms</th><th></th></tr></thead>
+    <tbody>{% for t in types %}
+      <tr{% if not t.is_active %} class="is-inactive"{% endif %}>
+        <td data-label="Name"><b>{{ t.name }}</b>{% if not t.is_active %} <span class="tag">Inactive</span>{% endif %}</td>
+        <td data-label="AC">{% if t.is_ac %}AC{% else %}Non-AC{% endif %}</td>
+        <td data-label="Bed">{{ t.bed_type }}</td>
+        <td data-label="Max guests">{{ t.max_guests }}</td>
+        <td data-label="Default rate" class="num">{{ t.default_rate|inr }}</td>
+        <td data-label="Rooms">{{ t.room_count }}</td>
+        <td><a class="btn btn-ghost btn-sm" href="{% url 'roomtype_edit' t.pk %}">Edit</a></td>
+      </tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="muted">No room types yet. Start by adding one, e.g. “Luxury AC Room”.</p>{% endif %}
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>Rooms</h2><a class="btn btn-primary btn-sm" href="{% url 'room_new' %}">+ Add room</a></div>
+  {% if rooms %}
+  <div class="table-wrap"><table class="table table-cards">
+    <thead><tr><th>Room</th><th>Floor</th><th>Type</th><th>Status</th><th>Stays</th><th></th></tr></thead>
+    <tbody>{% for r in rooms %}
+      <tr{% if not r.is_active %} class="is-inactive"{% endif %}>
+        <td data-label="Room"><b>{{ r.number }}</b>{% if not r.is_active %} <span class="tag">Inactive</span>{% endif %}</td>
+        <td data-label="Floor">{{ r.floor|default:"—" }}</td>
+        <td data-label="Type">{{ r.room_type.name }}</td>
+        <td data-label="Status">{% if r.status == 'maintenance' %}<span class="warn">Maintenance</span>{% else %}Active{% endif %}</td>
+        <td data-label="Stays">{{ r.stay_count }}</td>
+        <td><a class="btn btn-ghost btn-sm" href="{% url 'room_edit' r.pk %}">Edit</a> <a class="btn btn-ghost btn-sm" href="{% url 'room_month' r.pk %}">Calendar</a></td>
+      </tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="muted">No rooms yet.</p>{% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,37 @@
+# Render Blueprint for the BSR Corridors admin app (Django). Free plan, Singapore region.
+# Render → New → Blueprint → pick this repo. Values marked sync: false are asked for during setup.
+services:
+  - type: web
+    name: bsr-corridors-admin
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: admin-app
+    buildCommand: ./build.sh
+    startCommand: gunicorn config.wsgi --workers 2 --timeout 60 --access-logfile -
+    healthCheckPath: /healthz/
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - admin-app/**
+    envVars:
+      - key: DJANGO_DEBUG
+        value: "0"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: BACKUP_TOKEN
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: FIELD_ENCRYPTION_KEY
+        sync: false
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REFRESH_TOKEN
+        sync: false

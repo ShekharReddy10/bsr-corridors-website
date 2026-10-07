@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}{{ room }} · {{ month|date:"F Y" }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ room }}</h1><p class="muted">{{ room.room_type.name }}{% if room.floor %} · Floor {{ room.floor }}{% endif %}</p></div>
+  <select aria-label="Switch room" onchange="location='/calendar/room/'+this.value+'/?month={{ month|date:'Y-m' }}'">
+    {% for r in rooms %}<option value="{{ r.pk }}" {% if r.pk == room.pk %}selected{% endif %}>Room {{ r.number }}</option>{% endfor %}
+  </select>
+</div>
+
+<div class="cal-nav">
+  <a class="btn btn-outline btn-sm" href="?month={{ prev }}" aria-label="Previous month">‹</a>
+  <b class="month-title">{{ month|date:"F Y" }}</b>
+  <a class="btn btn-outline btn-sm" href="?month={{ next }}" aria-label="Next month">›</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'calendar' %}">All rooms</a>
+</div>
+
+<div class="month">
+  {% for wd in "MTWTFSS" %}<div class="month-wd">{{ wd }}</div>{% endfor %}
+  {% for week in weeks %}{% for c in week %}
+    {% if c.stay %}
+      <a class="month-day is-booked bar-{{ c.stay.status }}{% if not c.in_month %} is-out{% endif %}{% if c.is_today %} is-today{% endif %}" href="{% url 'stay_detail' c.stay.pk %}">
+        <b>{{ c.date.day }}</b>{% if c.starts or c.date.weekday == 0 or c.date.day == 1 %}<small>{{ c.stay.guest.name }}</small>{% endif %}
+      </a>
+    {% else %}
+      <a class="month-day{% if not c.in_month %} is-out{% endif %}{% if c.is_today %} is-today{% endif %}" href="{% url 'stay_new' %}?room={{ room.pk }}&check_in={{ c.date|date:'Y-m-d' }}" aria-label="New stay on {{ c.date|date:'d-m-Y' }}"><b>{{ c.date.day }}</b></a>
+    {% endif %}
+  {% endfor %}{% endfor %}
+</div>
+
+<section class="card">
+  <h2>Stays this month</h2>
+  {% for s in month_stays %}{% include "partials/stay_line.html" with s=s note="Stay" d1=s.check_in d2=s.check_out %}{% empty %}<p class="muted">No stays this month.</p>{% endfor %}
+</section>
+{% endblock %}

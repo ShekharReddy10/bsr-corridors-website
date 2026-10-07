@@ -1,0 +1,64 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#1f2a30">
+  <title>{% block title %}Admin{% endblock %} · {{ HOTEL_NAME }}</title>
+  <link rel="icon" href="{% static 'img/icon.png' %}">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  <script src="{% static 'js/htmx.min.js' %}" defer></script>
+  <script src="{% static 'js/app.js' %}" defer></script>
+</head>
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+{% with url=request.resolver_match.url_name %}
+  <aside class="sidebar" aria-label="Main navigation">
+    <a class="sidebar-brand" href="{% url 'dashboard' %}">
+      <img src="{% static 'img/icon.png' %}" alt="" width="36" height="36"> <span>{{ HOTEL_NAME }}</span>
+    </a>
+    <a class="btn btn-primary sidebar-new" href="{% url 'stay_new' %}">+ New stay</a>
+    <nav>
+      <a href="{% url 'dashboard' %}" {% if url == 'dashboard' %}aria-current="page"{% endif %}>Today</a>
+      <a href="{% url 'calendar' %}" {% if url == 'calendar' or url == 'room_month' %}aria-current="page"{% endif %}>Calendar</a>
+      <a href="{% url 'stay_list' %}" {% if 'stay' in url %}aria-current="page"{% endif %}>Stays &amp; guests</a>
+      <a href="{% url 'rooms' %}" {% if 'room' in url and url != 'room_month' %}aria-current="page"{% endif %}>Rooms</a>
+      <a href="{% url 'export' %}" {% if url == 'export' %}aria-current="page"{% endif %}>Export</a>
+      <a href="{% url 'backups' %}" {% if url == 'backups' %}aria-current="page"{% endif %}>Backups</a>
+      <a href="{% url 'settings' %}" {% if url == 'settings' %}aria-current="page"{% endif %}>Settings &amp; log</a>
+    </nav>
+    <form method="post" action="{% url 'logout' %}" class="sidebar-logout">{% csrf_token %}<button class="btn btn-ghost">Sign out</button></form>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <a class="topbar-brand" href="{% url 'dashboard' %}"><img src="{% static 'img/icon.png' %}" alt="" width="28" height="28"> {{ HOTEL_NAME }}</a>
+      {% block actions %}{% endblock %}
+    </header>
+    {% if messages %}
+      <div class="messages" role="status">
+        {% for m in messages %}<div class="msg msg-{{ m.tags }}">{{ m }}</div>{% endfor %}
+      </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <nav class="tabbar" aria-label="Main navigation">
+    <a href="{% url 'dashboard' %}" {% if url == 'dashboard' %}aria-current="page"{% endif %}><span class="ti">◉</span>Today</a>
+    <a href="{% url 'calendar' %}" {% if url == 'calendar' or url == 'room_month' %}aria-current="page"{% endif %}><span class="ti">▦</span>Calendar</a>
+    <a href="{% url 'stay_new' %}" class="tab-new"><span class="ti">＋</span>New</a>
+    <a href="{% url 'stay_list' %}" {% if 'stay' in url and url != 'stay_new' %}aria-current="page"{% endif %}><span class="ti">☰</span>Stays</a>
+    <details class="tab-more">
+      <summary><span class="ti">⋯</span>More</summary>
+      <div class="more-sheet">
+        <a href="{% url 'rooms' %}">Rooms</a>
+        <a href="{% url 'export' %}">Export</a>
+        <a href="{% url 'backups' %}">Backups</a>
+        <a href="{% url 'settings' %}">Settings &amp; log</a>
+        <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button>Sign out</button></form>
+      </div>
+    </details>
+  </nav>
+{% endwith %}
+</body>
+</html>

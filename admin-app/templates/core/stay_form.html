@@ -1,0 +1,60 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}{% if stay %}Edit stay{% else %}New stay{% endif %}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{% if stay %}Edit stay · {{ stay.guest.name }}{% else %}New stay{% endif %}</h1>
+  <a class="btn btn-ghost" href="{% if stay %}{% url 'stay_detail' stay.pk %}{% else %}{% url 'dashboard' %}{% endif %}">Cancel</a>
+</div>
+
+<form method="post" class="stay-form" novalidate>
+  {% csrf_token %}
+  {{ gform.guest_id }}
+  {% if gform.non_field_errors or sform.non_field_errors %}<div class="msg msg-error">{{ gform.non_field_errors }}{{ sform.non_field_errors }}</div>{% endif %}
+
+  <section class="card">
+    <h2>Guest</h2>
+    <div class="form-grid">
+      {% field gform.phone %}
+      <div id="returning" class="returning" hidden></div>
+      {% field gform.name %}
+      {% field gform.address "span-2" %}
+      {% field gform.id_type %}
+      {% field gform.id_number %}
+      {% field gform.nationality %}
+    </div>
+    <div id="foreign" class="form-grid foreign">
+      <p class="span-2 muted small">Foreign national — these details are needed for Form C (file with the FRRO within 24 hours of check-in).</p>
+      {% field gform.passport_number %}
+      {% field gform.visa_number %}
+      {% field gform.visa_type %}
+      {% field gform.arrival_in_india %}
+    </div>
+    <datalist id="nationalities">
+      <option value="Indian"><option value="Nepali"><option value="Bangladeshi"><option value="Sri Lankan"><option value="American">
+      <option value="British"><option value="Canadian"><option value="Australian"><option value="German"><option value="French">
+      <option value="Japanese"><option value="Chinese"><option value="Emirati"><option value="Saudi"><option value="Singaporean">
+    </datalist>
+  </section>
+
+  <section class="card">
+    <h2>Stay</h2>
+    <div class="form-grid">
+      {% field sform.room "span-2" %}
+      {% field sform.check_in %}
+      {% field sform.check_out %}
+      <p class="span-2 nights-line" id="nights-line"></p>
+      {% field sform.num_guests %}
+      {% field sform.nightly_rate %}
+      {% field sform.amount_paid %}
+      {% field sform.payment_mode %}
+      <p class="span-2 total-line" id="total-line"></p>
+      {% field sform.notes "span-2" %}
+    </div>
+  </section>
+
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">Save stay</button>
+    <a class="btn btn-ghost" href="{% if stay %}{% url 'stay_detail' stay.pk %}{% else %}{% url 'dashboard' %}{% endif %}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

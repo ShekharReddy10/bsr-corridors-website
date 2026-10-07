@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Calendar{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Calendar</h1>
+  <form class="cal-filters" method="get">
+    <input type="hidden" name="start" value="{{ start|date:'Y-m-d' }}">
+    <select name="type" onchange="this.form.submit()" aria-label="Room type">
+      <option value="">All room types</option>
+      {% for t in types %}<option value="{{ t.pk }}" {% if type_id == t.pk|stringformat:"s" %}selected{% endif %}>{{ t.name }}</option>{% endfor %}
+    </select>
+    <div class="seg" role="group" aria-label="Range">
+      {% for key, n in ranges.items %}<button name="days" value="{{ key }}" {% if range == key %}aria-pressed="true"{% endif %}>{% if n == 31 %}Month{% else %}{{ n }} days{% endif %}</button>{% endfor %}
+    </div>
+  </form>
+</div>
+
+<div class="cal-nav">
+  <a class="btn btn-outline btn-sm" href="?start={{ prev|date:'Y-m-d' }}&days={{ range }}&type={{ type_id }}" aria-label="Earlier">‹</a>
+  <a class="btn btn-outline btn-sm" href="?days={{ range }}&type={{ type_id }}">Today</a>
+  <a class="btn btn-outline btn-sm" href="?start={{ next|date:'Y-m-d' }}&days={{ range }}&type={{ type_id }}" aria-label="Later">›</a>
+  <input type="date" value="{{ start|date:'Y-m-d' }}" aria-label="Jump to date" onchange="location='?start='+this.value+'&days={{ range }}&type={{ type_id }}'">
+  <span class="legend">
+    <i class="lg bar-upcoming"></i>Upcoming <i class="lg bar-checked_in"></i>In-house <i class="lg bar-checked_out"></i>Checked out <i class="lg bar-unpaid-lg"></i>Balance due
+  </span>
+</div>
+
+{% if not rows %}
+  <div class="card empty"><p>No rooms yet. <a href="{% url 'rooms' %}">Add rooms</a> to see the calendar.</p></div>
+{% else %}
+<div class="tape-scroll">
+  <div class="tape" style="--days: {{ day_count }}">
+    <div class="tape-row tape-head">
+      <div class="tape-room">Room</div>
+      {% for d in days %}<div class="tape-day{% if d.is_today %} is-today{% endif %}{% if d.is_weekend %} is-weekend{% endif %}" style="grid-column: {{ d.col }}"><small>{{ d.date|date:"D" }}</small><b>{{ d.date|date:"j" }}</b>{% if d.date.day == 1 or forloop.first %}<small>{{ d.date|date:"M" }}</small>{% endif %}</div>{% endfor %}
+    </div>
+    {% for row in rows %}
+    <div class="tape-row">
+      <a class="tape-room" href="{% url 'room_month' row.room.pk %}" title="Month view for {{ row.room }}">
+        <b>{{ row.room.number }}</b><small>{{ row.room.room_type.name }}</small>
+        {% if row.room.status == 'maintenance' %}<small class="warn">Maintenance</small>{% endif %}
+      </a>
+      {% for d in days %}<a class="tape-cell{% if d.is_today %} is-today{% endif %}{% if d.is_weekend %} is-weekend{% endif %}" style="grid-column: {{ d.col }}" href="{% url 'stay_new' %}?room={{ row.room.pk }}&check_in={{ d.date|date:'Y-m-d' }}" aria-label="New stay in {{ row.room }} on {{ d.date|date:'d-m-Y' }}"></a>{% endfor %}
+      {% for b in row.bars %}
+      <a class="tape-bar {{ b.cls }}{% if b.cut_left %} cut-left{% endif %}{% if b.cut_right %} cut-right{% endif %}" style="grid-column: {{ b.col }} / span {{ b.span }}" href="{% url 'stay_detail' b.stay.pk %}" title="{{ b.stay.guest.name }} · {{ b.stay.check_in|date:'d-m' }} → {{ b.stay.check_out|date:'d-m' }} · {{ b.stay.get_status_display }}">
+        <span>{{ b.stay.guest.name }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+<p class="muted small">Tap an empty square to add a stay; tap a bar to open it; tap a room number for its month view.</p>
+{% endif %}
+{% endblock %}

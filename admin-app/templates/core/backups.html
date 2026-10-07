@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Backups{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Backups</h1>
+  <form method="post">{% csrf_token %}<button class="btn btn-primary" {% if not drive_ready %}disabled{% endif %}>Back up now</button></form>
+</div>
+<section class="card">
+  <p>Every night all rooms, guests and stays are saved to your Google Drive folder:</p>
+  <ul>
+    <li><b>Backups/backup-YYYY-MM-DD.json</b> — full backup, last {{ keep }} kept (ID numbers stay encrypted).</li>
+    <li><b>Guest register</b> — a Google Sheet that always has the latest data (ID numbers show last 4 digits).</li>
+  </ul>
+  {% if not drive_ready %}<p class="alert">Google Drive isn’t connected yet. See README → “Google Drive setup”, then set the GOOGLE_* environment variables.</p>{% endif %}
+</section>
+<section class="card"><h2>History</h2>
+  <ul class="log">{% for r in runs %}<li><time>{{ r.started_at|date:"d-m-Y H:i" }}</time> {% if r.ok %}✓ {{ r.message }} {% if r.link %}<a href="{{ r.link }}" target="_blank" rel="noopener">Open sheet</a>{% endif %}{% else %}<span class="warn">Failed: {{ r.message|truncatechars:240 }}</span>{% endif %}</li>{% empty %}<li class="muted">No backups yet.</li>{% endfor %}</ul>
+</section>
+{% endblock %}

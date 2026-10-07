@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{{ title }}</h1><a class="btn btn-ghost" href="{% url back %}">Back</a></div>
+<form method="post" class="card" novalidate>{% csrf_token %}
+  {% if form.non_field_errors %}<div class="msg msg-error">{{ form.non_field_errors }}</div>{% endif %}
+  <div class="form-grid">{% for f in form %}{% field f %}{% endfor %}</div>
+  <div class="form-actions"><button class="btn btn-primary">Save</button><a class="btn btn-ghost" href="{% url back %}">Cancel</a></div>
+</form>
+{% if delete_url %}
+<form method="post" action="{{ delete_url }}" class="card danger-zone" data-confirm="Delete this? If it has history it will be deactivated instead.">{% csrf_token %}
+  <button class="btn btn-danger btn-sm">Delete</button> <span class="muted small">Items with past stays are deactivated instead, so history is kept.</span>
+</form>
+{% endif %}
+{% endblock %}

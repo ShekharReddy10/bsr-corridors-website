@@ -1,0 +1,10 @@
+Django>=5.2,<5.3
+psycopg[binary]>=3.2
+dj-database-url>=2.3
+gunicorn>=23.0
+whitenoise>=6.8
+cryptography>=44.0
+openpyxl>=3.1
+google-api-python-client>=2.150
+google-auth>=2.36
+google-auth-oauthlib>=1.2

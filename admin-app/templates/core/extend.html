@@ -1,0 +1,65 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}Extend stay{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Extend stay · {{ stay.guest.name }}</h1>
+  <p class="muted">{{ stay.room }} · currently {{ stay.check_in|date:"d-m-Y" }} → <b>{{ stay.check_out|date:"d-m-Y" }}</b></p></div>
+  <a class="btn btn-ghost" href="{% url 'stay_detail' stay.pk %}">Back</a>
+</div>
+
+{% if not plan %}
+<section class="card">
+  <h2>New check-out</h2>
+  <div class="quick">
+    {% for n, d in quick %}
+      <form method="post">{% csrf_token %}<input type="hidden" name="new_check_out" value="{{ d|date:'Y-m-d' }}">
+        <button class="btn btn-outline"><b>+{{ n }} night{{ n|pluralize }}</b><small>until {{ d|date:"D d-m" }}</small></button></form>
+    {% endfor %}
+  </div>
+  <form method="post" class="inline-form">{% csrf_token %}
+    {% for e in form.new_check_out.errors %}<p class="error">{{ e }}</p>{% endfor %}
+    <label>Or pick a date {{ form.new_check_out }}</label>
+    <button class="btn btn-primary">Extend</button>
+  </form>
+  <p class="muted small">If {{ stay.room }} is free, the stay is extended straight away. If it’s booked, you’ll get options to move the guest.</p>
+</section>
+{% else %}
+<section class="card">
+  <div class="alert">
+    <b>{{ stay.room }} is booked</b> for part of {{ stay.check_out|date:"d-m" }} → {{ plan.new_check_out|date:"d-m-Y" }}
+    ({{ plan.extra_nights }} extra night{{ plan.extra_nights|pluralize }}):
+    {% for b in plan.blocking %}<a href="{% url 'stay_detail' b.pk %}">{{ b.guest.name }}</a> from {{ b.check_in|date:"d-m" }}{% if not forloop.last %}, {% endif %}{% endfor %}.
+  </div>
+
+  <h2>Option A — stay in {{ stay.room }}, then move for the extra nights</h2>
+  <p class="muted small">Same room type ({{ stay.room.room_type.name }}). The guest moves on {{ stay.check_out|date:"D d-m-Y" }}.</p>
+  {% if plan.split_rooms %}
+    <div class="choice-list">
+    {% for r in plan.split_rooms %}
+      <form method="post">{% csrf_token %}
+        <input type="hidden" name="new_check_out" value="{{ plan.new_check_out|date:'Y-m-d' }}"><input type="hidden" name="choice" value="split"><input type="hidden" name="room" value="{{ r.pk }}">
+        <button class="btn btn-outline">Move to <b>Room {{ r.number }}</b> on {{ stay.check_out|date:"d-m" }}</button>
+      </form>
+    {% endfor %}
+    </div>
+  {% else %}<p class="muted">No {{ stay.room.room_type.name }} room is free for those nights.</p>{% endif %}
+
+  <h2>Option B — move to another room {% if plan.move_start > stay.check_in %}from today{% else %}for the whole stay{% endif %}</h2>
+  <p class="muted small">Free from {{ plan.move_start|date:"d-m" }} to {{ plan.new_check_out|date:"d-m-Y" }}. Same type listed first.</p>
+  {% if plan.move_rooms %}
+    <div class="choice-list">
+    {% for r in plan.move_rooms %}
+      <form method="post">{% csrf_token %}
+        <input type="hidden" name="new_check_out" value="{{ plan.new_check_out|date:'Y-m-d' }}"><input type="hidden" name="choice" value="move"><input type="hidden" name="room" value="{{ r.pk }}">
+        <button class="btn btn-outline">Room <b>{{ r.number }}</b> · {{ r.room_type.name }}</button>
+      </form>
+    {% endfor %}
+    </div>
+  {% else %}<p class="muted">No room is free for that whole period.</p>{% endif %}
+
+  <h2>Option C</h2>
+  <a class="btn btn-ghost" href="{% url 'stay_extend' stay.pk %}">Pick a different date</a>
+  <a class="btn btn-ghost" href="{% url 'stay_detail' stay.pk %}">Don’t extend</a>
+</section>
+{% endif %}
+{% endblock %}

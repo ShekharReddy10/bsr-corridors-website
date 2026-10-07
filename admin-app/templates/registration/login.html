@@ -1,0 +1,30 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Sign in · {{ HOTEL_NAME }}</title>
+  <link rel="icon" href="{% static 'img/icon.png' %}">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body class="login-page">
+  <form class="login-card" method="post" novalidate>
+    {% csrf_token %}
+    <img src="{% static 'img/icon.png' %}" alt="" width="64" height="64">
+    <h1>{{ HOTEL_NAME }}</h1>
+    <p class="muted">Admin sign in</p>
+    {% if locked %}
+      <p class="msg msg-error">Too many failed attempts. Please wait {{ lock_minutes }} minutes and try again.</p>
+    {% elif form.errors %}
+      <p class="msg msg-error">Incorrect username or password.</p>
+    {% endif %}
+    <label for="id_username">Username</label>
+    <input id="id_username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus value="{{ form.username.value|default:'' }}">
+    <label for="id_password">Password</label>
+    <input id="id_password" name="password" type="password" autocomplete="current-password" required>
+    <input type="hidden" name="next" value="{{ next }}">
+    <button class="btn btn-primary btn-block" type="submit">Sign in</button>
+  </form>
+</body>
+</html>
