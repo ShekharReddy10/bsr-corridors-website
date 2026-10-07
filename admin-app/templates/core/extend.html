@@ -3,33 +3,37 @@
 {% block content %}
 <div class="page-head">
   <div><h1>Extend stay · {{ stay.guest.name }}</h1>
-  <p class="muted">{{ stay.room }} · currently {{ stay.check_in|date:"d-m-Y" }} → <b>{{ stay.check_out|date:"d-m-Y" }}</b></p></div>
+  <p class="muted">{{ stay.room }} · currently {{ stay.check_in|date:"d-m-Y" }} → <b>{{ stay.check_out|date:"d-m-Y" }}</b> · total so far {{ stay.total|inr }}, paid {{ stay.amount_paid|inr }}</p></div>
   <a class="btn btn-ghost" href="{% url 'stay_detail' stay.pk %}">Back</a>
 </div>
 
 {% if not plan %}
-<section class="card">
+<form method="post" class="card extend-form" novalidate data-total="{{ stay.total|floatformat:0 }}" data-paid="{{ stay.amount_paid|floatformat:0 }}">{% csrf_token %}
   <h2>New check-out</h2>
   <div class="quick">
     {% for n, d in quick %}
-      <form method="post">{% csrf_token %}<input type="hidden" name="new_check_out" value="{{ d|date:'Y-m-d' }}">
-        <button class="btn btn-outline"><b>+{{ n }} night{{ n|pluralize }}</b><small>until {{ d|date:"D d-m" }}</small></button></form>
+      <button type="button" class="btn btn-outline" data-set-date="{{ d|date:'Y-m-d' }}"><b>+{{ n }} night{{ n|pluralize }}</b><small>until {{ d|date:"D d-m" }}</small></button>
     {% endfor %}
   </div>
-  <form method="post" class="inline-form">{% csrf_token %}
-    {% for e in form.new_check_out.errors %}<p class="error">{{ e }}</p>{% endfor %}
-    <label>Or pick a date {{ form.new_check_out }}</label>
-    <button class="btn btn-primary">Extend</button>
-  </form>
+  <div class="form-grid">
+    {% field form.new_check_out "span-2" %}
+    {% field form.amount %}
+    {% field form.paid_now %}
+    {% field form.payment_mode %}
+  </div>
+  <p class="total-line" id="extend-summary"></p>
+  <div class="form-actions"><button class="btn btn-primary">Extend stay</button></div>
   <p class="muted small">If {{ stay.room }} is free, the stay is extended straight away. If it’s booked, you’ll get options to move the guest.</p>
-</section>
+</form>
 {% else %}
+{% with amount=form.cleaned_data.amount paid=form.cleaned_data.paid_now mode=form.cleaned_data.payment_mode %}
 <section class="card">
   <div class="alert">
     <b>{{ stay.room }} is booked</b> for part of {{ stay.check_out|date:"d-m" }} → {{ plan.new_check_out|date:"d-m-Y" }}
     ({{ plan.extra_nights }} extra night{{ plan.extra_nights|pluralize }}):
     {% for b in plan.blocking %}<a href="{% url 'stay_detail' b.pk %}">{{ b.guest.name }}</a> from {{ b.check_in|date:"d-m" }}{% if not forloop.last %}, {% endif %}{% endfor %}.
   </div>
+  <p class="muted small">Extension amount {{ amount|inr }}{% if paid %}, paid now {{ paid|inr }}{% endif %} — kept whichever option you choose.</p>
 
   <h2>Option A — stay in {{ stay.room }}, then move for the extra nights</h2>
   <p class="muted small">Same room type ({{ stay.room.room_type.name }}). The guest moves on {{ stay.check_out|date:"D d-m-Y" }}.</p>
@@ -38,6 +42,7 @@
     {% for r in plan.split_rooms %}
       <form method="post">{% csrf_token %}
         <input type="hidden" name="new_check_out" value="{{ plan.new_check_out|date:'Y-m-d' }}"><input type="hidden" name="choice" value="split"><input type="hidden" name="room" value="{{ r.pk }}">
+        <input type="hidden" name="amount" value="{{ amount }}"><input type="hidden" name="paid_now" value="{{ paid|default_if_none:'' }}"><input type="hidden" name="payment_mode" value="{{ mode }}">
         <button class="btn btn-outline">Move to <b>Room {{ r.number }}</b> on {{ stay.check_out|date:"d-m" }}</button>
       </form>
     {% endfor %}
@@ -51,6 +56,7 @@
     {% for r in plan.move_rooms %}
       <form method="post">{% csrf_token %}
         <input type="hidden" name="new_check_out" value="{{ plan.new_check_out|date:'Y-m-d' }}"><input type="hidden" name="choice" value="move"><input type="hidden" name="room" value="{{ r.pk }}">
+        <input type="hidden" name="amount" value="{{ amount }}"><input type="hidden" name="paid_now" value="{{ paid|default_if_none:'' }}"><input type="hidden" name="payment_mode" value="{{ mode }}">
         <button class="btn btn-outline">Room <b>{{ r.number }}</b> · {{ r.room_type.name }}</button>
       </form>
     {% endfor %}
@@ -61,5 +67,6 @@
   <a class="btn btn-ghost" href="{% url 'stay_extend' stay.pk %}">Pick a different date</a>
   <a class="btn btn-ghost" href="{% url 'stay_detail' stay.pk %}">Don’t extend</a>
 </section>
+{% endwith %}
 {% endif %}
 {% endblock %}

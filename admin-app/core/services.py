@@ -102,13 +102,28 @@ def plan_extension(stay: Stay, new_check_out: date) -> ExtensionPlan:
     return plan
 
 
-def extend_in_place(stay: Stay, new_check_out: date) -> Stay:
+def _money(amount: Decimal, paid: Decimal) -> str:
+    text = f" · +₹{amount:,.0f} added to total"
+    return text + (f" · ₹{paid:,.0f} paid" if paid else "")
+
+
+def _apply_payment(stay: Stay, paid: Decimal, mode: str) -> None:
+    if paid:
+        stay.amount_paid = (stay.amount_paid or Decimal(0)) + paid
+        if mode:
+            stay.payment_mode = mode
+
+
+def extend_in_place(stay: Stay, new_check_out: date, amount=Decimal(0), paid=Decimal(0), mode="") -> Stay:
     old = stay.check_out
     stay.check_out = new_check_out
-    return save_stay(stay, action="extend", summary=f"Extended in {stay.room}: check-out {old:%d-%m-%Y} → {new_check_out:%d-%m-%Y}")
+    stay.total_amount = (stay.total_amount or Decimal(0)) + amount
+    _apply_payment(stay, paid, mode)
+    return save_stay(stay, action="extend",
+                     summary=f"Extended in {stay.room}: check-out {old:%d-%m-%Y} → {new_check_out:%d-%m-%Y}{_money(amount, paid)}")
 
 
-def extend_split(stay: Stay, new_check_out: date, room: Room) -> Stay:
+def extend_split(stay: Stay, new_check_out: date, room: Room, amount=Decimal(0), paid=Decimal(0), mode="") -> Stay:
     """Keep the current room until its check-out, then continue in `room` for the extra nights."""
     with transaction.atomic():
         continuation = Stay(
@@ -117,8 +132,11 @@ def extend_split(stay: Stay, new_check_out: date, room: Room) -> Stay:
             check_in=stay.check_out,
             check_out=new_check_out,
             num_guests=stay.num_guests,
-            nightly_rate=stay.nightly_rate,
-            payment_mode=stay.payment_mode,
+            total_amount=amount,
+            amount_paid=paid or Decimal(0),
+            payment_mode=mode or stay.payment_mode,
+            source=stay.source,
+            source_ref=stay.source_ref,
             status=Stay.Status.UPCOMING,
             form_c_filed=stay.form_c_filed,
             linked_to=stay.root,
@@ -127,22 +145,26 @@ def extend_split(stay: Stay, new_check_out: date, room: Room) -> Stay:
         save_stay(
             continuation,
             action="extend",
-            summary=f"Extended by moving to {room} for {stay.check_out:%d-%m-%Y} → {new_check_out:%d-%m-%Y} ({stay.room} was booked)",
+            summary=f"Extended by moving to {room} for {stay.check_out:%d-%m-%Y} → {new_check_out:%d-%m-%Y} ({stay.room} was booked){_money(amount, paid)}",
         )
         AuditLog.record("extend", f"Continues in {room} from {stay.check_out:%d-%m-%Y} to {new_check_out:%d-%m-%Y}", stay)
     return continuation
 
 
-def extend_move(stay: Stay, new_check_out: date, room: Room, move_start: date) -> Stay:
+def extend_move(stay: Stay, new_check_out: date, room: Room, move_start: date,
+                amount=Decimal(0), paid=Decimal(0), mode="") -> Stay:
     """Move the guest to `room` from `move_start` until the new check-out."""
     if move_start >= stay.check_out:
-        return extend_split(stay, new_check_out, room)
+        return extend_split(stay, new_check_out, room, amount, paid, mode)
     with transaction.atomic():
         if move_start <= stay.check_in:
             old_room = stay.room
             stay.room = room
             stay.check_out = new_check_out
-            return save_stay(stay, action="extend", summary=f"Moved {old_room} → {room} and extended to {new_check_out:%d-%m-%Y}")
+            stay.total_amount = (stay.total_amount or Decimal(0)) + amount
+            _apply_payment(stay, paid, mode)
+            return save_stay(stay, action="extend",
+                             summary=f"Moved {old_room} → {room} and extended to {new_check_out:%d-%m-%Y}{_money(amount, paid)}")
 
         continuation = Stay(
             guest=stay.guest,
@@ -150,8 +172,11 @@ def extend_move(stay: Stay, new_check_out: date, room: Room, move_start: date) -
             check_in=move_start,
             check_out=new_check_out,
             num_guests=stay.num_guests,
-            nightly_rate=stay.nightly_rate,
-            payment_mode=stay.payment_mode,
+            total_amount=amount,
+            amount_paid=paid or Decimal(0),
+            payment_mode=mode or stay.payment_mode,
+            source=stay.source,
+            source_ref=stay.source_ref,
             status=stay.status,
             checked_in_at=timezone.now() if stay.status == Stay.Status.CHECKED_IN else None,
             form_c_filed=stay.form_c_filed,
@@ -164,7 +189,8 @@ def extend_move(stay: Stay, new_check_out: date, room: Room, move_start: date) -
             stay.status = Stay.Status.CHECKED_OUT
             stay.checked_out_at = timezone.now()
         save_stay(stay, action="move", summary=f"Moved out of {stay.room} on {move_start:%d-%m-%Y} (was until {old_check_out:%d-%m-%Y})")
-        save_stay(continuation, action="extend", summary=f"Moved in from {stay.room}; stays until {new_check_out:%d-%m-%Y}")
+        save_stay(continuation, action="extend",
+                  summary=f"Moved in from {stay.room}; stays until {new_check_out:%d-%m-%Y}{_money(amount, paid)}")
     return continuation
 
 

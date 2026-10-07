@@ -2,13 +2,14 @@
 {% if page.object_list %}
 <div class="table-wrap">
 <table class="table table-cards">
-  <thead><tr><th>Guest</th><th>Phone</th><th>Room</th><th>Check-in</th><th>Check-out</th><th>Status</th><th class="num">Balance</th></tr></thead>
+  <thead><tr><th>Guest</th><th>Phone</th><th>Room</th><th>Via</th><th>Check-in</th><th>Check-out</th><th>Status</th><th class="num">Balance</th></tr></thead>
   <tbody>
   {% for s in page.object_list %}
     <tr>
       <td data-label="Guest"><a href="{% url 'stay_detail' s.pk %}"><b>{{ s.guest.name }}</b></a>{% if s.guest.is_foreign %} <span class="tag">{{ s.guest.nationality }}</span>{% endif %}</td>
       <td data-label="Phone"><a href="tel:{{ s.guest.phone }}">{{ s.guest.phone }}</a></td>
       <td data-label="Room">{{ s.room.number }}</td>
+      <td data-label="Via">{{ s.get_source_display }}</td>
       <td data-label="Check-in">{{ s.check_in|date:"d-m-Y" }}</td>
       <td data-label="Check-out">{{ s.check_out|date:"d-m-Y" }}</td>
       <td data-label="Status"><span class="status status-{{ s.status }}">{{ s.get_status_display }}</span></td>

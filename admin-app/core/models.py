@@ -12,7 +12,6 @@ class RoomType(models.Model):
     is_ac = models.BooleanField("Air-conditioned", default=True)
     bed_type = models.CharField(max_length=60, default="King-size bed")
     max_guests = models.PositiveSmallIntegerField(default=2)
-    default_rate = models.DecimalField("Default nightly rate (₹)", max_digits=10, decimal_places=2, default=0)
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -54,11 +53,13 @@ class Guest(models.Model):
         OTHER = "other", "Other"
 
     name = models.CharField(max_length=120)
-    phone = models.CharField(max_length=20, db_index=True, help_text="With country code, e.g. +91 98765 43210")
+    phone = models.CharField(max_length=20, help_text="With country code, e.g. +91 98765 43210")
+    # Last 10 digits of the phone — one guest per number, used for fast lookups.
+    phone_key = models.CharField(max_length=15, unique=True, editable=False)
     address = models.TextField(help_text="As shown on the ID proof")
     nationality = models.CharField(max_length=60, default="Indian")
     id_type = models.CharField("ID proof", max_length=20, choices=IdType.choices, default=IdType.AADHAAR)
-    id_number = EncryptedTextField("ID number")
+    id_number = EncryptedTextField("ID number", blank=True)
     # Foreign nationals (Form C)
     passport_number = EncryptedTextField(blank=True)
     visa_number = models.CharField(max_length=40, blank=True)
@@ -73,6 +74,14 @@ class Guest(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.phone})"
+
+    @staticmethod
+    def key_for(phone: str) -> str:
+        return "".join(c for c in phone if c.isdigit())[-10:]
+
+    def save(self, *args, **kwargs):
+        self.phone_key = self.key_for(self.phone)
+        super().save(*args, **kwargs)
 
     @property
     def is_foreign(self) -> bool:
@@ -104,6 +113,14 @@ class Stay(models.Model):
         CHECKED_OUT = "checked_out", "Checked out"
         CANCELLED = "cancelled", "Cancelled"
 
+    class Source(models.TextChoices):
+        WALK_IN = "walk_in", "Walk-in"
+        DIRECT = "direct", "Direct (call / WhatsApp)"
+        AIRBNB = "airbnb", "Airbnb"
+        BOOKING_COM = "booking_com", "Booking.com"
+        MAKEMYTRIP = "makemytrip", "MakeMyTrip"
+        OTHER = "other", "Other"
+
     class PaymentMode(models.TextChoices):
         CASH = "cash", "Cash"
         UPI = "upi", "UPI"
@@ -116,7 +133,11 @@ class Stay(models.Model):
     check_in = models.DateField()
     check_out = models.DateField()
     num_guests = models.PositiveSmallIntegerField("Number of guests", default=1)
-    nightly_rate = models.DecimalField("Nightly rate (₹)", max_digits=10, decimal_places=2, default=0)
+    source = models.CharField("Booked via", max_length=20, choices=Source.choices, default=Source.WALK_IN, db_index=True)
+    source_ref = models.CharField("Booking reference", max_length=60, blank=True,
+                                  help_text="e.g. Airbnb / Booking.com confirmation code")
+    # Agreed price for the whole stay (not per night). Extensions add their amount to it.
+    total_amount = models.DecimalField("Total amount (₹)", max_digits=10, decimal_places=2, default=0)
     amount_paid = models.DecimalField("Amount paid (₹)", max_digits=10, decimal_places=2, default=0)
     payment_mode = models.CharField(max_length=20, choices=PaymentMode.choices, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.UPCOMING, db_index=True)
@@ -150,7 +171,7 @@ class Stay(models.Model):
 
     @property
     def total(self) -> Decimal:
-        return (self.nightly_rate or Decimal(0)) * self.nights
+        return self.total_amount or Decimal(0)
 
     @property
     def balance(self) -> Decimal:

@@ -16,8 +16,8 @@ T = services.today()
 
 
 def make_rooms():
-    ac = RoomType.objects.create(name="Luxury AC", is_ac=True, max_guests=2, default_rate=Decimal("1500"))
-    non = RoomType.objects.create(name="Luxury Non-AC", is_ac=False, max_guests=2, default_rate=Decimal("1100"))
+    ac = RoomType.objects.create(name="Luxury AC", is_ac=True, max_guests=2)
+    non = RoomType.objects.create(name="Luxury Non-AC", is_ac=False, max_guests=2)
     rooms = {
         "101": Room.objects.create(number="101", room_type=ac, sort_order=1),
         "102": Room.objects.create(number="102", room_type=ac, sort_order=2),
@@ -33,7 +33,7 @@ def make_guest(name="Ravi Kumar", phone="+91 98765 43210", aadhaar="123412341234
 
 def stay(guest, room, start_offset, nights, **kw):
     s = Stay(guest=guest, room=room, check_in=T + timedelta(days=start_offset),
-             check_out=T + timedelta(days=start_offset + nights), nightly_rate=Decimal("1500"), **kw)
+             check_out=T + timedelta(days=start_offset + nights), total_amount=Decimal(1500 * nights), **kw)
     return services.save_stay(s, action="create", summary="test")
 
 
@@ -74,7 +74,7 @@ class AvailabilityTests(TestCase):
         stay(self.g, self.rooms["101"], 0, 3)
         with self.assertRaises(services.StayConflict):
             stay(make_guest("Anita", "+91 90000 00001"), self.rooms["101"], 2, 2)
-        stay(make_guest("Anita", "+91 90000 00001"), self.rooms["101"], 3, 2)  # arrives on checkout day
+        stay(make_guest("Anita", "+91 90000 00011"), self.rooms["101"], 3, 2)  # arrives on checkout day
         self.assertEqual(Stay.objects.count(), 2)
 
     def test_cancelled_stay_frees_room(self):
@@ -95,6 +95,14 @@ class AvailabilityTests(TestCase):
         self.assertEqual(free, {"102", "103", "201"})
 
 
+class GuestPhoneTests(TestCase):
+    def test_one_guest_per_number(self):
+        make_guest(phone="+91 98765 43210")
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            make_guest("Other", phone="098765 43210")  # same last 10 digits
+        self.assertEqual(Guest.objects.get().phone_key, "9876543210")
+
+
 class ExtensionTests(TestCase):
     def setUp(self):
         self.ac, _, self.rooms = make_rooms()
@@ -104,10 +112,10 @@ class ExtensionTests(TestCase):
         s = stay(self.g, self.rooms["101"], 0, 2)
         plan = services.plan_extension(s, s.check_out + timedelta(days=2))
         self.assertTrue(plan.free)
-        services.extend_in_place(s, plan.new_check_out)
+        services.extend_in_place(s, plan.new_check_out, Decimal("2500"), Decimal("1000"), "upi")
         s.refresh_from_db()
         self.assertEqual(s.nights, 4)
-        self.assertEqual(s.total, Decimal("6000"))
+        self.assertEqual((s.total, s.amount_paid, s.balance), (Decimal("5500"), Decimal("1000"), Decimal("4500")))
         self.assertTrue(AuditLog.objects.filter(stay=s, action="extend").exists())
 
     def test_blocked_offers_same_type_rooms_and_split(self):
@@ -118,8 +126,9 @@ class ExtensionTests(TestCase):
         self.assertFalse(plan.free)
         self.assertEqual([r.number for r in plan.split_rooms], ["103"])  # same type only, and free
         self.assertEqual(plan.move_rooms[0].room_type, self.ac)  # same type first
-        cont = services.extend_split(s, plan.new_check_out, self.rooms["103"])
+        cont = services.extend_split(s, plan.new_check_out, self.rooms["103"], Decimal("2000"))
         self.assertEqual(cont.check_in, s.check_out)
+        self.assertEqual(cont.total, Decimal("2000"))
         self.assertEqual(cont.linked_to, s)
         self.assertEqual(len(s.chain()), 2)
 
@@ -175,7 +184,8 @@ class ViewTests(TestCase):
             "g-phone": "+91 98765 43210", "g-name": "Ravi Kumar", "g-address": "Hyderabad", "g-nationality": "Indian",
             "g-id_type": "aadhaar", "g-id_number": "1234 1234 1234",
             "s-room": self.rooms["101"].pk, "s-check_in": T.isoformat(), "s-check_out": (T + timedelta(days=2)).isoformat(),
-            "s-num_guests": 2, "s-nightly_rate": "1500", "s-amount_paid": "1000", "s-payment_mode": "upi",
+            "s-num_guests": 2, "s-total_amount": "3000", "s-amount_paid": "1000", "s-payment_mode": "upi",
+            "s-source": "airbnb", "s-source_ref": "HMABC123",
         }
         data.update(over)
         return self.client.post("/stays/new/", data)
@@ -198,6 +208,11 @@ class ViewTests(TestCase):
         self.assertRedirects(r, f"/stays/{s.pk}/")
         self.assertEqual(s.guest.id_number, "123412341234")
         self.assertEqual(s.balance, Decimal("2000"))
+        self.assertEqual((s.source, s.source_ref), ("airbnb", "HMABC123"))
+
+        # Same number without picking the saved guest → asked to use the saved guest
+        r = self._new_stay_post(**{"g-name": "Someone Else", "s-room": self.rooms["103"].pk})
+        self.assertContains(r, "already saved for Ravi Kumar")
 
         lookup = self.client.get("/guests/lookup/?phone=9876543210").json()
         self.assertTrue(lookup["found"])
@@ -217,6 +232,10 @@ class ViewTests(TestCase):
     def test_validation(self):
         r = self._new_stay_post(**{"g-id_number": "1234"})
         self.assertContains(r, "Aadhaar number must be 12 digits")
+        r = self._new_stay_post(**{"g-id_number": "", "g-phone": "+91 90000 00077"})  # ID number optional
+        self.assertEqual(Stay.objects.get().guest.id_number, "")
+        self.assertContains(self.client.get(f"/stays/{Stay.objects.get().pk}/"), "Not provided")
+        Stay.objects.all().delete(); Guest.objects.all().delete()
         r = self._new_stay_post(**{"g-nationality": "British", "g-id_type": "passport", "g-id_number": "X1"})
         self.assertContains(r, "Required for foreign nationals")
         r = self._new_stay_post(**{"s-num_guests": 3})
@@ -225,15 +244,20 @@ class ViewTests(TestCase):
 
     def test_extend_flow(self):
         s = stay(make_guest(), self.rooms["101"], 0, 2)
-        r = self.client.post(f"/stays/{s.pk}/extend/", {"new_check_out": (s.check_out + timedelta(days=1)).isoformat()})
+        r = self.client.post(f"/stays/{s.pk}/extend/", {"new_check_out": (s.check_out + timedelta(days=1)).isoformat(),
+                                                         "amount": "1200", "paid_now": "1200", "payment_mode": "cash"})
         self.assertRedirects(r, f"/stays/{s.pk}/")
+        s.refresh_from_db()
+        self.assertEqual((s.total, s.amount_paid), (Decimal("4200"), Decimal("1200")))
         stay(make_guest("Next", "+91 90000 00002"), self.rooms["101"], 3, 2)
-        r = self.client.post(f"/stays/{s.pk}/extend/", {"new_check_out": (T + timedelta(days=5)).isoformat()})
+        r = self.client.post(f"/stays/{s.pk}/extend/", {"new_check_out": (T + timedelta(days=5)).isoformat(), "amount": "2000"})
         self.assertContains(r, "is booked")
+        self.assertContains(r, 'name="amount" value="2000')
         self.assertContains(r, "Move to <b>Room 102</b>")
-        r = self.client.post(f"/stays/{s.pk}/extend/", {"new_check_out": (T + timedelta(days=5)).isoformat(),
+        r = self.client.post(f"/stays/{s.pk}/extend/", {"new_check_out": (T + timedelta(days=5)).isoformat(), "amount": "2000",
                                                          "choice": "split", "room": self.rooms["102"].pk})
-        self.assertEqual(Stay.objects.filter(linked_to=s).count(), 1)
+        cont = Stay.objects.get(linked_to=s)
+        self.assertEqual((cont.total, cont.source), (Decimal("2000"), s.source))
 
     def test_actions_and_reveal(self):
         s = stay(make_guest(), self.rooms["101"], 0, 2)
@@ -244,6 +268,18 @@ class ViewTests(TestCase):
         r = self.client.post(f"/stays/{s.pk}/reveal-id/", {"field": "id_number"})
         self.assertContains(r, "123412341234")
         self.assertTrue(AuditLog.objects.filter(action="reveal_id").exists())
+
+    def test_guest_search_and_rebook(self):
+        g = make_guest()
+        stay(g, self.rooms["101"], -10, 2)
+        r = self.client.get("/guests/?q=98765", HTTP_HX_REQUEST="true")
+        self.assertContains(r, "Ravi Kumar")
+        self.assertContains(r, f"/stays/new/?guest={g.pk}")
+        self.assertContains(self.client.get(f"/guests/{g.pk}/"), "New booking for Ravi Kumar")
+        r = self.client.get(f"/stays/new/?guest={g.pk}")
+        self.assertContains(r, "Booking for <b>Ravi Kumar</b>")
+        self.assertContains(r, f'name="g-guest_id" value="{g.pk}"')
+        self.assertEqual(self.client.get("/guests/").status_code, 200)
 
     def test_room_with_history_is_deactivated_not_deleted(self):
         stay(make_guest(), self.rooms["101"], 0, 1)

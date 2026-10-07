@@ -275,7 +275,7 @@ export default function Home() {
           </div>
         </div>
         <p className="container copyright">
-          © {new Date().getFullYear()} {hotel.name}. All rights reserved.
+          © {new Date().getFullYear()} {hotel.name}. All rights reserved. · <a href="/privacy/">Privacy policy</a>
         </p>
       </footer>
 

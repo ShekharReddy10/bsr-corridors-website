@@ -42,13 +42,18 @@ class GuestForm(forms.ModelForm):
         phone = self.cleaned_data["phone"].strip()
         if sum(c.isdigit() for c in phone) < 10:
             raise forms.ValidationError("Enter a valid phone number (at least 10 digits).")
+        other = Guest.objects.filter(phone_key=Guest.key_for(phone)).exclude(pk=self.instance.pk or 0).first()
+        if other:
+            raise forms.ValidationError(
+                f"This number is already saved for {other.name}. Tap “Use saved details” to add the booking under them."
+            )
         return phone
 
     def clean_id_number(self):
         value = self.cleaned_data.get("id_number", "").strip()
         if not value and self.instance.pk:
             return self.instance.id_number
-        if self.cleaned_data.get("id_type") == Guest.IdType.AADHAAR:
+        if value and self.cleaned_data.get("id_type") == Guest.IdType.AADHAAR:
             digits = value.replace(" ", "")
             if not (digits.isdigit() and len(digits) == 12):
                 raise forms.ValidationError("Aadhaar number must be 12 digits.")
@@ -74,12 +79,13 @@ class GuestForm(forms.ModelForm):
 class StayForm(forms.ModelForm):
     class Meta:
         model = Stay
-        fields = ["room", "check_in", "check_out", "num_guests", "nightly_rate", "amount_paid", "payment_mode", "notes"]
+        fields = ["source", "source_ref", "room", "check_in", "check_out", "num_guests",
+                  "total_amount", "amount_paid", "payment_mode", "notes"]
         widgets = {
             "check_in": DATE,
             "check_out": DATE,
             "notes": forms.Textarea(attrs={"rows": 2}),
-            "nightly_rate": forms.NumberInput(attrs={"inputmode": "decimal", "step": "1"}),
+            "total_amount": forms.NumberInput(attrs={"inputmode": "decimal", "step": "1", "min": "0"}),
             "amount_paid": forms.NumberInput(attrs={"inputmode": "decimal", "step": "1"}),
         }
 
@@ -92,10 +98,11 @@ class StayForm(forms.ModelForm):
         self.fields["room"].label_from_instance = lambda r: f"{r.number} — {r.room_type.name}" + (
             " (maintenance)" if r.status == Room.Status.MAINTENANCE else ""
         )
-        # Expose each room's default rate & capacity to the page script.
+        # Expose each room's capacity to the page script.
         self.fields["room"].widget.attrs["data-rooms"] = ",".join(
-            f"{r.pk}:{r.room_type.default_rate}:{r.room_type.max_guests}" for r in self.fields["room"].queryset
+            f"{r.pk}:{r.room_type.max_guests}" for r in self.fields["room"].queryset
         )
+        self.fields["total_amount"].help_text = "Agreed price for the whole stay"
 
     def clean(self):
         data = super().clean()
@@ -111,6 +118,12 @@ class StayForm(forms.ModelForm):
 
 class ExtendForm(forms.Form):
     new_check_out = forms.DateField(label="New check-out date", widget=DATE)
+    amount = forms.DecimalField(label="Amount for the extra days (₹)", min_value=0, max_digits=10, decimal_places=2,
+                                initial=0, widget=forms.NumberInput(attrs={"inputmode": "decimal", "step": "1"}),
+                                help_text="Added to the stay’s total")
+    paid_now = forms.DecimalField(label="Paid now (₹)", min_value=0, max_digits=10, decimal_places=2, required=False,
+                                  widget=forms.NumberInput(attrs={"inputmode": "decimal", "step": "1"}))
+    payment_mode = forms.ChoiceField(choices=[("", "—")] + list(Stay.PaymentMode.choices), required=False)
 
     def __init__(self, *args, stay: Stay, **kwargs):
         super().__init__(*args, **kwargs)
@@ -137,7 +150,7 @@ class PaymentForm(forms.Form):
 class RoomTypeForm(forms.ModelForm):
     class Meta:
         model = RoomType
-        fields = ["name", "is_ac", "bed_type", "max_guests", "default_rate", "is_active"]
+        fields = ["name", "is_ac", "bed_type", "max_guests", "is_active"]
 
 
 class RoomForm(forms.ModelForm):

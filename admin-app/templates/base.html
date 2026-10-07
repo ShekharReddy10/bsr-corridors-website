@@ -21,7 +21,8 @@
     <nav>
       <a href="{% url 'dashboard' %}" {% if url == 'dashboard' %}aria-current="page"{% endif %}>Today</a>
       <a href="{% url 'calendar' %}" {% if url == 'calendar' or url == 'room_month' %}aria-current="page"{% endif %}>Calendar</a>
-      <a href="{% url 'stay_list' %}" {% if 'stay' in url %}aria-current="page"{% endif %}>Stays &amp; guests</a>
+      <a href="{% url 'stay_list' %}" {% if 'stay' in url %}aria-current="page"{% endif %}>Stays</a>
+      <a href="{% url 'guest_list' %}" {% if 'guest' in url %}aria-current="page"{% endif %}>Guests</a>
       <a href="{% url 'rooms' %}" {% if 'room' in url and url != 'room_month' %}aria-current="page"{% endif %}>Rooms</a>
       <a href="{% url 'export' %}" {% if url == 'export' %}aria-current="page"{% endif %}>Export</a>
       <a href="{% url 'backups' %}" {% if url == 'backups' %}aria-current="page"{% endif %}>Backups</a>
@@ -51,6 +52,7 @@
     <details class="tab-more">
       <summary><span class="ti">⋯</span>More</summary>
       <div class="more-sheet">
+        <a href="{% url 'guest_list' %}">Guests (search by phone)</a>
         <a href="{% url 'rooms' %}">Rooms</a>
         <a href="{% url 'export' %}">Export</a>
         <a href="{% url 'backups' %}">Backups</a>

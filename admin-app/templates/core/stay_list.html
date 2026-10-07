@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Stays & guests{% endblock %}
+{% block title %}Stays{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h1>Stays &amp; guests</h1>
+  <h1>Stays</h1>
   <a class="btn btn-primary hide-mobile" href="{% url 'stay_new' %}">+ New stay</a>
 </div>
 
@@ -15,6 +15,10 @@
   <select name="room" aria-label="Room">
     <option value="">All rooms</option>
     {% for r in rooms %}<option value="{{ r.pk }}" {% if room == r.pk|stringformat:"s" %}selected{% endif %}>Room {{ r.number }}</option>{% endfor %}
+  </select>
+  <select name="source" aria-label="Booked via">
+    <option value="">All sources</option>
+    {% for v, l in sources %}<option value="{{ v }}" {% if source == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
   </select>
   <label class="inline">From <input type="date" name="start" value="{{ start|date:'Y-m-d' }}"></label>
   <label class="inline">To <input type="date" name="end" value="{{ end|date:'Y-m-d' }}"></label>

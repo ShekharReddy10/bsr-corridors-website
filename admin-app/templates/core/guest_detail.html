@@ -1,0 +1,44 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}{{ guest.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ guest.name }}</h1><p class="muted"><a href="tel:{{ guest.phone }}">{{ guest.phone }}</a> · {{ guest.nationality }}</p></div>
+  <a class="btn btn-primary" href="{% url 'stay_new' %}?guest={{ guest.pk }}">+ New booking for {{ guest.name }}</a>
+</div>
+<div class="action-bar">
+  <a class="btn btn-outline" href="https://wa.me/{{ guest.phone_digits }}" target="_blank" rel="noopener">WhatsApp</a>
+  <a class="btn btn-outline" href="tel:{{ guest.phone }}">Call</a>
+</div>
+<div class="grid-2">
+  <section class="card">
+    <h2>Details</h2>
+    <dl class="dl">
+      <dt>Address</dt><dd>{{ guest.address|linebreaksbr }}</dd>
+      <dt>{{ guest.get_id_type_display }}</dt><dd>{{ guest.id_masked|default:"Not provided" }}</dd>
+      {% if guest.is_foreign %}<dt>Visa</dt><dd>{{ guest.visa_number|default:"—" }} {% if guest.visa_type %}({{ guest.visa_type }}){% endif %}</dd>{% endif %}
+      <dt>First seen</dt><dd>{{ guest.created_at|date:"d-m-Y" }}</dd>
+    </dl>
+    <p class="muted small">To change these details, edit any of the guest’s stays.</p>
+  </section>
+  <section class="card">
+    <h2>All stays</h2>
+    <dl class="dl">
+      <dt>Stays</dt><dd>{{ stays|length }}</dd>
+      <dt>Nights</dt><dd>{{ nights }}</dd>
+      <dt>Total</dt><dd>{{ total|inr }}</dd>
+      <dt>Paid</dt><dd>{{ paid|inr }}</dd>
+      <dt>Balance</dt><dd class="{% if balance > 0 %}warn{% endif %}"><b>{{ balance|inr }}</b></dd>
+    </dl>
+  </section>
+</div>
+<section class="card">
+  <h2>Stay history</h2>
+  {% for s in stays %}
+    <div class="stay-line">
+      <a class="stay-line-main" href="{% url 'stay_detail' s.pk %}"><span class="room-badge">{{ s.room.number }}</span>
+        <span><b>{{ s.check_in|date:"d-m-Y" }} → {{ s.check_out|date:"d-m-Y" }}</b>
+        <small>{{ s.get_status_display }} · {{ s.get_source_display }} · {{ s.total|inr }} · paid {{ s.amount_paid|inr }}{% if s.balance > 0 and s.status != 'cancelled' %} · <span class="warn">{{ s.balance|inr }} due</span>{% endif %}</small></span></a>
+    </div>
+  {% empty %}<p class="muted">No stays.</p>{% endfor %}
+</section>
+{% endblock %}

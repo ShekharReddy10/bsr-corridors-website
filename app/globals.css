@@ -823,6 +823,55 @@ address {
   margin: 0 0 2rem;
 }
 
+.copyright a {
+  color: inherit;
+}
+
+/* Privacy policy */
+.legal {
+  padding: 48px 0 72px;
+  background: var(--paper);
+}
+
+.legal-inner {
+  max-width: 760px;
+}
+
+.legal h1 {
+  font-size: clamp(2rem, 5vw, 2.75rem);
+  margin-bottom: 0.2em;
+}
+
+.legal h2 {
+  font-size: 1.35rem;
+  margin: 1.8em 0 0.5em;
+}
+
+.legal p,
+.legal li {
+  color: var(--ink-soft);
+}
+
+.legal ul {
+  padding-left: 1.2em;
+}
+
+.legal a {
+  color: var(--gold);
+}
+
+.legal-back {
+  display: inline-block;
+  margin-bottom: 24px;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.legal-updated {
+  font-size: 0.9rem;
+  margin-bottom: 2em;
+}
+
 /* Animations */
 .hero-bg {
   animation: hero-zoom 9s ease-out both;

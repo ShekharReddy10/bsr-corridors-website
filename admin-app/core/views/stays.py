@@ -29,6 +29,9 @@ def stay_list(request):
     room = request.GET.get("room", "")
     if room.isdigit():
         stays = stays.filter(room_id=int(room))
+    source = request.GET.get("source", "")
+    if source in Stay.Source.values:
+        stays = stays.filter(source=source)
     start, end = parse_date(request.GET.get("start") or ""), parse_date(request.GET.get("end") or "")
     if start:
         stays = stays.filter(check_out__gt=start)
@@ -36,35 +39,35 @@ def stay_list(request):
         stays = stays.filter(check_in__lte=end)
 
     page = Paginator(stays.order_by("-check_in", "room__number"), 25).get_page(request.GET.get("page"))
-    context = {"page": page, "q": q, "status": status, "room": room, "start": start, "end": end,
-               "statuses": Stay.Status.choices, "rooms": Room.objects.all()}
+    context = {"page": page, "q": q, "status": status, "room": room, "source": source, "start": start, "end": end,
+               "statuses": Stay.Status.choices, "sources": Stay.Source.choices, "rooms": Room.objects.all()}
     template = "partials/stay_rows.html" if request.headers.get("HX-Request") else "core/stay_list.html"
     return render(request, template, context)
 
 
 def guest_lookup(request):
-    """Returning-guest autofill: latest guest whose phone matches (by digits)."""
-    digits = "".join(c for c in request.GET.get("phone", "") if c.isdigit())
-    if len(digits) < 10:
+    """Returning-guest autofill: the guest saved under this phone number (last 10 digits)."""
+    phone = request.GET.get("phone", "")
+    if sum(c.isdigit() for c in phone) < 10:
         return JsonResponse({"found": False})
-    for g in Guest.objects.filter(phone__contains=digits[-4:]).order_by("-updated_at"):
-        if g.phone_digits.endswith(digits[-10:]):
-            last = g.stays.order_by("-check_in").first()
-            return JsonResponse({
-                "found": True,
-                "guest_id": g.pk,
-                "name": g.name,
-                "address": g.address,
-                "nationality": g.nationality,
-                "id_type": g.id_type,
-                "id_masked": mask(g.id_number),
-                "passport_masked": mask(g.passport_number),
-                "visa_number": g.visa_number,
-                "visa_type": g.visa_type,
-                "arrival_in_india": g.arrival_in_india.isoformat() if g.arrival_in_india else "",
-                "stays": g.stays.count(),
-                "last_stay": f"{last.check_in:%d-%m-%Y}" if last else "",
-            })
+    g = Guest.objects.filter(phone_key=Guest.key_for(phone)).first()
+    if g:
+        last = g.stays.order_by("-check_in").first()
+        return JsonResponse({
+            "found": True,
+            "guest_id": g.pk,
+            "name": g.name,
+            "address": g.address,
+            "nationality": g.nationality,
+            "id_type": g.id_type,
+            "id_masked": mask(g.id_number),
+            "passport_masked": mask(g.passport_number),
+            "visa_number": g.visa_number,
+            "visa_type": g.visa_type,
+            "arrival_in_india": g.arrival_in_india.isoformat() if g.arrival_in_india else "",
+            "stays": g.stays.count(),
+            "last_stay": f"{last.check_in:%d-%m-%Y}" if last else "",
+        })
     return JsonResponse({"found": False})
 
 
@@ -103,8 +106,9 @@ def stay_form(request, pk=None):
             check_in = parse_date(request.GET.get("check_in") or "") or services.today()
             initial = {"check_in": check_in, "check_out": check_in + timedelta(days=1), "num_guests": 1}
             if room:
-                initial.update(room=room, nightly_rate=room.room_type.default_rate)
-        gform = GuestForm(instance=stay.guest if stay else None, prefix="g")
+                initial["room"] = room
+        guest = stay.guest if stay else Guest.objects.filter(pk=request.GET.get("guest") or 0).first()
+        gform = GuestForm(instance=guest, prefix="g")
         sform = StayForm(instance=stay, initial=initial, prefix="s")
     return render(request, "core/stay_form.html", {"stay": stay, "gform": gform, "sform": sform})
 
@@ -195,21 +199,22 @@ def extend(request, pk):
         form = ExtendForm(request.POST, stay=stay)
         if form.is_valid():
             new_co = form.cleaned_data["new_check_out"]
+            money = (form.cleaned_data["amount"], form.cleaned_data["paid_now"] or 0, form.cleaned_data["payment_mode"])
             choice = request.POST.get("choice", "")
             try:
                 if choice in {"split", "move"}:
                     room = get_object_or_404(Room, pk=request.POST.get("room"))
                     if choice == "split":
-                        cont = services.extend_split(stay, new_co, room)
+                        cont = services.extend_split(stay, new_co, room, *money)
                         messages.success(request, f"Extended: {stay.guest.name} moves to {room} on {cont.check_in:%d-%m-%Y}.")
                     else:
                         plan = services.plan_extension(stay, new_co)
-                        services.extend_move(stay, new_co, room, plan.move_start)
+                        services.extend_move(stay, new_co, room, plan.move_start, *money)
                         messages.success(request, f"Extended: {stay.guest.name} moved to {room}, until {new_co:%d-%m-%Y}.")
                     return redirect("stay_detail", pk=stay.root.pk)
                 plan = services.plan_extension(stay, new_co)
                 if plan.free:
-                    services.extend_in_place(stay, new_co)
+                    services.extend_in_place(stay, new_co, *money)
                     messages.success(request, f"Extended in {stay.room} until {new_co:%d-%m-%Y} (+{plan.extra_nights} night{'s' if plan.extra_nights != 1 else ''}).")
                     return redirect("stay_detail", pk=stay.pk)
             except (services.StayConflict, ValueError) as exc:

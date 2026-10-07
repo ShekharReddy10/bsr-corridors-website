@@ -50,11 +50,11 @@ def build_workbook(start: date | None = None, end: date | None = None, full_ids:
         wb,
         "Stays",
         ["Stay ID", "Guest", "Phone", "Room", "Room type", "Check-in", "Check-out", "Nights", "Guests",
-         "Nightly rate", "Total", "Paid", "Balance", "Payment mode", "Status", "Nationality",
+         "Booked via", "Booking ref", "Total", "Paid", "Balance", "Payment mode", "Status", "Nationality",
          "ID proof", "ID number", "Address", "Form C filed", "Notes"],
         [
             [s.pk, s.guest.name, s.guest.phone, s.room.number, s.room.room_type.name, s.check_in, s.check_out,
-             s.nights, s.num_guests, float(s.nightly_rate), float(s.total), float(s.amount_paid), float(s.balance),
+             s.nights, s.num_guests, s.get_source_display(), s.source_ref, float(s.total), float(s.amount_paid), float(s.balance),
              s.get_payment_mode_display(), s.get_status_display(), s.guest.nationality,
              s.guest.get_id_type_display(), _id(s.guest.id_number, full_ids), s.guest.address,
              "Yes" if s.form_c_filed else ("No" if s.guest.is_foreign else ""), s.notes]
@@ -77,10 +77,10 @@ def build_workbook(start: date | None = None, end: date | None = None, full_ids:
     _sheet(
         wb,
         "Rooms",
-        ["Room", "Floor", "Type", "AC", "Bed", "Max guests", "Default rate", "Status", "Active"],
+        ["Room", "Floor", "Type", "AC", "Bed", "Max guests", "Status", "Active"],
         [
             [r.number, r.floor, r.room_type.name, "AC" if r.room_type.is_ac else "Non-AC", r.room_type.bed_type,
-             r.room_type.max_guests, float(r.room_type.default_rate), r.get_status_display(), "Yes" if r.is_active else "No"]
+             r.room_type.max_guests, r.get_status_display(), "Yes" if r.is_active else "No"]
             for r in Room.objects.select_related("room_type")
         ],
     )

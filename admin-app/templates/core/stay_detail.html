@@ -6,6 +6,7 @@
   <div>
     <h1>{{ g.name }} <span class="status status-{{ stay.status }}">{{ stay.get_status_display }}</span></h1>
     <p class="muted">{{ stay.room }} · {{ stay.room.room_type.name }} · {{ stay.check_in|date:"D d-m-Y" }} → {{ stay.check_out|date:"D d-m-Y" }} · {{ stay.nights }} night{{ stay.nights|pluralize }}</p>
+    <p class="muted">Booked via <b>{{ stay.get_source_display }}</b>{% if stay.source_ref %} · Ref {{ stay.source_ref }}{% endif %}</p>
   </div>
   <a class="btn btn-outline" href="{% url 'stay_edit' stay.pk %}">Edit</a>
 </div>
@@ -35,8 +36,8 @@
       <dt>Address</dt><dd>{{ g.address|linebreaksbr }}</dd>
       <dt>Nationality</dt><dd>{{ g.nationality }}</dd>
       <dt>{{ g.get_id_type_display }}</dt>
-      <dd id="id-number">{{ g.id_masked }}
-        <button class="btn btn-ghost btn-sm" hx-post="{% url 'stay_reveal_id' stay.pk %}" hx-vals='{"field": "id_number"}' hx-target="#id-number" hx-swap="innerHTML">Show</button></dd>
+      <dd id="id-number">{% if g.id_number %}{{ g.id_masked }}
+        <button class="btn btn-ghost btn-sm" hx-post="{% url 'stay_reveal_id' stay.pk %}" hx-vals='{"field": "id_number"}' hx-target="#id-number" hx-swap="innerHTML">Show</button>{% else %}<span class="muted">Not provided</span>{% endif %}</dd>
       {% if g.is_foreign %}
         <dt>Passport</dt>
         <dd id="passport">{% if g.passport_number %}••••{{ g.passport_number|slice:"-4:" }} <button class="btn btn-ghost btn-sm" hx-post="{% url 'stay_reveal_id' stay.pk %}" hx-vals='{"field": "passport_number"}' hx-target="#passport" hx-swap="innerHTML">Show</button>{% else %}—{% endif %}</dd>
@@ -45,15 +46,14 @@
         <dt>Form C</dt><dd>{% if stay.form_c_filed %}Filed ✓{% else %}Not filed{% endif %}
           <form method="post" action="{% url 'stay_action' stay.pk 'form-c' %}" class="inline-form">{% csrf_token %}<button class="btn btn-ghost btn-sm">{% if stay.form_c_filed %}Mark not filed{% else %}Mark filed{% endif %}</button></form></dd>
       {% endif %}
-      <dt>Previous stays</dt><dd>{{ g.stays.count|add:"-1" }}</dd>
+      <dt>Previous stays</dt><dd>{{ g.stays.count|add:"-1" }} · <a href="{% url 'guest_detail' g.pk %}">Guest history</a> · <a href="{% url 'stay_new' %}?guest={{ g.pk }}">New booking</a></dd>
     </dl>
   </section>
 
   <section class="card">
     <h2>Payment</h2>
     <dl class="dl">
-      <dt>Rate</dt><dd>{{ stay.nightly_rate|inr }} × {{ stay.nights }} night{{ stay.nights|pluralize }}</dd>
-      <dt>Total</dt><dd>{{ stay.total|inr }}</dd>
+      <dt>Total</dt><dd>{{ stay.total|inr }} <small class="muted">for {{ stay.nights }} night{{ stay.nights|pluralize }}</small></dd>
       <dt>Paid</dt><dd>{{ stay.amount_paid|inr }}{% if stay.payment_mode %} · {{ stay.get_payment_mode_display }}{% endif %}</dd>
       <dt>Balance</dt><dd class="{% if stay.balance > 0 %}warn{% endif %}"><b>{{ stay.balance|inr }}</b></dd>
       <dt>Guests</dt><dd>{{ stay.num_guests }}</dd>

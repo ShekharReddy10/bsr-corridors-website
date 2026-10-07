@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Guests{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Guests</h1><p class="muted">Search by phone number to add a new booking under the same guest.</p></div>
+  <a class="btn btn-primary hide-mobile" href="{% url 'stay_new' %}">+ New stay</a>
+</div>
+<form class="filters" method="get" hx-get="{% url 'guest_list' %}" hx-target="#guest-rows" hx-trigger="input changed delay:300ms from:input[name=q]" hx-push-url="true">
+  <input type="search" name="q" value="{{ q }}" placeholder="Phone number or name" aria-label="Phone number or name" inputmode="search" autocomplete="off" autofocus>
+  <noscript><button class="btn btn-outline">Search</button></noscript>
+</form>
+<div id="guest-rows">{% include "partials/guest_rows.html" %}</div>
+{% endblock %}

@@ -1,7 +1,7 @@
 from django.contrib.auth.views import LogoutView
 from django.urls import path
 
-from .views import auth, calendar, dashboard, data, rooms, stays
+from .views import auth, calendar, dashboard, data, guests, rooms, stays
 
 urlpatterns = [
     path("login/", auth.ThrottledLoginView.as_view(), name="login"),
@@ -17,6 +17,8 @@ urlpatterns = [
     path("stays/<int:pk>/extend/", stays.extend, name="stay_extend"),
     path("stays/<int:pk>/reveal-id/", stays.reveal_id, name="stay_reveal_id"),
     path("stays/<int:pk>/<slug:action>/", stays.stay_action, name="stay_action"),
+    path("guests/", guests.guest_list, name="guest_list"),
+    path("guests/<int:pk>/", guests.guest_detail, name="guest_detail"),
     path("guests/lookup/", stays.guest_lookup, name="guest_lookup"),
     path("rooms/", rooms.rooms_home, name="rooms"),
     path("rooms/type/new/", rooms.edit, {"kind": "type"}, name="roomtype_new"),

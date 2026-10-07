@@ -14,11 +14,31 @@
     document.querySelectorAll("details.tab-more[open]").forEach((d) => { if (!d.contains(e.target)) d.open = false; });
   });
 
+  const inr = (n) => "₹" + Math.round(n).toLocaleString("en-IN");
+
+  // ── Extend page: quick +N night buttons and running total ──
+  const ext = $(".extend-form");
+  if (ext) {
+    const date = ext.elements["new_check_out"];
+    ext.querySelectorAll("[data-set-date]").forEach((b) => b.addEventListener("click", () => {
+      date.value = b.dataset.setDate;
+      ext.querySelectorAll("[data-set-date]").forEach((x) => x.setAttribute("aria-pressed", x === b));
+      ext.elements["amount"].focus();
+      summary();
+    }));
+    const summary = () => {
+      const total = parseFloat(ext.dataset.total) + (parseFloat(ext.elements["amount"].value) || 0);
+      const paid = parseFloat(ext.dataset.paid) + (parseFloat(ext.elements["paid_now"].value) || 0);
+      $("#extend-summary").innerHTML = `New total <b>${inr(total)}</b> · Paid <b>${inr(paid)}</b> · Balance <b>${inr(total - paid)}</b>`;
+    };
+    ["amount", "paid_now"].forEach((n) => ext.elements[n].addEventListener("input", summary));
+    summary();
+  }
+
   const form = $(".stay-form");
   if (!form) return;
 
   const f = (name) => form.elements[name];
-  const inr = (n) => "₹" + Math.round(n).toLocaleString("en-IN");
 
   // ── Foreign national fields ──
   const foreign = $("#foreign");
@@ -29,37 +49,22 @@
   f("g-nationality").addEventListener("input", toggleForeign);
   toggleForeign();
 
-  // ── Room → default rate & capacity ──
+  // ── Room → capacity ──
   const roomSel = f("s-room");
-  const roomInfo = Object.fromEntries(
-    (roomSel.dataset.rooms || "").split(",").filter(Boolean).map((x) => {
-      const [id, rate, max] = x.split(":");
-      return [id, { rate: parseFloat(rate), max: parseInt(max, 10) }];
-    })
+  const roomMax = Object.fromEntries(
+    (roomSel.dataset.rooms || "").split(",").filter(Boolean).map((x) => x.split(":"))
   );
-  let lastDefault = roomInfo[roomSel.value] ? roomInfo[roomSel.value].rate : null;
-  roomSel.addEventListener("change", () => {
-    const info = roomInfo[roomSel.value];
-    if (!info) return;
-    const rate = f("s-nightly_rate");
-    if (!rate.value || parseFloat(rate.value) === 0 || parseFloat(rate.value) === lastDefault) rate.value = info.rate;
-    lastDefault = info.rate;
-    f("s-num_guests").max = info.max;
-    update();
-  });
+  roomSel.addEventListener("change", () => { if (roomMax[roomSel.value]) f("s-num_guests").max = roomMax[roomSel.value]; });
 
   // ── Nights / total / balance ──
   const ci = f("s-check_in"), co = f("s-check_out");
   const update = () => {
     const a = ci.valueAsDate, b = co.valueAsDate;
     const nights = a && b ? Math.round((b - a) / 86400000) : 0;
-    const rate = parseFloat(f("s-nightly_rate").value) || 0;
+    const total = parseFloat(f("s-total_amount").value) || 0;
     const paid = parseFloat(f("s-amount_paid").value) || 0;
     $("#nights-line").textContent = nights > 0 ? `${nights} night${nights === 1 ? "" : "s"}` : (a && b ? "Check-out must be after check-in" : "");
-    const total = nights > 0 ? nights * rate : 0;
-    $("#total-line").innerHTML = nights > 0
-      ? `Total <b>${inr(total)}</b> · Paid <b>${inr(paid)}</b> · Balance <b>${inr(total - paid)}</b>`
-      : "";
+    $("#total-line").innerHTML = `Total <b>${inr(total)}</b> · Paid <b>${inr(paid)}</b> · Balance <b>${inr(total - paid)}</b>`;
   };
   ci.addEventListener("change", () => {
     if (ci.value && (!co.value || co.value <= ci.value)) {
@@ -68,7 +73,7 @@
     co.min = ci.value;
     update();
   });
-  ["s-check_out", "s-nightly_rate", "s-amount_paid"].forEach((n) => f(n).addEventListener("input", update));
+  ["s-check_out", "s-total_amount", "s-amount_paid"].forEach((n) => f(n).addEventListener("input", update));
   update();
 
   // ── Returning guest autofill (new stays only) ──

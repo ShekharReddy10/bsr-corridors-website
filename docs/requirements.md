@@ -34,7 +34,7 @@ No sign-up, no other roles. The admin account is created from the command line.
 - FR-3 Repeated failed logins are throttled (e.g. 5 attempts → 15 min lock).
 
 ### 3.2 Room configuration (admin-configurable)
-- FR-4 CRUD **room types**: name (e.g. "Luxury AC"), AC / Non-AC, bed type, max guests, default nightly rate.
+- FR-4 CRUD **room types**: name (e.g. "Luxury AC"), AC / Non-AC, bed type, max guests.
 - FR-5 CRUD **rooms**: room number, floor, room type, status (Active / Under maintenance).
 - FR-6 A room type or room that has stays cannot be deleted — only deactivated (keeps history intact).
 - FR-7 Number of rooms and types is not fixed; all are configured from the admin UI.
@@ -53,8 +53,10 @@ Each **stay** records:
 | Room | ✔ | |
 | Check-in date | ✔ | |
 | Check-out date | ✔ | Must be after check-in |
+| Booked via | ✔ | Walk-in / Direct (call, WhatsApp) / Airbnb / Booking.com / MakeMyTrip / Other |
+| Booking reference | | OTA confirmation code |
+| Total amount | ✔ | Agreed price for the **whole stay** (not per night) |
 | Amount paid | ✔ | ₹; can be updated as payments come in |
-| Nightly rate | [Suggested] | Pre-filled from room type; editable per stay |
 | Payment mode | [Suggested] | Cash / UPI / Card / Bank transfer |
 | Number of guests | [Suggested] | Cannot exceed the room type's max guests |
 | Notes | [Suggested] | Free text |
@@ -62,12 +64,14 @@ Each **stay** records:
 - FR-8 Create, view, edit, cancel and delete stays.
 - FR-9 **No double booking:** a room cannot have overlapping stays — enforced in the database, not just the UI.
 - FR-10 Search stays/guests by name or phone; filter by date range and room.
-- FR-11 [Suggested] **Returning guest autofill:** typing a known phone number fills name, address, nationality and ID details.
-- FR-12 [Suggested] **Balance due:** total = nights × nightly rate; balance = total − amount paid; highlighted when unpaid.
+- FR-11 **One guest per phone number.** Typing a known number fills the saved details; a **Guests** page searches by
+  phone or name and starts a new booking for that guest. Saving a second guest with the same number is blocked.
+- FR-12 **Balance due** = total amount − amount paid; highlighted when unpaid.
 - FR-13 [Suggested] **Status:** Upcoming → Checked in → Checked out, or Cancelled. One-tap "Check in" / "Check out".
 
 ### 3.4 Smart stay extension
-- FR-14 "Extend stay" on any active stay: pick a new check-out date, or quick buttons **+1 / +2 / +7 nights**.
+- FR-14 "Extend stay" on any active stay: pick a new check-out date, or quick buttons **+1 / +2 / +7 nights**,
+  enter the **amount for the extra days** (added to the stay total) and optionally an amount **paid now**.
 - FR-15 The system checks the same room for conflicts before saving:
   - **Free →** extends in place; total and balance update automatically.
   - **Booked →** shows who has the room next, and offers:

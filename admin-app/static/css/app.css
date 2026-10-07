@@ -227,6 +227,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .quick form, .quick .btn { width: 100%; }
 .quick .btn { flex-direction: column; min-height: 64px; gap: 0; }
 .quick small { font-weight: 400; color: var(--ink-soft); }
+.quick .btn[aria-pressed="true"] { border-color: var(--gold); background: #fbf3e6; }
 .choice-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
 .card h2 + .muted.small { margin-top: -8px; margin-bottom: 10px; }
 

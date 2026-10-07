@@ -13,6 +13,11 @@
 
   <section class="card">
     <h2>Guest</h2>
+    {% if gform.instance.pk and not stay %}
+      <div class="returning">Booking for <b>{{ gform.instance.name }}</b> ({{ gform.instance.phone }}) — saved details are filled in. Edit anything that changed. <a href="{% url 'stay_new' %}">Different guest?</a></div>
+    {% elif not stay %}
+      <p class="muted small">Start with the phone number — if the guest has stayed before, their details are filled in. Or <a href="{% url 'guest_list' %}">search guests</a>.</p>
+    {% endif %}
     <div class="form-grid">
       {% field gform.phone %}
       <div id="returning" class="returning" hidden></div>
@@ -39,12 +44,14 @@
   <section class="card">
     <h2>Stay</h2>
     <div class="form-grid">
+      {% field sform.source %}
+      {% field sform.source_ref %}
       {% field sform.room "span-2" %}
       {% field sform.check_in %}
       {% field sform.check_out %}
       <p class="span-2 nights-line" id="nights-line"></p>
       {% field sform.num_guests %}
-      {% field sform.nightly_rate %}
+      {% field sform.total_amount %}
       {% field sform.amount_paid %}
       {% field sform.payment_mode %}
       <p class="span-2 total-line" id="total-line"></p>
