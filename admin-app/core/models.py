@@ -16,6 +16,7 @@ class RoomType(models.Model):
     is_active = models.BooleanField(default=True)
 
     class Meta:
+        db_table = "room_types"
         ordering = ["name"]
 
     def __str__(self):
@@ -36,6 +37,7 @@ class Room(models.Model):
     notes = models.TextField(blank=True)
 
     class Meta:
+        db_table = "rooms"
         ordering = ["sort_order", "floor", "number"]
 
     def __str__(self):
@@ -66,6 +68,7 @@ class Guest(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        db_table = "guests"
         ordering = ["name"]
 
     def __str__(self):
@@ -129,6 +132,7 @@ class Stay(models.Model):
     objects = StayQuerySet.as_manager()
 
     class Meta:
+        db_table = "stays"
         ordering = ["-check_in"]
         indexes = [models.Index(fields=["room", "check_in", "check_out"])]
         constraints = [
@@ -177,6 +181,7 @@ class AuditLog(models.Model):
     stay = models.ForeignKey(Stay, null=True, blank=True, on_delete=models.SET_NULL, related_name="logs")
 
     class Meta:
+        db_table = "audit_log"
         ordering = ["-at"]
 
     def __str__(self):
@@ -200,6 +205,7 @@ class BackupRun(models.Model):
     link = models.URLField(blank=True)
 
     class Meta:
+        db_table = "backup_runs"
         ordering = ["-started_at"]
 
 
@@ -208,6 +214,9 @@ class AppSetting(models.Model):
 
     key = models.CharField(max_length=80, unique=True)
     value = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "app_settings"
 
     @classmethod
     def get(cls, key: str, default: str = "") -> str:

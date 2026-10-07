@@ -12,7 +12,7 @@ ALTER TABLE core_stay ADD CONSTRAINT core_stay_no_overlap
   EXCLUDE USING gist (room_id WITH =, daterange(check_in, check_out, '[)') WITH &&)
   WHERE (status <> 'cancelled');
 """
-DROP = "ALTER TABLE core_stay DROP CONSTRAINT IF EXISTS core_stay_no_overlap;"
+DROP = "ALTER TABLE core_stay DROP CONSTRAINT IF EXISTS core_stay_no_overlap;"  # renamed to stays_no_overlap in 0003
 
 
 def forwards(apps, schema_editor):

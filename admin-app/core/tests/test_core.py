@@ -41,7 +41,7 @@ class EncryptionTests(TestCase):
     def test_id_number_encrypted_at_rest_and_in_backup(self):
         g = make_guest()
         with connection.cursor() as cur:
-            cur.execute("SELECT id_number FROM core_guest WHERE id = %s", [g.pk])
+            cur.execute(f"SELECT id_number FROM {Guest._meta.db_table} WHERE id = %s", [g.pk])
             raw = cur.fetchone()[0]
         self.assertTrue(raw.startswith("enc:"))
         self.assertNotIn("123412341234", raw)
