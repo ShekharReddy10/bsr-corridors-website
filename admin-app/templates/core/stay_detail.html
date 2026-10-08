@@ -7,6 +7,7 @@
     <h1>{{ g.name }} <span class="status status-{{ stay.status }}">{{ stay.get_status_display }}</span></h1>
     <p class="muted">{{ stay.room }} · {{ stay.room.room_type.name }} · {{ stay.check_in|date:"D d-m-Y" }} → {% if stay.check_out %}{{ stay.check_out|date:"D d-m-Y" }} · {{ stay.nights }} night{{ stay.nights|pluralize }}{% else %}<b>open (monthly)</b> · {{ stay.nights }} night{{ stay.nights|pluralize }} so far{% endif %}</p>
     <p class="muted">Booked via <b>{{ stay.get_source_display }}</b>{% if stay.source_ref %} · Ref {{ stay.source_ref }}{% endif %}</p>
+    {% if stay.transferred_to %}<p>Transferred to <b>{{ stay.transferred_to }}</b>{% if stay.transfer_reason %} · {{ stay.transfer_reason }}{% endif %}</p>{% endif %}
   </div>
   <a class="btn btn-outline" href="{% url 'stay_edit' stay.pk %}">Edit</a>
 </div>
@@ -67,11 +68,11 @@
       <dt>Total</dt><dd>{{ stay.total|inr }} <small class="muted">{% if stay.check_out %}for {{ stay.nights }} night{{ stay.nights|pluralize }}{% else %}rent added so far{% endif %}</small></dd>
       {% if stay.kind == 'monthly' %}<dt>Monthly rent</dt><dd>{{ stay.monthly_rent|inr }}</dd>{% endif %}
       <dt>Paid</dt><dd>{{ stay.amount_paid|inr }}{% if stay.payment_mode %} · {{ stay.get_payment_mode_display }}{% endif %}</dd>
-      <dt>Balance</dt><dd class="{% if stay.balance > 0 %}warn{% endif %}"><b>{{ stay.balance|inr }}</b></dd>
+      <dt>Balance</dt><dd class="{% if stay.balance > 0 and not stay.is_void %}warn{% endif %}"><b>{% if stay.is_void %}—{% else %}{{ stay.balance|inr }}{% endif %}</b></dd>
       {% if stay.deposit_amount %}<dt>Deposit held</dt><dd>{{ stay.deposit_amount|inr }} <small class="muted">(refundable, not counted as paid)</small></dd>{% endif %}
       <dt>Guests</dt><dd>{{ stay.num_guests }}</dd>
     </dl>
-    {% if stay.status != 'cancelled' %}
+    {% if not stay.is_void %}
     <form method="post" action="{% url 'stay_action' stay.pk 'payment' %}" class="pay-form">{% csrf_token %}
       <input name="amount" type="number" min="1" step="1" inputmode="decimal" placeholder="Amount ₹" required aria-label="Payment amount"
              {% if stay.balance > 0 %}value="{{ stay.balance|floatformat:0 }}"{% endif %}>
@@ -111,8 +112,13 @@
     <label>{% if stay.check_out %}Leaving early on{% else %}Leaving on{% endif %} <input type="date" name="new_check_out" value="{{ today|date:'Y-m-d' }}"></label>
     <button class="btn btn-outline btn-sm">{% if stay.check_out %}Shorten stay{% else %}Set leaving date{% endif %}</button>
   </form>
+  <form method="post" action="{% url 'stay_action' stay.pk 'transfer' %}" class="inline-form" data-confirm="Transfer {{ g.name }} to another hotel? {{ stay.room }} becomes free.">{% csrf_token %}
+    <input name="hotel" required maxlength="120" placeholder="Other hotel’s name" aria-label="Other hotel’s name">
+    <input name="reason" maxlength="200" placeholder="Reason, e.g. wanted AC room" aria-label="Reason for transfer">
+    <button class="btn btn-outline btn-sm">Transfer to another hotel</button>
+  </form>
   <form method="post" action="{% url 'stay_action' stay.pk 'cancel' %}" class="inline-form" data-confirm="Cancel this stay? The room becomes free.">{% csrf_token %}<button class="btn btn-outline btn-sm">Cancel stay</button></form>
-  {% elif stay.status == 'cancelled' %}
+  {% elif stay.is_void %}
   <form method="post" action="{% url 'stay_action' stay.pk 'undo-cancel' %}" class="inline-form">{% csrf_token %}<button class="btn btn-outline btn-sm">Restore stay</button></form>
   {% endif %}
   <form method="post" action="{% url 'stay_action' stay.pk 'delete' %}" class="inline-form" data-confirm="Delete this stay permanently? This cannot be undone.">{% csrf_token %}<button class="btn btn-danger btn-sm">Delete stay</button></form>

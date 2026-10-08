@@ -102,8 +102,8 @@ class Guest(models.Model):
 
 class StayQuerySet(models.QuerySet):
     def live(self):
-        """Everything except cancelled stays."""
-        return self.exclude(status=Stay.Status.CANCELLED)
+        """Everything except cancelled stays and guests transferred to another hotel (their room is free)."""
+        return self.exclude(status__in=Stay.VOID_STATUSES)
 
     def overlapping(self, start, end=None):
         """Stays occupying at least one night in [start, end). end=None means "from start onwards".
@@ -118,6 +118,7 @@ class Stay(models.Model):
         CHECKED_IN = "checked_in", "Checked in"
         CHECKED_OUT = "checked_out", "Checked out"
         CANCELLED = "cancelled", "Cancelled"
+        TRANSFERRED = "transferred", "Transferred out"
 
     class Kind(models.TextChoices):
         DAILY = "daily", "Daily"
@@ -155,6 +156,9 @@ class Stay(models.Model):
                                          help_text="Refundable; not counted as rent paid")
     payment_mode = models.CharField(max_length=20, choices=PaymentMode.choices, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.UPCOMING, db_index=True)
+    # Guest sent to another hotel (e.g. booked non-AC, wanted AC and none was free).
+    transferred_to = models.CharField("Transferred to (hotel)", max_length=120, blank=True)
+    transfer_reason = models.CharField("Reason for transfer", max_length=200, blank=True)
     form_c_filed = models.BooleanField("Form C filed", default=False)
     notes = models.TextField(blank=True)
     # Split stays (guest moved rooms during an extension) point at the first stay of the chain.
@@ -163,6 +167,9 @@ class Stay(models.Model):
     checked_out_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    # Stays that don't hold their room.
+    VOID_STATUSES = (Status.CANCELLED, Status.TRANSFERRED)
 
     objects = StayQuerySet.as_manager()
 
@@ -201,6 +208,10 @@ class Stay(models.Model):
     @property
     def balance(self) -> Decimal:
         return self.total - (self.amount_paid or Decimal(0))
+
+    @property
+    def is_void(self) -> bool:
+        return self.status in self.VOID_STATUSES
 
     @property
     def is_active(self) -> bool:

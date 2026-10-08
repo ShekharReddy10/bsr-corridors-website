@@ -199,6 +199,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .status-checked_in { background: #dff3e6; color: #17663a; }
 .status-checked_out { background: #eceff0; color: #4d5a60; }
 .status-cancelled { background: #fbe4e2; color: #8a1c12; text-decoration: line-through; }
+.status-transferred { background: #f1e6fa; color: #5b2a86; }
 .tag { display: inline-block; font-size: .72rem; background: var(--bg); border-radius: 6px; padding: 1px 6px; color: var(--ink-soft); }
 
 /* Stay lines */

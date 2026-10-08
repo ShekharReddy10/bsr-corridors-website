@@ -23,7 +23,7 @@ def guest_list(request):
 def guest_detail(request, pk):
     guest = get_object_or_404(Guest, pk=pk)
     stays = guest.stays.select_related("room").order_by("-check_in")
-    live = stays.exclude(status=Stay.Status.CANCELLED)
+    live = stays.live()
     totals = live.aggregate(total=Sum("total_amount"), paid=Sum("amount_paid"))
     total, paid = totals["total"] or 0, totals["paid"] or 0
     return render(request, "core/guest_detail.html", {

@@ -191,9 +191,15 @@ def stay_action(request, pk, action):
         elif action == "cancel":
             services.cancel(stay)
             messages.success(request, "Stay cancelled. The room is free again.")
+        elif action == "transfer":
+            room = stay.room
+            services.transfer_out(stay, request.POST.get("hotel", ""), request.POST.get("reason", ""))
+            messages.success(request, f"{stay.guest.name} transferred to {stay.transferred_to}. {room} is free again.")
         elif action == "undo-cancel":
+            was = "Transferred" if stay.status == Stay.Status.TRANSFERRED else "Cancelled"
             stay.status = Stay.Status.UPCOMING
-            services.save_stay(stay, action="restore", summary="Cancelled stay restored")
+            stay.transferred_to = stay.transfer_reason = ""
+            services.save_stay(stay, action="restore", summary=f"{was} stay restored")
             messages.success(request, "Stay restored.")
         elif action == "form-c":
             stay.form_c_filed = not stay.form_c_filed

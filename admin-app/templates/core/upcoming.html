@@ -9,7 +9,7 @@
 {% if late %}
 <section class="card">
   <h2>Not yet checked in <span class="count">{{ late|length }}</span></h2>
-  <p class="muted small">Arrival date has passed — check in, or cancel if they didn’t come.</p>
+  <p class="muted small">Arrival date has passed — check in, transfer them to another hotel, or cancel if they didn’t come.</p>
   {% for s in late %}{% include "partials/stay_line.html" with s=s warn=True note="Expected" d1=s.check_in action="check-in" %}{% endfor %}
 </section>
 {% endif %}

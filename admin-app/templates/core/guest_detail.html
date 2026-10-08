@@ -37,7 +37,7 @@
     <div class="stay-line">
       <a class="stay-line-main" href="{% url 'stay_detail' s.pk %}"><span class="room-badge">{{ s.room.number }}</span>
         <span><b>{{ s.dates_label }}</b>
-        <small>{{ s.get_status_display }} · {{ s.get_source_display }} · {{ s.total|inr }} · paid {{ s.amount_paid|inr }}{% if s.balance > 0 and s.status != 'cancelled' %} · <span class="warn">{{ s.balance|inr }} due</span>{% endif %}</small></span></a>
+        <small>{{ s.get_status_display }}{% if s.transferred_to %} · sent to {{ s.transferred_to }}{% endif %} · {{ s.get_source_display }} · {{ s.total|inr }} · paid {{ s.amount_paid|inr }}{% if s.balance > 0 and not s.is_void %} · <span class="warn">{{ s.balance|inr }} due</span>{% endif %}</small></span></a>
     </div>
   {% empty %}<p class="muted">No stays.</p>{% endfor %}
 </section>

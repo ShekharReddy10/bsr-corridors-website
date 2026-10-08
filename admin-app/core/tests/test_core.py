@@ -82,6 +82,32 @@ class AvailabilityTests(TestCase):
         services.cancel(s)
         stay(make_guest("Anita", "+91 90000 00001"), self.rooms["101"], 1, 1)
 
+    def test_transfer_on_arrival_frees_room(self):
+        s = stay(self.g, self.rooms["201"], 0, 3)
+        services.transfer_out(s, "  Hotel Sitara  ", "Wanted AC room")
+        s.refresh_from_db()
+        self.assertEqual(s.status, Stay.Status.TRANSFERRED)
+        self.assertEqual((s.transferred_to, s.transfer_reason), ("Hotel Sitara", "Wanted AC room"))
+        self.assertIn("201", services.free_rooms(T, T + timedelta(days=3)).values_list("number", flat=True))
+        stay(make_guest("Anita", "+91 90000 00001"), self.rooms["201"], 0, 3)  # DB constraint lets it through too
+        self.assertIn("Hotel Sitara", AuditLog.objects.filter(action="transfer").get().summary)
+
+    def test_transfer_after_nights_stayed_keeps_them(self):
+        s = stay(self.g, self.rooms["201"], -2, 5, status=Stay.Status.CHECKED_IN)
+        services.transfer_out(s, "Hotel Sitara")
+        s.refresh_from_db()
+        self.assertEqual((s.status, s.check_out, s.transferred_to), (Stay.Status.CHECKED_OUT, T, "Hotel Sitara"))
+        stay(make_guest("Anita", "+91 90000 00001"), self.rooms["201"], 0, 2)
+        with self.assertRaises(services.StayConflict):
+            stay(make_guest("Vijay", "+91 90000 00002"), self.rooms["201"], -1, 1)
+
+    def test_transfer_needs_hotel_name(self):
+        s = stay(self.g, self.rooms["201"], 0, 1)
+        with self.assertRaises(ValueError):
+            services.transfer_out(s, "  ")
+        s.refresh_from_db()
+        self.assertEqual(s.status, Stay.Status.UPCOMING)
+
     @skipUnless(connection.vendor == "postgresql", "exclusion constraint is Postgres-only")
     def test_database_blocks_overlap_even_without_service(self):
         stay(self.g, self.rooms["101"], 0, 3)

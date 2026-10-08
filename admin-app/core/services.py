@@ -54,7 +54,7 @@ def save_stay(stay: Stay, *, action: str, summary: str) -> Stay:
     """Save a stay only if its room is free for all its nights. Raises StayConflict."""
     with transaction.atomic():
         _lock_room(stay.room)
-        if stay.status != Stay.Status.CANCELLED:
+        if not stay.is_void:
             clash = conflicts(stay.room, stay.check_in, stay.check_out, exclude_ids=[stay.pk])
             if clash.exists():
                 raise StayConflict(clash)
@@ -313,3 +313,28 @@ def add_payment(stay: Stay, amount: Decimal, mode: str) -> Stay:
 def cancel(stay: Stay) -> Stay:
     stay.status = Stay.Status.CANCELLED
     return save_stay(stay, action="cancel", summary="Stay cancelled")
+
+
+def transfer_out(stay: Stay, hotel: str, reason: str = "") -> Stay:
+    """Send the guest to another hotel and free the room.
+    If they have already stayed some nights, those are kept (early checkout today); otherwise the
+    whole booking is marked transferred and the room is free for all its dates."""
+    hotel, reason = hotel.strip(), reason.strip()
+    if not hotel:
+        raise ValueError("Enter the name of the hotel the guest was sent to.")
+    if not stay.is_active:
+        raise ValueError("Only upcoming or checked-in stays can be transferred.")
+    stay.transferred_to, stay.transfer_reason = hotel, reason
+    why = f" ({reason})" if reason else ""
+    t = today()
+    if stay.status == Stay.Status.CHECKED_IN and stay.check_in < t:
+        old = f"{stay.check_out:%d-%m-%Y}" if stay.check_out else "open"
+        if stay.check_out is None or stay.check_out > t:
+            stay.check_out = t
+        stay.status = Stay.Status.CHECKED_OUT
+        stay.checked_out_at = timezone.now()
+        summary = f"Transferred to {hotel}{why} — checked out of {stay.room} today (was booked until {old})"
+    else:
+        stay.status = Stay.Status.TRANSFERRED
+        summary = f"Transferred to {hotel}{why} — {stay.room} is free again"
+    return save_stay(stay, action="transfer", summary=summary)
