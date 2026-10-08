@@ -89,4 +89,5 @@
     <a class="btn btn-ghost" href="{% if stay %}{% url 'stay_detail' stay.pk %}{% else %}{% url 'dashboard' %}{% endif %}">Cancel</a>
   </div>
 </form>
+{% if stay %}{% include "partials/transfer_form.html" %}{% endif %}
 {% endblock %}

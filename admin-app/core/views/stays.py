@@ -126,7 +126,8 @@ def stay_form(request, pk=None):
         sform = StayForm(instance=stay, initial=initial, prefix="s")
         others = other_guests_formset(stay or Stay())
     return render(request, "core/stay_form.html",
-                  {"stay": stay, "gform": gform, "sform": sform, "others": others, "checking_in": checking_in})
+                  {"stay": stay, "gform": gform, "sform": sform, "others": others, "checking_in": checking_in,
+                   "today": services.today()})
 
 
 def upcoming(request):

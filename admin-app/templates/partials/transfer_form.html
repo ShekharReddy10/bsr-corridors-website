@@ -1,0 +1,11 @@
+{% if stay.is_active %}
+<details class="card transfer-card">
+  <summary>Transfer to another hotel</summary>
+  <p class="muted small">E.g. booked non-AC but wants AC and none is free. {{ stay.room }} becomes free{% if stay.status == 'checked_in' and stay.check_in < today %} from today (nights already stayed are kept){% endif %}.</p>
+  <form method="post" action="{% url 'stay_action' stay.pk 'transfer' %}" class="inline-form" data-confirm="Transfer {{ stay.guest.name }} to another hotel? {{ stay.room }} becomes free.">{% csrf_token %}
+    <input name="hotel" required maxlength="120" placeholder="Other hotel’s name" aria-label="Other hotel’s name">
+    <input name="reason" maxlength="200" placeholder="Reason, e.g. wanted AC room" aria-label="Reason for transfer">
+    <button class="btn btn-outline btn-sm">Transfer guest</button>
+  </form>
+</details>
+{% endif %}

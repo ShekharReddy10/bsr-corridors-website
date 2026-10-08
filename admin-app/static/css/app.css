@@ -226,7 +226,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .pay-form select { flex: 0 1 140px; width: auto; }
 .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: .9rem; }
 .log time { color: var(--ink-soft); font-variant-numeric: tabular-nums; margin-right: 8px; }
-.danger-zone summary { cursor: pointer; font-weight: 600; }
+.danger-zone summary, .transfer-card summary { cursor: pointer; font-weight: 600; }
 .id-full { font-family: ui-monospace, monospace; letter-spacing: .05em; }
 
 /* Extend */

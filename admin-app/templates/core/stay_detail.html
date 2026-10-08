@@ -29,6 +29,8 @@
   {% endif %}
 </div>
 
+{% include "partials/transfer_form.html" %}
+
 {% if stay.form_c_due %}
   <div class="alert"><b>Form C due.</b> Foreign national — file Form C with the FRRO within 24 hours of check-in.
     <form method="post" action="{% url 'stay_action' stay.pk 'form-c' %}" class="inline-form">{% csrf_token %}<button class="btn btn-sm btn-outline">Mark as filed</button></form>
@@ -111,11 +113,6 @@
   <form method="post" action="{% url 'stay_action' stay.pk 'shorten' %}" class="inline-form">{% csrf_token %}
     <label>{% if stay.check_out %}Leaving early on{% else %}Leaving on{% endif %} <input type="date" name="new_check_out" value="{{ today|date:'Y-m-d' }}"></label>
     <button class="btn btn-outline btn-sm">{% if stay.check_out %}Shorten stay{% else %}Set leaving date{% endif %}</button>
-  </form>
-  <form method="post" action="{% url 'stay_action' stay.pk 'transfer' %}" class="inline-form" data-confirm="Transfer {{ g.name }} to another hotel? {{ stay.room }} becomes free.">{% csrf_token %}
-    <input name="hotel" required maxlength="120" placeholder="Other hotel’s name" aria-label="Other hotel’s name">
-    <input name="reason" maxlength="200" placeholder="Reason, e.g. wanted AC room" aria-label="Reason for transfer">
-    <button class="btn btn-outline btn-sm">Transfer to another hotel</button>
   </form>
   <form method="post" action="{% url 'stay_action' stay.pk 'cancel' %}" class="inline-form" data-confirm="Cancel this stay? The room becomes free.">{% csrf_token %}<button class="btn btn-outline btn-sm">Cancel stay</button></form>
   {% elif stay.is_void %}
