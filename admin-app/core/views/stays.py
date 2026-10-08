@@ -170,6 +170,8 @@ def stay_detail(request, pk):
         "shorten_form": ShortenForm(initial={"new_check_out": services.today()}),
         "today": services.today(),
     }
+    if stay.status == Stay.Status.CHECKED_OUT:
+        context["booked_check_out"] = services.booked_check_out(stay)
     return render(request, "core/stay_detail.html", context)
 
 
@@ -192,6 +194,12 @@ def stay_action(request, pk, action):
         elif action == "cancel":
             services.cancel(stay)
             messages.success(request, "Stay cancelled. The room is free again.")
+        elif action == "undo-check-out":
+            services.undo_check_out(stay, parse_date(request.POST.get("check_out") or ""))
+            messages.success(request, f"Check-out undone. {stay.guest.name} is checked in to {stay.room} again.")
+        elif action == "undo-check-in":
+            services.undo_check_in(stay)
+            messages.success(request, "Check-in undone. The stay is upcoming again.")
         elif action == "transfer":
             room = stay.room
             services.transfer_out(stay, request.POST.get("hotel", ""), request.POST.get("reason", ""))

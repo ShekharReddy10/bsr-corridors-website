@@ -101,6 +101,40 @@ class AvailabilityTests(TestCase):
         with self.assertRaises(services.StayConflict):
             stay(make_guest("Vijay", "+91 90000 00002"), self.rooms["201"], -1, 1)
 
+    def test_undo_early_check_out_restores_booked_date(self):
+        s = stay(self.g, self.rooms["201"], -1, 4, status=Stay.Status.CHECKED_IN)
+        booked = s.check_out
+        services.check_out(s)
+        self.assertEqual((s.check_out, services.booked_check_out(s)), (T, booked))
+        services.undo_check_out(s, services.booked_check_out(s))
+        s.refresh_from_db()
+        self.assertEqual((s.status, s.check_out, s.checked_out_at), (Stay.Status.CHECKED_IN, booked, None))
+
+    def test_undo_check_out_blocked_if_room_rebooked(self):
+        s = stay(self.g, self.rooms["201"], -1, 4, status=Stay.Status.CHECKED_IN)
+        booked = s.check_out
+        services.check_out(s)
+        stay(make_guest("Anita", "+91 90000 00001"), self.rooms["201"], 1, 1)
+        with self.assertRaises(services.StayConflict):
+            services.undo_check_out(s, booked)
+
+    def test_undo_monthly_check_out_reopens(self):
+        s = Stay(guest=self.g, room=self.rooms["201"], kind=Stay.Kind.MONTHLY, check_in=T - timedelta(days=5),
+                 status=Stay.Status.CHECKED_IN)
+        services.save_stay(s, action="create", summary="test")
+        services.check_out(s)
+        self.assertIsNone(services.booked_check_out(s))
+        services.undo_check_out(s, None)
+        s.refresh_from_db()
+        self.assertEqual((s.status, s.check_out), (Stay.Status.CHECKED_IN, None))
+
+    def test_undo_check_in(self):
+        s = stay(self.g, self.rooms["201"], 0, 2)
+        services.check_in(s)
+        services.undo_check_in(s)
+        s.refresh_from_db()
+        self.assertEqual((s.status, s.checked_in_at), (Stay.Status.UPCOMING, None))
+
     def test_transfer_needs_hotel_name(self):
         s = stay(self.g, self.rooms["201"], 0, 1)
         with self.assertRaises(ValueError):

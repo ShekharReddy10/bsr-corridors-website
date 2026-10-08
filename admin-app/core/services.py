@@ -1,7 +1,8 @@
 """Business rules for stays: availability, safe saves, extensions, check-in/out."""
 
+import re
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
@@ -281,6 +282,45 @@ def check_out(stay: Stay) -> Stay:
     stay.status = Stay.Status.CHECKED_OUT
     stay.checked_out_at = timezone.now()
     return save_stay(stay, action="check_out", summary=f"Checked out of {stay.room}{note}")
+
+
+def booked_check_out(stay: Stay) -> date | None:
+    """The check-out date the stay had before it was checked out (early checkout shortens it).
+    Read back from the check-out log; None means it was an open (monthly) stay."""
+    log = stay.logs.filter(action__in=["check_out", "transfer"]).order_by("-at").first()
+    text = log.summary if log else ""
+    if "monthly stay ended" in text:
+        return None
+    m = re.search(r"was booked until (\d{2}-\d{2}-\d{4}|open)", text)
+    if not m:
+        return stay.check_out
+    return None if m[1] == "open" else datetime.strptime(m[1], "%d-%m-%Y").date()
+
+
+def undo_check_out(stay: Stay, check_out: date | None) -> Stay:
+    """Checked out by mistake: back to checked in, with the given check-out date (None = open monthly stay)."""
+    if stay.status != Stay.Status.CHECKED_OUT:
+        raise ValueError("Only checked-out stays can be undone.")
+    if check_out is None and stay.kind != Stay.Kind.MONTHLY:
+        raise ValueError("Pick the check-out date.")
+    if check_out is not None and check_out <= stay.check_in:
+        raise ValueError("The check-out date must be after check-in.")
+    old = stay.check_out
+    stay.status = Stay.Status.CHECKED_IN
+    stay.check_out = check_out
+    stay.checked_out_at = None
+    stay.transferred_to = stay.transfer_reason = ""
+    until = f"{check_out:%d-%m-%Y}" if check_out else "open (monthly)"
+    return save_stay(stay, action="undo_check_out",
+                     summary=f"Check-out undone — back in {stay.room}, check-out {old:%d-%m-%Y} → {until}")
+
+
+def undo_check_in(stay: Stay) -> Stay:
+    if stay.status != Stay.Status.CHECKED_IN:
+        raise ValueError("Only checked-in stays can be undone.")
+    stay.status = Stay.Status.UPCOMING
+    stay.checked_in_at = None
+    return save_stay(stay, action="undo_check_in", summary="Check-in undone — back to upcoming")
 
 
 def shorten(stay: Stay, new_check_out: date) -> Stay:

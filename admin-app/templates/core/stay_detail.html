@@ -17,6 +17,13 @@
     <form method="post" action="{% url 'stay_action' stay.pk 'check-in' %}">{% csrf_token %}<button class="btn btn-primary">Check in</button></form>
   {% elif stay.status == 'checked_in' %}
     <form method="post" action="{% url 'stay_action' stay.pk 'check-out' %}" data-confirm="{% if today < stay.check_out and today > stay.check_in %}Guest is booked until {{ stay.check_out|date:'d-m-Y' }}. Check out today (early checkout)?{% endif %}">{% csrf_token %}<button class="btn btn-primary">Check out</button></form>
+    <form method="post" action="{% url 'stay_action' stay.pk 'undo-check-in' %}" data-confirm="Undo check-in? The stay goes back to upcoming.">{% csrf_token %}<button class="btn btn-ghost">Undo check-in</button></form>
+  {% elif stay.status == 'checked_out' %}
+    <form method="post" action="{% url 'stay_action' stay.pk 'undo-check-out' %}" class="inline-form" data-confirm="Undo check-out? {{ g.name }} goes back to checked in.">{% csrf_token %}
+      <label>Stays until <input type="date" name="check_out" value="{{ booked_check_out|date:'Y-m-d' }}"{% if stay.kind != 'monthly' %} required{% endif %}></label>
+      {% if stay.kind == 'monthly' %}<small class="muted">Leave empty to keep it open (monthly)</small>{% endif %}
+      <button class="btn btn-outline">Undo check-out</button>
+    </form>
   {% endif %}
   {% if stay.is_active and stay.check_out %}<a class="btn btn-outline" href="{% url 'stay_extend' stay.pk %}">Extend stay</a>{% endif %}
   {% if stay.is_active and stay.kind == 'monthly' %}
