@@ -10,7 +10,7 @@ from django.test import TestCase, override_settings
 
 from core import services
 from core.exports import backup_json, build_workbook
-from core.models import AuditLog, Guest, Room, RoomType, Stay, StayGuest
+from core.models import AppSetting, AuditLog, Guest, Room, RoomType, Stay, StayGuest
 
 T = services.today()
 
@@ -558,3 +558,50 @@ class SecurityTests(TestCase):
         r = self.client.post("/backup/run/", HTTP_X_BACKUP_TOKEN="secret-token")  # Drive not configured → 500 + message
         self.assertEqual(r.status_code, 500)
         self.assertIn("not connected", r.json()["message"])
+
+
+class RevenueTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        _, _, self.rooms = make_rooms()
+        self.client.force_login(get_user_model().objects.create_user("rev-admin", password="test-pass-123456"))
+
+    def _unlock(self):
+        self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
+
+    def test_revenue_split_by_night_and_money(self):
+        from core import revenue
+        # In-house: 2 nights stayed (incl. tonight) of 4, ₹6,000 total, ₹2,000 paid.
+        a = stay(make_guest(), self.rooms["101"], -1, 4, status=Stay.Status.CHECKED_IN, amount_paid=Decimal(2000))
+        # Checked out and fully paid; upcoming with an advance; transferred (left out).
+        stay(make_guest("B", "+91 90000 00001"), self.rooms["102"], -3, 2, status=Stay.Status.CHECKED_OUT,
+             amount_paid=Decimal(3000))
+        stay(make_guest("C", "+91 90000 00002"), self.rooms["201"], 2, 1, amount_paid=Decimal(500))
+        services.transfer_out(stay(make_guest("D", "+91 90000 00003"), self.rooms["103"], 0, 2), "Hotel X")
+        r = revenue.build("all")
+        self.assertEqual(r.in_period.nights, 4 + 2 + 1)
+        self.assertEqual(r.in_period.earned, Decimal(1500) * 2 + Decimal(3000))
+        self.assertEqual(r.in_period.ahead, Decimal(1500) * 2 + Decimal(1500))
+        self.assertEqual(r.collected, Decimal(5500))
+        self.assertEqual((r.due_in_house, r.due_upcoming, r.due_checked_out), (Decimal(4000), Decimal(1000), 0))
+        self.assertEqual(r.by_type["Luxury AC"].total, Decimal(9000))
+        self.assertEqual([s.pk for s in r.unpaid], [a.pk])
+
+    def test_password_set_unlock_and_lockout(self):
+        self.assertContains(self.client.get("/revenue/"), "Set a revenue password")
+        self._unlock()
+        self.assertContains(self.client.get("/revenue/"), "Money so far")
+        self.assertNotIn("secret1", AppSetting.get("revenue_password_hash"))
+        self.client.post("/revenue/lock/")
+        self.assertContains(self.client.get("/revenue/"), "Enter the revenue password")
+        for _ in range(5):
+            self.client.post("/revenue/", {"password": "wrong"})
+        self.client.post("/revenue/", {"password": "secret1"})
+        self.assertContains(self.client.get("/revenue/"), "Enter the revenue password")  # locked out
+
+    def test_page_renders_with_data_for_every_period(self):
+        stay(make_guest(), self.rooms["101"], -40, 3, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(1000))
+        stay(make_guest("B", "+91 90000 00001"), self.rooms["201"], 1, 2)
+        self._unlock()
+        for key in ("week", "month", "last_month", "year", "all", "junk"):
+            self.assertContains(self.client.get(f"/revenue/?period={key}"), "Monthly revenue")

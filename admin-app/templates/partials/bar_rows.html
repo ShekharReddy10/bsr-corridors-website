@@ -1,0 +1,11 @@
+{% load bsr %}
+{% for row in rows %}
+  <div class="hbar" title="{{ row.name }}: {{ row.b.total|inr }}{% if row.b.ahead %} ({{ row.b.earned|inr }} earned + {{ row.b.ahead|inr }} booked ahead){% endif %}">
+    <div class="hbar-head"><span>{{ row.name }}</span><b>{{ row.b.total|inr }}</b></div>
+    <div class="hbar-track">
+      {% if row.b.earned %}<div class="vseg vseg-earned" style="width: {{ row.earned_pct|stringformat:'.2f' }}%"></div>{% endif %}
+      {% if row.b.ahead %}<div class="vseg vseg-ahead" style="width: {{ row.ahead_pct|stringformat:'.2f' }}%"></div>{% endif %}
+    </div>
+    <small class="muted">{{ row.b.nights }} room-night{{ row.b.nights|pluralize }} · {{ row.b.avg_rate|inr }} avg / night{% if row.b.ahead %} · {{ row.b.ahead|inr }} booked ahead{% endif %}</small>
+  </div>
+{% empty %}<p class="muted">{{ empty }}</p>{% endfor %}

@@ -309,3 +309,60 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .login-card .msg { margin: 0 0 6px; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* Revenue */
+.lock-card { max-width: 520px; }
+.lock-form { display: flex; gap: 8px; margin-bottom: 8px; }
+.money-grid { display: grid; gap: 16px; }
+@media (min-width: 768px) { .money-grid { grid-template-columns: 1fr 1fr; } }
+.money-hero { display: grid; gap: 6px; align-content: start; }
+.money-label { color: var(--ink-soft); font-size: .9rem; font-weight: 600; }
+.money-big { font-size: 2.2rem; line-height: 1.1; font-weight: 700; }
+.meter { height: 8px; border-radius: 999px; background: #cde2fb; overflow: hidden; }
+.meter > div { height: 100%; background: #2a78d6; border-radius: 999px; }
+.money-split { list-style: none; margin: 0; padding: 0; }
+.money-split li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.money-split li.warn b, .money-split li.warn span { color: var(--red); }
+.period-tabs { display: flex; gap: 6px; overflow-x: auto; margin: 0 0 12px; padding-bottom: 2px; }
+.period-tabs a { white-space: nowrap; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff; color: var(--ink); text-decoration: none; font-weight: 600; font-size: .9rem; }
+.period-tabs a[aria-current="page"] { background: var(--dark); border-color: var(--dark); color: #fff; }
+.rev-stats .stat:last-child { grid-column: auto; }
+.rev-stats .stat b { font-size: 1.25rem; }
+
+.vseg-earned { background: #2a78d6; }
+.vseg-ahead { background: #86b6ef; }
+.chart-legend { display: flex; gap: 14px; font-size: .85rem; color: var(--ink-soft); }
+.chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.key { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+.key-earned { background: #2a78d6; }
+.key-ahead { background: #86b6ef; }
+
+.colchart { --plot-h: 200px; margin: 18px 0 4px; }
+.colchart-plot { position: relative; height: var(--plot-h); margin-left: 44px; }
+.colchart-tick { position: absolute; left: 0; right: 0; border-top: 1px solid #ece7de; }
+.colchart-tick span { position: absolute; right: calc(100% + 6px); top: -.6em; font-size: .72rem; color: var(--ink-soft); white-space: nowrap; }
+.colchart-cols { position: absolute; inset: 0; display: flex; gap: 2px; align-items: stretch; }
+.col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; min-width: 0; }
+.col:hover { background: rgba(31, 42, 48, .05); }
+.col-bar { position: relative; width: 100%; max-width: 24px; min-height: 2px; display: flex; flex-direction: column; gap: 2px; }
+.col-bar .vseg { width: 100%; flex: none; }
+.col-bar .vseg-earned { flex: 1 1 auto; min-height: 1px; }
+.col-bar > .vseg:first-of-type { border-radius: 4px 4px 0 0; }
+.col-value { position: absolute; left: 50%; bottom: calc(100% + 4px); transform: translateX(-50%); font-size: .72rem; font-weight: 700; white-space: nowrap; color: var(--ink); }
+.colchart-labels { display: flex; gap: 2px; margin-left: 44px; border-top: 1px solid #c9c1b3; padding-top: 4px; }
+.colchart-labels span { flex: 1; min-width: 0; text-align: center; font-size: .7rem; color: var(--ink-soft); overflow: hidden; }
+.colchart-labels span.is-current { color: var(--ink); font-weight: 700; }
+.chart-table summary { cursor: pointer; font-size: .85rem; color: var(--ink-soft); margin-top: 8px; }
+.chart-table tr.is-current td { font-weight: 700; }
+
+.hbar { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.hbar:last-child { border-bottom: 0; }
+.hbar-head { display: flex; justify-content: space-between; gap: 12px; }
+.hbar-track { display: flex; gap: 2px; height: 14px; margin: 6px 0 4px; }
+.hbar-track .vseg { height: 100%; }
+.hbar-track .vseg:last-child { border-radius: 0 4px 4px 0; }
+@media (max-width: 640px) {
+  .colchart-labels span:nth-child(even):not(.is-current) { visibility: hidden; }
+  .colchart-labels span { overflow: visible; white-space: nowrap; }
+  .col-bar { max-width: 14px; }
+}

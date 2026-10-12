@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Revenue{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Revenue</h1><p class="muted">Protected by a separate password.</p></div></div>
+<section class="card lock-card">
+  {% if has_password %}
+    <h2>Enter the revenue password</h2>
+    <form method="post" class="lock-form">{% csrf_token %}
+      <input type="password" name="password" required autofocus autocomplete="current-password" aria-label="Revenue password">
+      <button class="btn btn-primary">Open</button>
+    </form>
+    <p class="muted small">Stays open for 30 minutes. Forgot it? Set <code>REVENUE_PASSWORD</code> in Render’s environment settings to reset.</p>
+  {% else %}
+    <h2>Set a revenue password</h2>
+    <p class="muted small">Only people who know it can see revenue. At least {{ min_length }} characters.</p>
+    <form method="post" class="form-grid">{% csrf_token %}
+      <div class="field"><label for="rp-new">Password</label><input id="rp-new" type="password" name="password" required minlength="{{ min_length }}" autocomplete="new-password"></div>
+      <div class="field"><label for="rp-confirm">Repeat password</label><input id="rp-confirm" type="password" name="confirm" required minlength="{{ min_length }}" autocomplete="new-password"></div>
+      <div class="span-2"><button class="btn btn-primary">Set password</button></div>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,89 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}Revenue{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Revenue</h1><p class="muted">Room revenue is counted per night stayed. Cancelled and transferred stays are left out.</p></div>
+  <form method="post" action="{% url 'revenue_lock' %}">{% csrf_token %}<button class="btn btn-outline">Lock</button></form>
+</div>
+
+<section class="card">
+  <h2>Money so far <span class="muted small">— all bookings</span></h2>
+  <div class="money-grid">
+    <div class="money-hero">
+      <span class="money-label">Received</span>
+      <b class="money-big">{{ r.collected|inr }}</b>
+      <div class="meter" role="img" aria-label="{{ r.collected_pct }}% of booked value received"><div style="width: {{ r.collected_pct }}%"></div></div>
+      <span class="muted small">{{ r.collected_pct }}% of {{ r.booked_value|inr }} booked</span>
+    </div>
+    <div class="money-hero">
+      <span class="money-label">Yet to receive</span>
+      <b class="money-big">{{ r.to_receive|inr }}</b>
+      <ul class="money-split">
+        <li><span>From guests in-house <small class="muted">(at check-out)</small></span><b>{{ r.due_in_house|inr }}</b></li>
+        <li><span>From upcoming bookings</span><b>{{ r.due_upcoming|inr }}</b></li>
+        <li class="{% if r.due_checked_out > 0 %}warn{% endif %}"><span>From guests already checked out</span><b>{{ r.due_checked_out|inr }}</b></li>
+      </ul>
+    </div>
+  </div>
+  {% if r.deposits_held %}<p class="muted small">Also holding {{ r.deposits_held|inr }} in refundable deposits (not counted as received).</p>{% endif %}
+</section>
+
+<nav class="period-tabs" aria-label="Period">
+  {% for p in periods %}<a href="?period={{ p.key }}" {% if p.key == r.period.key %}aria-current="page"{% endif %}>{{ p.label }}</a>{% endfor %}
+</nav>
+
+<div class="stats rev-stats">
+  <div class="stat"><b>{{ r.in_period.total|inr }}</b><span>Revenue · {{ r.period.label|lower }}</span></div>
+  <div class="stat"><b>{{ r.in_period.earned|inr }}</b><span>Earned (nights stayed)</span></div>
+  <div class="stat"><b>{{ r.in_period.ahead|inr }}</b><span>Booked ahead</span></div>
+  <div class="stat"><b>{{ r.in_period.nights }}</b><span>Room-nights sold</span></div>
+  <div class="stat"><b>{{ r.in_period.avg_rate|inr }}</b><span>Average per night</span></div>
+  <div class="stat"><b>{% if r.occupancy is not None %}{{ r.occupancy }}%{% else %}—{% endif %}</b><span>Occupancy</span></div>
+</div>
+
+<div class="grid-2">
+  <section class="card">
+    <h2>By room type <span class="muted small">— {{ r.period.label|lower }}</span></h2>
+    {% include "partials/bar_rows.html" with rows=types empty="No stays in this period." %}
+  </section>
+  <section class="card">
+    <h2>By booking source <span class="muted small">— {{ r.period.label|lower }}</span></h2>
+    {% include "partials/bar_rows.html" with rows=sources empty="No stays in this period." %}
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>Monthly revenue</h2>{% include "partials/chart_legend.html" %}</div>
+  {% include "partials/column_chart.html" with chart=monthly title="Monthly revenue, last 12 months and next 2" first_col="Month" %}
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>Weekly revenue</h2>{% include "partials/chart_legend.html" %}</div>
+  {% include "partials/column_chart.html" with chart=weekly title="Weekly revenue, last 12 weeks and next 2" first_col="Week" %}
+</section>
+
+<section class="card" id="unpaid">
+  <h2>Money to collect <span class="count">{{ r.unpaid|length }}</span></h2>
+  <p class="muted small">Guests who have checked out come first, biggest amount first.</p>
+  {% for s in r.unpaid|slice:":10" %}{% include "partials/unpaid_line.html" %}{% empty %}<p class="muted">Nobody owes money right now (upcoming bookings not counted).</p>{% endfor %}
+  {% if r.unpaid|length > 10 %}
+  <details><summary class="btn btn-ghost btn-sm">Show all {{ r.unpaid|length }}</summary>
+    {% for s in r.unpaid|slice:"10:" %}{% include "partials/unpaid_line.html" %}{% endfor %}
+  </details>
+  {% endif %}
+</section>
+
+<details class="card danger-zone">
+  <summary>Change revenue password</summary>
+  {% if env_password %}
+    <p class="muted small">The password is set by <code>REVENUE_PASSWORD</code> in Render’s environment settings — change it there.</p>
+  {% else %}
+  <form method="post" action="{% url 'revenue_password' %}" class="form-grid">{% csrf_token %}
+    <div class="field span-2"><label for="rp-cur">Current password</label><input id="rp-cur" type="password" name="current_password" required autocomplete="current-password"></div>
+    <div class="field"><label for="rp-new">New password</label><input id="rp-new" type="password" name="new_password" required minlength="6" autocomplete="new-password"></div>
+    <div class="field"><label for="rp-confirm">Repeat new password</label><input id="rp-confirm" type="password" name="confirm" required minlength="6" autocomplete="new-password"></div>
+    <div class="span-2"><button class="btn btn-outline btn-sm">Change password</button></div>
+  </form>
+  {% endif %}
+</details>
+{% endblock %}

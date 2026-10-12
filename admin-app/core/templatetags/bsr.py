@@ -25,6 +25,19 @@ def inr(value):
     return f"{sign}₹{s}"
 
 
+@register.filter
+def inr_short(value):
+    """Chart axes: 150000 → '₹1.5L', 45000 → '₹45K', 2.5 crore → '₹2.5Cr'."""
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return value
+    for size, unit in ((1e7, "Cr"), (1e5, "L"), (1e3, "K")):
+        if abs(n) >= size:
+            return f"₹{n / size:.1f}".rstrip("0").rstrip(".") + unit
+    return f"₹{n:.0f}"
+
+
 @register.inclusion_tag("partials/field.html")
 def field(bound_field, css=""):
     return {"f": bound_field, "css": css}

@@ -1,0 +1,5 @@
+{% load bsr %}<div class="stay-line">
+  <a class="stay-line-main" href="{% url 'stay_detail' s.pk %}"><span class="room-badge">{{ s.room.number }}</span>
+    <span><b>{{ s.guest.name }}</b><small>{{ s.get_status_display }} · {{ s.dates_label }} · total {{ s.total|inr }}, paid {{ s.amount_paid|inr }}</small></span></a>
+  <b class="warn">{{ s.balance|inr }}</b>
+</div>
