@@ -5,7 +5,8 @@ Room revenue is counted per night stayed: a stay's total is spread evenly over i
 Nights already stayed are "earned"; later nights of current and upcoming stays are "booked ahead".
 
 Money is counted as received only once the guest has checked out (on their check-out date): what
-they paid. For guests still in-house or yet to arrive, the whole stay amount is "yet to receive",
+they paid. Monthly (open-ended) guests are the exception: their rent counts as received when paid,
+spread evenly over the days stayed for week/month figures, as payment dates aren't stored. For guests still in-house or yet to arrive, the whole stay amount is "yet to receive",
 even if part was paid as an advance. Profit = received − expenses.
 Cancelled and transferred stays are left out.
 """
@@ -172,19 +173,37 @@ def build(period_key: str = "month") -> Report:
                     b.ahead += amount
 
         paid, due = s.amount_paid or ZERO, max(s.balance, ZERO)
-        if s.status == Stay.Status.CHECKED_OUT:
-            r.collected += paid
-            r.due_checked_out += due
-            d = s.check_out
+
+        def add_received(d, amount):
             buckets = []
-            if d and month0 <= d < month_end:
+            if month0 <= d < month_end:
                 buckets.append(r.by_month[d.replace(day=1)])
-            if d and week0 <= d < week_end:
+            if week0 <= d < week_end:
                 buckets.append(r.by_week[d - timedelta(days=d.weekday())])
-            if d and (period.start is None or d >= period.start) and (period.end is None or d < period.end):
+            if (period.start is None or d >= period.start) and (period.end is None or d < period.end):
                 buckets.append(r.in_period)
             for b in buckets:
-                b.received += paid
+                b.received += amount
+
+        if s.kind == Stay.Kind.MONTHLY and s.status != Stay.Status.UPCOMING:
+            # Monthly guests have no check-out date to wait for: rent paid counts as received right away.
+            # Payment dates aren't stored, so for weeks/months it's spread evenly over the days stayed.
+            r.collected += paid
+            last = min(s.check_out - timedelta(days=1), t) if s.check_out else t
+            days = max((last - s.check_in).days + 1, 1)
+            for i in range(days):
+                add_received(s.check_in + timedelta(days=i), paid / days)
+            if s.status == Stay.Status.CHECKED_IN:
+                r.due_in_house += due
+                r.balance_in_house += due
+                r.deposits_held += s.deposit_amount or ZERO
+            else:
+                r.due_checked_out += due
+        elif s.status == Stay.Status.CHECKED_OUT:
+            r.collected += paid
+            r.due_checked_out += due
+            if s.check_out:
+                add_received(s.check_out, paid)
         else:
             # Not received until they check out: the whole stay amount is still to come.
             amount = max(s.total, paid)

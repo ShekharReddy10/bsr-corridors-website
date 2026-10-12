@@ -616,6 +616,17 @@ class RevenueTests(TestCase):
         self.assertEqual((r.in_period.received, r.in_period.profit), (0, 0))
         self.assertEqual(revenue.build("all").in_period.received, Decimal(4500))
 
+    def test_monthly_rent_counts_as_received_while_staying(self):
+        from core import revenue
+        s = Stay(guest=make_guest(), room=self.rooms["201"], kind=Stay.Kind.MONTHLY, check_in=T - timedelta(days=9),
+                 status=Stay.Status.CHECKED_IN, total_amount=Decimal(10000), amount_paid=Decimal(8000))
+        services.save_stay(s, action="create", summary="test")
+        r = revenue.build("all")
+        self.assertEqual((r.collected, r.to_receive, r.balance_pending), (Decimal(8000), Decimal(2000), Decimal(2000)))
+        self.assertEqual(r.advances, 0)
+        self.assertAlmostEqual(r.in_period.received, Decimal(8000), places=2)
+        self.assertEqual(r.collected + r.to_receive, Decimal(10000))
+
     def test_page_renders_with_data_for_every_period(self):
         stay(make_guest(), self.rooms["101"], -40, 3, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(1000))
         stay(make_guest("B", "+91 90000 00001"), self.rooms["201"], 1, 2)

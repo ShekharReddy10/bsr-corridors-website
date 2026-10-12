@@ -2,7 +2,7 @@
 {% block title %}Revenue{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Revenue</h1><p class="muted">Money counts as received when the guest checks out. Cancelled and transferred stays are left out.</p></div>
+  <div><h1>Revenue</h1><p class="muted">Money counts as received when the guest checks out — monthly guests’ rent as soon as it’s paid. Cancelled and transferred stays are left out.</p></div>
   <form method="post" action="{% url 'revenue_lock' %}">{% csrf_token %}<button class="btn btn-outline">Lock</button></form>
 </div>
 
@@ -10,7 +10,7 @@
   <h2>Money so far <span class="muted small">— all bookings</span></h2>
   <div class="money-grid">
     <div class="money-hero">
-      <span class="money-label">Received <small class="muted">(from guests who checked out)</small></span>
+      <span class="money-label">Received <small class="muted">(guests who checked out + monthly rent paid)</small></span>
       <b class="money-big">{{ r.collected|inr }}</b>
       <div class="meter" role="img" aria-label="{{ r.collected_pct }}% of all bookings received"><div style="width: {{ r.collected_pct }}%"></div></div>
       <span class="muted small">{{ r.collected_pct }}% of {{ r.booked_value|inr }} in all bookings</span>
@@ -56,7 +56,7 @@
     <span class="op" aria-hidden="true">=</span>
     <div><span class="muted small">Profit</span><b class="{% if r.in_period.profit < 0 %}warn{% else %}good{% endif %}">{{ r.in_period.profit|inr }}</b></div>
   </div>
-  <p class="muted small">Received = what guests paid, counted on the day they checked out{% if r.period.start %} ({{ r.period.label|lower }}){% endif %}.</p>
+  <p class="muted small">Received = what guests paid, counted on the day they checked out (monthly rent: spread over the days stayed){% if r.period.start %} ({{ r.period.label|lower }}){% endif %}.</p>
 </section>
 
 <h2 class="section-title">Room sales <span class="muted small">— {{ r.period.label|lower }}, counted per night</span></h2>
