@@ -104,6 +104,8 @@ class Report:
     due_upcoming: Decimal = ZERO
     due_checked_out: Decimal = ZERO
     advance_in_house: Decimal = ZERO  # already paid, but counted only at check-out
+    balance_in_house: Decimal = ZERO  # bill minus what's been paid so far
+    balance_upcoming: Decimal = ZERO
     advance_upcoming: Decimal = ZERO
     deposits_held: Decimal = ZERO
     expenses_all_time: Decimal = ZERO
@@ -121,6 +123,11 @@ class Report:
     @property
     def to_receive(self) -> Decimal:
         return self.due_in_house + self.due_upcoming + self.due_checked_out
+
+    @property
+    def balance_pending(self) -> Decimal:
+        """Not paid at all yet (bill − amount paid), across checked-out, in-house and upcoming guests."""
+        return self.due_checked_out + self.balance_in_house + self.balance_upcoming
 
     @property
     def booked_value(self) -> Decimal:
@@ -185,9 +192,11 @@ def build(period_key: str = "month") -> Report:
             if s.status == Stay.Status.CHECKED_IN:
                 r.due_in_house += amount
                 r.advance_in_house += paid
+                r.balance_in_house += due
             else:
                 r.due_upcoming += amount
                 r.advance_upcoming += paid
+                r.balance_upcoming += due
             r.deposits_held += s.deposit_amount or ZERO
         if due > 0 and s.status != Stay.Status.UPCOMING:
             r.unpaid.append(s)

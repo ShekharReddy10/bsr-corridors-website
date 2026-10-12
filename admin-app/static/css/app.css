@@ -315,6 +315,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .lock-form { display: flex; gap: 8px; margin-bottom: 8px; }
 .money-grid { display: grid; gap: 16px; }
 @media (min-width: 768px) { .money-grid { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1200px) { .money-grid { grid-template-columns: repeat(3, 1fr); } }
 .money-hero { display: grid; gap: 6px; align-content: start; }
 .money-label { color: var(--ink-soft); font-size: .9rem; font-weight: 600; }
 .money-big { font-size: 2.2rem; line-height: 1.1; font-weight: 700; }
@@ -373,3 +374,4 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .profit-sum .op { font-size: 1.4rem; color: var(--ink-soft); padding-bottom: 2px; }
 .good { color: var(--green); }
 .section-title { margin: 4px 0 10px; }
+.money-check { margin: 14px 0 0; padding-top: 10px; border-top: 1px dashed var(--line); color: var(--ink-soft); font-size: .9rem; }
