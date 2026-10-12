@@ -587,8 +587,8 @@ class RevenueTests(TestCase):
         self.assertEqual(r.collected, Decimal(3000))
         self.assertEqual((r.due_in_house, r.due_upcoming, r.due_checked_out), (Decimal(6000), Decimal(1500), 0))
         self.assertEqual(r.advances, Decimal(2500))
-        # Balance pending = bill − paid: 4,000 in-house + 1,000 upcoming.
-        self.assertEqual(r.balance_pending, Decimal(5000))
+        # Balance pending = bill − paid for checked-in guests only (upcoming left out).
+        self.assertEqual(r.balance_pending, Decimal(4000))
         # Received + yet to receive = every booking's full amount.
         self.assertEqual(r.collected + r.to_receive, Decimal(3000 + 6000 + 1500))
         self.assertEqual(r.in_period.received, Decimal(3000))

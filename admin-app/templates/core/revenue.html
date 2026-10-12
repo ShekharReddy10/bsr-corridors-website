@@ -30,14 +30,13 @@
       {% if r.advances %}<span class="muted small">Includes {{ r.advances|inr }} already paid as advance — it moves to “Received” when those guests check out.</span>{% endif %}
     </div>
     <div class="money-hero">
-      <span class="money-label">Balance pending <small class="muted">(not paid at all yet)</small></span>
+      <span class="money-label">Balance pending <small class="muted">(checked-in guests who haven’t paid in full)</small></span>
       <b class="money-big{% if r.balance_pending > 0 %} warn{% endif %}">{{ r.balance_pending|inr }}</b>
       <ul class="money-split">
-        <li class="{% if r.due_checked_out > 0 %}warn{% endif %}"><span>Guests who checked out</span><b>{{ r.due_checked_out|inr }}</b></li>
         <li><span>Guests staying now</span><b>{{ r.balance_in_house|inr }}</b></li>
-        <li><span>Upcoming bookings</span><b>{{ r.balance_upcoming|inr }}</b></li>
+        <li class="{% if r.due_checked_out > 0 %}warn{% endif %}"><span>Checked out without paying in full</span><b>{{ r.due_checked_out|inr }}</b></li>
       </ul>
-      <span class="muted small">Bill minus what each guest has paid so far. <a href="#unpaid">Who owes money</a></span>
+      <span class="muted small">Bill minus what each guest has paid. Upcoming bookings aren’t included. <a href="#unpaid">Who owes money</a></span>
     </div>
   </div>
   <p class="money-check">Received {{ r.collected|inr }} + yet to receive {{ r.to_receive|inr }} = <b>{{ r.booked_value|inr }}</b> from all bookings</p>
