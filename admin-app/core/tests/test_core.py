@@ -583,8 +583,11 @@ class RevenueTests(TestCase):
         self.assertEqual(r.in_period.nights, 4 + 2 + 1)
         self.assertEqual(r.in_period.earned, Decimal(1500) * 2 + Decimal(3000))
         self.assertEqual(r.in_period.ahead, Decimal(1500) * 2 + Decimal(1500))
-        self.assertEqual(r.collected, Decimal(5500))
-        self.assertEqual((r.due_in_house, r.due_upcoming, r.due_checked_out), (Decimal(4000), Decimal(1000), 0))
+        # Received only from the checked-out guest; in-house and upcoming are still to receive in full.
+        self.assertEqual(r.collected, Decimal(3000))
+        self.assertEqual((r.due_in_house, r.due_upcoming, r.due_checked_out), (Decimal(6000), Decimal(1500), 0))
+        self.assertEqual(r.advances, Decimal(2500))
+        self.assertEqual(r.in_period.received, Decimal(3000))
         self.assertEqual(r.by_type["Luxury AC"].total, Decimal(9000))
         self.assertEqual([s.pk for s in r.unpaid], [a.pk])
 
@@ -600,12 +603,21 @@ class RevenueTests(TestCase):
         self.client.post("/revenue/", {"password": "secret1"})
         self.assertContains(self.client.get("/revenue/"), "Enter the revenue password")  # locked out
 
+    def test_received_counted_in_checkout_period(self):
+        from core import revenue
+        stay(make_guest(), self.rooms["101"], -60, 3, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(4500))
+        stay(make_guest("B", "+91 90000 00001"), self.rooms["102"], -1, 2, status=Stay.Status.CHECKED_IN,
+             amount_paid=Decimal(1000))
+        r = revenue.build("month")
+        self.assertEqual((r.in_period.received, r.in_period.profit), (0, 0))
+        self.assertEqual(revenue.build("all").in_period.received, Decimal(4500))
+
     def test_page_renders_with_data_for_every_period(self):
         stay(make_guest(), self.rooms["101"], -40, 3, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(1000))
         stay(make_guest("B", "+91 90000 00001"), self.rooms["201"], 1, 2)
         self._unlock()
         for key in ("week", "month", "last_month", "year", "all", "junk"):
-            self.assertContains(self.client.get(f"/revenue/?period={key}"), "Monthly revenue")
+            self.assertContains(self.client.get(f"/revenue/?period={key}"), "Room sales by month")
 
 
 class ExpenseTests(TestCase):
@@ -645,7 +657,7 @@ class ExpenseTests(TestCase):
         self.assertEqual(rep.in_period.expenses, Decimal(6500))
         self.assertEqual(rep.in_period.profit, Decimal(3000) - Decimal(6500))
         self.assertEqual(rep.net_cash, Decimal(3000) - Decimal(6500))
-        self.assertContains(self.client.get("/revenue/?period=all"), "Left after expenses")
+        self.assertContains(self.client.get("/revenue/?period=all"), "(received − expenses)")
 
         e = Expense.objects.get(reason="AC repair")
         self.client.post(f"/expenses/{e.pk}/delete/")

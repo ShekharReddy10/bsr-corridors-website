@@ -2,7 +2,7 @@
 {% block title %}Revenue{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Revenue</h1><p class="muted">Room revenue is counted per night stayed. Cancelled and transferred stays are left out.</p></div>
+  <div><h1>Revenue</h1><p class="muted">Money counts as received when the guest checks out. Cancelled and transferred stays are left out.</p></div>
   <form method="post" action="{% url 'revenue_lock' %}">{% csrf_token %}<button class="btn btn-outline">Lock</button></form>
 </div>
 
@@ -10,52 +10,54 @@
   <h2>Money so far <span class="muted small">— all bookings</span></h2>
   <div class="money-grid">
     <div class="money-hero">
-      <span class="money-label">Received</span>
+      <span class="money-label">Received <small class="muted">(from guests who checked out)</small></span>
       <b class="money-big">{{ r.collected|inr }}</b>
-      <div class="meter" role="img" aria-label="{{ r.collected_pct }}% of booked value received"><div style="width: {{ r.collected_pct }}%"></div></div>
-      <span class="muted small">{{ r.collected_pct }}% of {{ r.booked_value|inr }} booked</span>
+      <div class="meter" role="img" aria-label="{{ r.collected_pct }}% of all bookings received"><div style="width: {{ r.collected_pct }}%"></div></div>
+      <span class="muted small">{{ r.collected_pct }}% of {{ r.booked_value|inr }} in all bookings</span>
       <ul class="money-split">
-        <li><span>Spent on expenses <small class="muted">(all time)</small></span><b>− {{ r.expenses_all_time|inr }}</b></li>
-        <li><span><b>Left after expenses</b></span><b class="{% if r.net_cash < 0 %}warn{% endif %}">{{ r.net_cash|inr }}</b></li>
+        <li><span>Expenses <small class="muted">(all time)</small></span><b>− {{ r.expenses_all_time|inr }}</b></li>
+        <li><span><b>Profit</b> <small class="muted">(received − expenses)</small></span><b class="{% if r.net_cash < 0 %}warn{% else %}good{% endif %}">{{ r.net_cash|inr }}</b></li>
       </ul>
     </div>
     <div class="money-hero">
       <span class="money-label">Yet to receive</span>
       <b class="money-big">{{ r.to_receive|inr }}</b>
       <ul class="money-split">
-        <li><span>From guests in-house <small class="muted">(at check-out)</small></span><b>{{ r.due_in_house|inr }}</b></li>
-        <li><span>From upcoming bookings</span><b>{{ r.due_upcoming|inr }}</b></li>
-        <li class="{% if r.due_checked_out > 0 %}warn{% endif %}"><span>From guests already checked out</span><b>{{ r.due_checked_out|inr }}</b></li>
+        <li><span>Guests staying now <small class="muted">(counted at check-out)</small></span><b>{{ r.due_in_house|inr }}</b></li>
+        <li><span>Upcoming bookings</span><b>{{ r.due_upcoming|inr }}</b></li>
+        <li class="{% if r.due_checked_out > 0 %}warn{% endif %}"><span>Unpaid by guests who checked out</span><b>{{ r.due_checked_out|inr }}</b></li>
       </ul>
+      {% if r.advances %}<span class="muted small">Includes {{ r.advances|inr }} already paid as advance by these guests — it moves to “Received” when they check out.</span>{% endif %}
     </div>
   </div>
-  {% if r.deposits_held %}<p class="muted small">Also holding {{ r.deposits_held|inr }} in refundable deposits (not counted as received).</p>{% endif %}
+  {% if r.deposits_held %}<p class="muted small">Also holding {{ r.deposits_held|inr }} in refundable deposits (not counted).</p>{% endif %}
 </section>
 
 <nav class="period-tabs" aria-label="Period">
   {% for p in periods %}<a href="?period={{ p.key }}" {% if p.key == r.period.key %}aria-current="page"{% endif %}>{{ p.label }}</a>{% endfor %}
 </nav>
 
-<div class="stats rev-stats">
-  <div class="stat"><b>{{ r.in_period.total|inr }}</b><span>Revenue · {{ r.period.label|lower }}</span></div>
-  <div class="stat"><b>{{ r.in_period.earned|inr }}</b><span>Earned (nights stayed)</span></div>
-  <div class="stat"><b>{{ r.in_period.ahead|inr }}</b><span>Booked ahead</span></div>
-  <div class="stat"><b>{{ r.in_period.nights }}</b><span>Room-nights sold</span></div>
-  <div class="stat"><b>{{ r.in_period.avg_rate|inr }}</b><span>Average per night</span></div>
-  <div class="stat"><b>{% if r.occupancy is not None %}{{ r.occupancy }}%{% else %}—{% endif %}</b><span>Occupancy</span></div>
-</div>
-
 <section class="card profit-card">
   <div class="card-head"><h2>Profit · {{ r.period.label|lower }}</h2><a class="btn btn-outline btn-sm" href="{% url 'expense_list' %}?period={{ r.period.key }}">Expenses</a></div>
   <div class="profit-sum">
-    <div><span class="muted small">Earned</span><b>{{ r.in_period.earned|inr }}</b></div>
+    <div><span class="muted small">Received</span><b>{{ r.in_period.received|inr }}</b></div>
     <span class="op" aria-hidden="true">−</span>
     <div><span class="muted small">Expenses</span><b>{{ r.in_period.expenses|inr }}</b></div>
     <span class="op" aria-hidden="true">=</span>
     <div><span class="muted small">Profit</span><b class="{% if r.in_period.profit < 0 %}warn{% else %}good{% endif %}">{{ r.in_period.profit|inr }}</b></div>
   </div>
-  {% if r.in_period.ahead %}<p class="muted small">Another {{ r.in_period.ahead|inr }} is booked ahead in this period and will count once those nights are stayed.</p>{% endif %}
+  <p class="muted small">Received = what guests paid, counted on the day they checked out{% if r.period.start %} ({{ r.period.label|lower }}){% endif %}.</p>
 </section>
+
+<h2 class="section-title">Room sales <span class="muted small">— {{ r.period.label|lower }}, counted per night</span></h2>
+<div class="stats rev-stats">
+  <div class="stat"><b>{{ r.in_period.total|inr }}</b><span>Room sales</span></div>
+  <div class="stat"><b>{{ r.in_period.earned|inr }}</b><span>Nights already stayed</span></div>
+  <div class="stat"><b>{{ r.in_period.ahead|inr }}</b><span>Nights still to come</span></div>
+  <div class="stat"><b>{{ r.in_period.nights }}</b><span>Room-nights sold</span></div>
+  <div class="stat"><b>{{ r.in_period.avg_rate|inr }}</b><span>Average per night</span></div>
+  <div class="stat"><b>{% if r.occupancy is not None %}{{ r.occupancy }}%{% else %}—{% endif %}</b><span>Occupancy</span></div>
+</div>
 
 <div class="grid-2">
   <section class="card">
@@ -69,13 +71,13 @@
 </div>
 
 <section class="card">
-  <div class="card-head"><h2>Monthly revenue</h2>{% include "partials/chart_legend.html" %}</div>
-  {% include "partials/column_chart.html" with chart=monthly title="Monthly revenue, last 12 months and next 2" first_col="Month" %}
+  <div class="card-head"><h2>Room sales by month</h2>{% include "partials/chart_legend.html" %}</div>
+  {% include "partials/column_chart.html" with chart=monthly title="Room sales by month, last 12 months and next 2" first_col="Month" %}
 </section>
 
 <section class="card">
-  <div class="card-head"><h2>Weekly revenue</h2>{% include "partials/chart_legend.html" %}</div>
-  {% include "partials/column_chart.html" with chart=weekly title="Weekly revenue, last 12 weeks and next 2" first_col="Week" %}
+  <div class="card-head"><h2>Room sales by week</h2>{% include "partials/chart_legend.html" %}</div>
+  {% include "partials/column_chart.html" with chart=weekly title="Room sales by week, last 12 weeks and next 2" first_col="Week" %}
 </section>
 
 <section class="card" id="unpaid">

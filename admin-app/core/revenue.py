@@ -3,8 +3,11 @@
 Room revenue is counted per night stayed: a stay's total is spread evenly over its nights, so a
 3-night ₹4,500 stay adds ₹1,500 to each night (and to that night's week, month and room type).
 Nights already stayed are "earned"; later nights of current and upcoming stays are "booked ahead".
-Money received is the stays' amount paid (payments have no separate dates), and "yet to receive"
-is what guests still owe. Cancelled and transferred stays are left out.
+
+Money is counted as received only once the guest has checked out (on their check-out date): what
+they paid. For guests still in-house or yet to arrive, the whole stay amount is "yet to receive",
+even if part was paid as an advance. Profit = received − expenses.
+Cancelled and transferred stays are left out.
 """
 
 from collections import defaultdict
@@ -23,6 +26,7 @@ class Bucket:
     earned: Decimal = ZERO
     ahead: Decimal = ZERO
     nights: int = 0
+    received: Decimal = ZERO  # paid by guests who checked out in this bucket
     expenses: Decimal = ZERO
 
     @property
@@ -31,8 +35,7 @@ class Bucket:
 
     @property
     def profit(self) -> Decimal:
-        """Earned room revenue minus expenses (booked-ahead nights aren't counted until stayed)."""
-        return self.earned - self.expenses
+        return self.received - self.expenses
 
     @property
     def avg_rate(self) -> Decimal:
@@ -100,6 +103,8 @@ class Report:
     due_in_house: Decimal = ZERO
     due_upcoming: Decimal = ZERO
     due_checked_out: Decimal = ZERO
+    advance_in_house: Decimal = ZERO  # already paid, but counted only at check-out
+    advance_upcoming: Decimal = ZERO
     deposits_held: Decimal = ZERO
     expenses_all_time: Decimal = ZERO
     unpaid: list = field(default_factory=list)
@@ -108,6 +113,10 @@ class Report:
     @property
     def net_cash(self) -> Decimal:
         return self.collected - self.expenses_all_time
+
+    @property
+    def advances(self) -> Decimal:
+        return self.advance_in_house + self.advance_upcoming
 
     @property
     def to_receive(self) -> Decimal:
@@ -156,16 +165,30 @@ def build(period_key: str = "month") -> Report:
                 else:
                     b.ahead += amount
 
-        r.collected += s.amount_paid or ZERO
-        due = max(s.balance, ZERO)
-        if s.status == Stay.Status.CHECKED_IN:
-            r.due_in_house += due
-            r.deposits_held += s.deposit_amount or ZERO
-        elif s.status == Stay.Status.UPCOMING:
-            r.due_upcoming += due
-            r.deposits_held += s.deposit_amount or ZERO
-        else:
+        paid, due = s.amount_paid or ZERO, max(s.balance, ZERO)
+        if s.status == Stay.Status.CHECKED_OUT:
+            r.collected += paid
             r.due_checked_out += due
+            d = s.check_out
+            buckets = []
+            if d and month0 <= d < month_end:
+                buckets.append(r.by_month[d.replace(day=1)])
+            if d and week0 <= d < week_end:
+                buckets.append(r.by_week[d - timedelta(days=d.weekday())])
+            if d and (period.start is None or d >= period.start) and (period.end is None or d < period.end):
+                buckets.append(r.in_period)
+            for b in buckets:
+                b.received += paid
+        else:
+            # Not received until they check out: the whole stay amount is still to come.
+            amount = max(s.total, paid)
+            if s.status == Stay.Status.CHECKED_IN:
+                r.due_in_house += amount
+                r.advance_in_house += paid
+            else:
+                r.due_upcoming += amount
+                r.advance_upcoming += paid
+            r.deposits_held += s.deposit_amount or ZERO
         if due > 0 and s.status != Stay.Status.UPCOMING:
             r.unpaid.append(s)
 

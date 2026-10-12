@@ -4,7 +4,7 @@
     {% for t in chart.ticks %}<div class="colchart-tick" style="bottom: {{ t.pct }}%"><span>{{ t.value|inr_short }}</span></div>{% endfor %}
     <div class="colchart-cols">
       {% for c in chart.cols %}
-      <div class="col{% if c.current %} is-current{% endif %}" title="{{ c.full }}: {{ c.b.total|inr }}{% if c.b.ahead %} ({{ c.b.earned|inr }} earned + {{ c.b.ahead|inr }} booked ahead){% endif %} · {{ c.b.nights }} room-night{{ c.b.nights|pluralize }}">
+      <div class="col{% if c.current %} is-current{% endif %}" title="{{ c.full }}: {{ c.b.total|inr }}{% if c.b.ahead %} ({{ c.b.earned|inr }} stayed + {{ c.b.ahead|inr }} still to come){% endif %} · {{ c.b.nights }} room-night{{ c.b.nights|pluralize }}">
         {% if c.b.total %}<div class="col-bar" style="height: {{ c.pct|stringformat:'.2f' }}%">
           {% if c.current %}<span class="col-value">{{ c.b.total|inr_short }}</span>{% endif %}
           {% if c.b.ahead %}<div class="vseg vseg-ahead" style="height: {{ c.ahead_share|stringformat:'.2f' }}%"></div>{% endif %}
@@ -20,8 +20,8 @@
   <summary>Show as table</summary>
   <div class="table-wrap">
   <table class="table">
-    <thead><tr><th>{{ first_col }}</th><th class="num">Earned</th><th class="num">Booked ahead</th><th class="num">Total</th><th class="num">Room-nights</th><th class="num">Avg / night</th><th class="num">Expenses</th><th class="num">Profit</th></tr></thead>
-    <tbody>{% for c in chart.cols reversed %}<tr{% if c.current %} class="is-current"{% endif %}><td>{{ c.full }}</td><td class="num">{{ c.b.earned|inr }}</td><td class="num">{{ c.b.ahead|inr }}</td><td class="num"><b>{{ c.b.total|inr }}</b></td><td class="num">{{ c.b.nights }}</td><td class="num">{{ c.b.avg_rate|inr }}</td><td class="num">{{ c.b.expenses|inr }}</td><td class="num{% if c.b.profit < 0 %} warn{% endif %}">{{ c.b.profit|inr }}</td></tr>{% endfor %}</tbody>
+    <thead><tr><th>{{ first_col }}</th><th class="num">Nights stayed</th><th class="num">Still to come</th><th class="num">Total</th><th class="num">Room-nights</th><th class="num">Avg / night</th><th class="num">Received</th><th class="num">Expenses</th><th class="num">Profit</th></tr></thead>
+    <tbody>{% for c in chart.cols reversed %}<tr{% if c.current %} class="is-current"{% endif %}><td>{{ c.full }}</td><td class="num">{{ c.b.earned|inr }}</td><td class="num">{{ c.b.ahead|inr }}</td><td class="num"><b>{{ c.b.total|inr }}</b></td><td class="num">{{ c.b.nights }}</td><td class="num">{{ c.b.avg_rate|inr }}</td><td class="num">{{ c.b.received|inr }}</td><td class="num">{{ c.b.expenses|inr }}</td><td class="num{% if c.b.profit < 0 %} warn{% endif %}">{{ c.b.profit|inr }}</td></tr>{% endfor %}</tbody>
   </table>
   </div>
 </details>
