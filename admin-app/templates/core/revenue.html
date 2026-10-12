@@ -2,7 +2,7 @@
 {% block title %}Revenue{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Revenue</h1><p class="muted">Money counts as received when the guest checks out — monthly guests’ rent as soon as it’s paid. Cancelled and transferred stays are left out.</p></div>
+  <div><h1>Revenue</h1><p class="muted">Money counts as received once the guest has checked in. Cancelled and transferred stays are left out.</p></div>
   <form method="post" action="{% url 'revenue_lock' %}">{% csrf_token %}<button class="btn btn-outline">Lock</button></form>
 </div>
 
@@ -10,7 +10,7 @@
   <h2>Money so far <span class="muted small">— all bookings</span></h2>
   <div class="money-grid">
     <div class="money-hero">
-      <span class="money-label">Received <small class="muted">(guests who checked out + monthly rent paid)</small></span>
+      <span class="money-label">Received <small class="muted">(paid by guests who checked in)</small></span>
       <b class="money-big">{{ r.collected|inr }}</b>
       <div class="meter" role="img" aria-label="{{ r.collected_pct }}% of all bookings received"><div style="width: {{ r.collected_pct }}%"></div></div>
       <span class="muted small">{{ r.collected_pct }}% of {{ r.booked_value|inr }} in all bookings</span>
@@ -20,26 +20,21 @@
       </ul>
     </div>
     <div class="money-hero">
-      <span class="money-label">Yet to receive</span>
-      <b class="money-big">{{ r.to_receive|inr }}</b>
-      <ul class="money-split">
-        <li><span>Guests staying now <small class="muted">(counted at check-out)</small></span><b>{{ r.due_in_house|inr }}</b></li>
-        <li><span>Upcoming bookings</span><b>{{ r.due_upcoming|inr }}</b></li>
-        <li><span>Still owed by guests who checked out</span><b>{{ r.due_checked_out|inr }}</b></li>
-      </ul>
-      {% if r.advances %}<span class="muted small">Includes {{ r.advances|inr }} already paid as advance — it moves to “Received” when those guests check out.</span>{% endif %}
-    </div>
-    <div class="money-hero">
-      <span class="money-label">Balance pending <small class="muted">(checked-in guests who haven’t paid in full)</small></span>
+      <span class="money-label">Balance pending <small class="muted">(checked-in guests still owe)</small></span>
       <b class="money-big{% if r.balance_pending > 0 %} warn{% endif %}">{{ r.balance_pending|inr }}</b>
       <ul class="money-split">
         <li><span>Guests staying now</span><b>{{ r.balance_in_house|inr }}</b></li>
         <li class="{% if r.due_checked_out > 0 %}warn{% endif %}"><span>Checked out without paying in full</span><b>{{ r.due_checked_out|inr }}</b></li>
       </ul>
-      <span class="muted small">Bill minus what each guest has paid. Upcoming bookings aren’t included. <a href="#unpaid">Who owes money</a></span>
+      <span class="muted small">Bill minus what each guest has paid. <a href="#unpaid">Who owes money</a></span>
+    </div>
+    <div class="money-hero">
+      <span class="money-label">Yet to receive <small class="muted">(not checked in yet)</small></span>
+      <b class="money-big">{{ r.to_receive|inr }}</b>
+      <span class="muted small">Full amount of upcoming bookings{% if r.advance_upcoming %}, including {{ r.advance_upcoming|inr }} already paid as advance — it moves to “Received” at check-in{% endif %}.</span>
     </div>
   </div>
-  <p class="money-check">Received {{ r.collected|inr }} + yet to receive {{ r.to_receive|inr }} = <b>{{ r.booked_value|inr }}</b> from all bookings</p>
+  <p class="money-check">Received {{ r.collected|inr }} + balance pending {{ r.balance_pending|inr }} + yet to receive {{ r.to_receive|inr }} = <b>{{ r.booked_value|inr }}</b> from all bookings</p>
   {% if r.deposits_held %}<p class="muted small">Also holding {{ r.deposits_held|inr }} in refundable deposits (not counted).</p>{% endif %}
 </section>
 
@@ -56,7 +51,7 @@
     <span class="op" aria-hidden="true">=</span>
     <div><span class="muted small">Profit</span><b class="{% if r.in_period.profit < 0 %}warn{% else %}good{% endif %}">{{ r.in_period.profit|inr }}</b></div>
   </div>
-  <p class="muted small">Received = what guests paid, counted on the day they checked out (monthly rent: spread over the days stayed){% if r.period.start %} ({{ r.period.label|lower }}){% endif %}.</p>
+  <p class="muted small">Received = what checked-in guests paid, counted on their check-in day (monthly rent: spread over the days stayed){% if r.period.start %} ({{ r.period.label|lower }}){% endif %}.</p>
 </section>
 
 <h2 class="section-title">Room sales <span class="muted small">— {{ r.period.label|lower }}, counted per night</span></h2>

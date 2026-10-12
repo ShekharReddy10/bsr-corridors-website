@@ -583,15 +583,13 @@ class RevenueTests(TestCase):
         self.assertEqual(r.in_period.nights, 4 + 2 + 1)
         self.assertEqual(r.in_period.earned, Decimal(1500) * 2 + Decimal(3000))
         self.assertEqual(r.in_period.ahead, Decimal(1500) * 2 + Decimal(1500))
-        # Received only from the checked-out guest; in-house and upcoming are still to receive in full.
-        self.assertEqual(r.collected, Decimal(3000))
-        self.assertEqual((r.due_in_house, r.due_upcoming, r.due_checked_out), (Decimal(6000), Decimal(1500), 0))
-        self.assertEqual(r.advances, Decimal(2500))
-        # Balance pending = bill − paid for checked-in guests only (upcoming left out).
+        # Checked-in guests (in-house + checked out): paid is received, the rest is balance pending.
+        self.assertEqual(r.collected, Decimal(2000 + 3000))
         self.assertEqual(r.balance_pending, Decimal(4000))
-        # Received + yet to receive = every booking's full amount.
-        self.assertEqual(r.collected + r.to_receive, Decimal(3000 + 6000 + 1500))
-        self.assertEqual(r.in_period.received, Decimal(3000))
+        # Not checked in yet: the whole booking is yet to receive, advance included.
+        self.assertEqual((r.to_receive, r.advance_upcoming), (Decimal(1500), Decimal(500)))
+        self.assertEqual(r.in_period.received, Decimal(5000))
+        self.assertEqual(r.collected + r.balance_pending + r.to_receive, Decimal(3000 + 6000 + 1500))
         self.assertEqual(r.by_type["Luxury AC"].total, Decimal(9000))
         self.assertEqual([s.pk for s in r.unpaid], [a.pk])
 
@@ -607,14 +605,14 @@ class RevenueTests(TestCase):
         self.client.post("/revenue/", {"password": "secret1"})
         self.assertContains(self.client.get("/revenue/"), "Enter the revenue password")  # locked out
 
-    def test_received_counted_in_checkout_period(self):
+    def test_received_counted_on_check_in_day(self):
         from core import revenue
         stay(make_guest(), self.rooms["101"], -60, 3, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(4500))
         stay(make_guest("B", "+91 90000 00001"), self.rooms["102"], -1, 2, status=Stay.Status.CHECKED_IN,
              amount_paid=Decimal(1000))
         r = revenue.build("month")
-        self.assertEqual((r.in_period.received, r.in_period.profit), (0, 0))
-        self.assertEqual(revenue.build("all").in_period.received, Decimal(4500))
+        self.assertEqual((r.in_period.received, r.in_period.profit), (Decimal(1000), Decimal(1000)))
+        self.assertEqual(revenue.build("all").in_period.received, Decimal(5500))
 
     def test_monthly_rent_counts_as_received_while_staying(self):
         from core import revenue
@@ -622,10 +620,8 @@ class RevenueTests(TestCase):
                  status=Stay.Status.CHECKED_IN, total_amount=Decimal(10000), amount_paid=Decimal(8000))
         services.save_stay(s, action="create", summary="test")
         r = revenue.build("all")
-        self.assertEqual((r.collected, r.to_receive, r.balance_pending), (Decimal(8000), Decimal(2000), Decimal(2000)))
-        self.assertEqual(r.advances, 0)
+        self.assertEqual((r.collected, r.balance_pending, r.to_receive), (Decimal(8000), Decimal(2000), 0))
         self.assertAlmostEqual(r.in_period.received, Decimal(8000), places=2)
-        self.assertEqual(r.collected + r.to_receive, Decimal(10000))
 
     def test_page_renders_with_data_for_every_period(self):
         stay(make_guest(), self.rooms["101"], -40, 3, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(1000))

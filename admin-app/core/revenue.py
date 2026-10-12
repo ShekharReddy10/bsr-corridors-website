@@ -4,10 +4,11 @@ Room revenue is counted per night stayed: a stay's total is spread evenly over i
 3-night ₹4,500 stay adds ₹1,500 to each night (and to that night's week, month and room type).
 Nights already stayed are "earned"; later nights of current and upcoming stays are "booked ahead".
 
-Money is counted as received only once the guest has checked out (on their check-out date): what
-they paid. Monthly (open-ended) guests are the exception: their rent counts as received when paid,
-spread evenly over the days stayed for week/month figures, as payment dates aren't stored. For guests still in-house or yet to arrive, the whole stay amount is "yet to receive",
-even if part was paid as an advance. Profit = received − expenses.
+Money, once a guest has checked in: what they paid is "received" and what they still owe is
+"balance pending". Bookings not checked in yet are "yet to receive" in full (advances included).
+Received + balance pending + yet to receive = the full amount of all bookings.
+Payment dates aren't stored, so for week/month figures a daily stay's payments count on its
+check-in day, and a monthly guest's are spread evenly over the days stayed. Profit = received − expenses.
 Cancelled and transferred stays are left out.
 """
 
@@ -100,13 +101,11 @@ class Report:
     by_source: dict = field(default_factory=lambda: defaultdict(Bucket))
     by_month: dict = field(default_factory=lambda: defaultdict(Bucket))
     by_week: dict = field(default_factory=lambda: defaultdict(Bucket))
-    collected: Decimal = ZERO
-    due_in_house: Decimal = ZERO
-    due_upcoming: Decimal = ZERO
-    due_checked_out: Decimal = ZERO
-    advance_in_house: Decimal = ZERO  # already paid, but counted only at check-out
-    balance_in_house: Decimal = ZERO  # bill minus what's been paid so far
-    advance_upcoming: Decimal = ZERO
+    collected: Decimal = ZERO  # paid by guests who have checked in (staying now or checked out)
+    balance_in_house: Decimal = ZERO  # still owed by guests staying now
+    due_checked_out: Decimal = ZERO  # still owed by guests who checked out
+    due_upcoming: Decimal = ZERO  # full amount of bookings not checked in yet
+    advance_upcoming: Decimal = ZERO  # part of that already paid as advance
     deposits_held: Decimal = ZERO
     expenses_all_time: Decimal = ZERO
     unpaid: list = field(default_factory=list)
@@ -117,21 +116,16 @@ class Report:
         return self.collected - self.expenses_all_time
 
     @property
-    def advances(self) -> Decimal:
-        return self.advance_in_house + self.advance_upcoming
-
-    @property
     def to_receive(self) -> Decimal:
-        return self.due_in_house + self.due_upcoming + self.due_checked_out
+        return self.due_upcoming
 
     @property
     def balance_pending(self) -> Decimal:
-        """Unpaid by guests who have checked in: staying now, or already checked out (bill − amount paid)."""
-        return self.due_checked_out + self.balance_in_house
+        return self.balance_in_house + self.due_checked_out
 
     @property
     def booked_value(self) -> Decimal:
-        return self.collected + self.to_receive
+        return self.collected + self.balance_pending + self.to_receive
 
     @property
     def collected_pct(self) -> int:
@@ -185,36 +179,25 @@ def build(period_key: str = "month") -> Report:
             for b in buckets:
                 b.received += amount
 
-        if s.kind == Stay.Kind.MONTHLY and s.status != Stay.Status.UPCOMING:
-            # Monthly guests have no check-out date to wait for: rent paid counts as received right away.
-            # Payment dates aren't stored, so for weeks/months it's spread evenly over the days stayed.
+        if s.status == Stay.Status.UPCOMING:
+            # Check-in hasn't happened: the whole booking is still to come, even if an advance was paid.
+            r.due_upcoming += max(s.total, paid)
+            r.advance_upcoming += paid
+            r.deposits_held += s.deposit_amount or ZERO
+        else:
             r.collected += paid
-            last = min(s.check_out - timedelta(days=1), t) if s.check_out else t
-            days = max((last - s.check_in).days + 1, 1)
-            for i in range(days):
-                add_received(s.check_in + timedelta(days=i), paid / days)
             if s.status == Stay.Status.CHECKED_IN:
-                r.due_in_house += due
                 r.balance_in_house += due
                 r.deposits_held += s.deposit_amount or ZERO
             else:
                 r.due_checked_out += due
-        elif s.status == Stay.Status.CHECKED_OUT:
-            r.collected += paid
-            r.due_checked_out += due
-            if s.check_out:
-                add_received(s.check_out, paid)
-        else:
-            # Not received until they check out: the whole stay amount is still to come.
-            amount = max(s.total, paid)
-            if s.status == Stay.Status.CHECKED_IN:
-                r.due_in_house += amount
-                r.advance_in_house += paid
-                r.balance_in_house += due
+            if s.kind == Stay.Kind.MONTHLY:
+                last = min(s.check_out - timedelta(days=1), t) if s.check_out else t
+                days = max((last - s.check_in).days + 1, 1)
+                for i in range(days):
+                    add_received(s.check_in + timedelta(days=i), paid / days)
             else:
-                r.due_upcoming += amount
-                r.advance_upcoming += paid
-            r.deposits_held += s.deposit_amount or ZERO
+                add_received(s.check_in, paid)
         if due > 0 and s.status != Stay.Status.UPCOMING:
             r.unpaid.append(s)
 
