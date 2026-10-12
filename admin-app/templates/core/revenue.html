@@ -14,6 +14,10 @@
       <b class="money-big">{{ r.collected|inr }}</b>
       <div class="meter" role="img" aria-label="{{ r.collected_pct }}% of booked value received"><div style="width: {{ r.collected_pct }}%"></div></div>
       <span class="muted small">{{ r.collected_pct }}% of {{ r.booked_value|inr }} booked</span>
+      <ul class="money-split">
+        <li><span>Spent on expenses <small class="muted">(all time)</small></span><b>− {{ r.expenses_all_time|inr }}</b></li>
+        <li><span><b>Left after expenses</b></span><b class="{% if r.net_cash < 0 %}warn{% endif %}">{{ r.net_cash|inr }}</b></li>
+      </ul>
     </div>
     <div class="money-hero">
       <span class="money-label">Yet to receive</span>
@@ -40,6 +44,18 @@
   <div class="stat"><b>{{ r.in_period.avg_rate|inr }}</b><span>Average per night</span></div>
   <div class="stat"><b>{% if r.occupancy is not None %}{{ r.occupancy }}%{% else %}—{% endif %}</b><span>Occupancy</span></div>
 </div>
+
+<section class="card profit-card">
+  <div class="card-head"><h2>Profit · {{ r.period.label|lower }}</h2><a class="btn btn-outline btn-sm" href="{% url 'expense_list' %}?period={{ r.period.key }}">Expenses</a></div>
+  <div class="profit-sum">
+    <div><span class="muted small">Earned</span><b>{{ r.in_period.earned|inr }}</b></div>
+    <span class="op" aria-hidden="true">−</span>
+    <div><span class="muted small">Expenses</span><b>{{ r.in_period.expenses|inr }}</b></div>
+    <span class="op" aria-hidden="true">=</span>
+    <div><span class="muted small">Profit</span><b class="{% if r.in_period.profit < 0 %}warn{% else %}good{% endif %}">{{ r.in_period.profit|inr }}</b></div>
+  </div>
+  {% if r.in_period.ahead %}<p class="muted small">Another {{ r.in_period.ahead|inr }} is booked ahead in this period and will count once those nights are stayed.</p>{% endif %}
+</section>
 
 <div class="grid-2">
   <section class="card">

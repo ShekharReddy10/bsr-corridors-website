@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}{% if expense %}Edit expense{% else %}Add expense{% endif %}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{% if expense %}Edit expense{% else %}Add expense{% endif %}</h1><a class="btn btn-ghost" href="{% url 'expense_list' %}">Back</a></div>
+<form method="post" class="card" novalidate>{% csrf_token %}
+  {% if form.non_field_errors %}<div class="msg msg-error">{{ form.non_field_errors }}</div>{% endif %}
+  <div class="form-grid">
+    {% field form.date %}
+    {% field form.amount %}
+    {% field form.category %}
+    {% field form.payment_mode %}
+    {% field form.reason "span-2" %}
+    {% field form.paid_to %}
+    {% field form.reference %}
+    {% field form.room %}
+    {% field form.notes "span-2" %}
+  </div>
+  <div class="form-actions">
+    <button class="btn btn-primary">Save</button>
+    {% if not expense %}<button class="btn btn-outline" name="add_another" value="1">Save &amp; add another</button>{% endif %}
+    <a class="btn btn-ghost" href="{% url 'expense_list' %}">Cancel</a>
+  </div>
+</form>
+{% if expense %}
+<form method="post" action="{% url 'expense_delete' expense.pk %}" class="card danger-zone" data-confirm="Delete this expense? This cannot be undone.">{% csrf_token %}
+  <button class="btn btn-danger btn-sm">Delete expense</button> <span class="muted small">Added {{ expense.created_at|date:"d-m-Y H:i" }}</span>
+</form>
+{% endif %}
+{% endblock %}

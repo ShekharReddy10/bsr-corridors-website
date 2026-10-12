@@ -1,7 +1,7 @@
 from django.contrib.auth.views import LogoutView
 from django.urls import path
 
-from .views import auth, calendar, dashboard, data, guests, revenue, rooms, stays
+from .views import auth, calendar, dashboard, data, expenses, guests, revenue, rooms, stays
 
 urlpatterns = [
     path("login/", auth.ThrottledLoginView.as_view(), name="login"),
@@ -30,6 +30,10 @@ urlpatterns = [
     path("revenue/", revenue.revenue_page, name="revenue"),
     path("revenue/lock/", revenue.revenue_lock, name="revenue_lock"),
     path("revenue/password/", revenue.revenue_change_password, name="revenue_password"),
+    path("expenses/", expenses.expense_list, name="expense_list"),
+    path("expenses/new/", expenses.expense_form, name="expense_new"),
+    path("expenses/<int:pk>/", expenses.expense_form, name="expense_edit"),
+    path("expenses/<int:pk>/delete/", expenses.expense_delete, name="expense_delete"),
     path("export/", data.export, name="export"),
     path("backups/", data.backups, name="backups"),
     path("backup/run/", data.backup_hook, name="backup_hook"),

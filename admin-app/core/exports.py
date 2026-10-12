@@ -9,7 +9,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from .models import AuditLog, Guest, Room, RoomType, Stay, StayGuest
+from .models import AuditLog, Expense, Guest, Room, RoomType, Stay, StayGuest
 
 HEADER_FILL = PatternFill("solid", fgColor="1F2A30")
 HEADER_FONT = Font(bold=True, color="FFFFFF")
@@ -94,6 +94,19 @@ def build_workbook(start: date | None = None, end: date | None = None, full_ids:
             for r in Room.objects.select_related("room_type")
         ],
     )
+    expenses = Expense.objects.select_related("room").order_by("date", "pk")
+    if start and end:
+        expenses = expenses.filter(date__gte=start, date__lte=end)
+    _sheet(
+        wb,
+        "Expenses",
+        ["Date", "Category", "Reason", "Amount", "Payment mode", "Paid to", "Bill / reference", "Room", "Notes"],
+        [
+            [e.date, e.get_category_display(), e.reason, float(e.amount), e.get_payment_mode_display(), e.paid_to,
+             e.reference, e.room.number if e.room else "", e.notes]
+            for e in expenses
+        ],
+    )
     for ws in wb.worksheets:
         for row in ws.iter_rows(min_row=2):
             for cell in row:
@@ -104,7 +117,7 @@ def build_workbook(start: date | None = None, end: date | None = None, full_ids:
     return buf.getvalue()
 
 
-BACKUP_MODELS = [RoomType, Room, Guest, Stay, StayGuest, AuditLog]
+BACKUP_MODELS = [RoomType, Room, Guest, Stay, StayGuest, Expense, AuditLog]
 
 
 def backup_json() -> bytes:

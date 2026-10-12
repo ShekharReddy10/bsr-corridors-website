@@ -1,0 +1,73 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}Expenses{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Expenses</h1><p class="muted"><a href="{% url 'revenue' %}?period={{ period.key }}">See revenue &amp; profit</a></p></div>
+  <a class="btn btn-primary" href="{% url 'expense_new' %}">+ Add expense</a>
+</div>
+
+<nav class="period-tabs" aria-label="Period">
+  {% for p in periods %}<a href="?period={{ p.key }}{% if category %}&category={{ category }}{% endif %}" {% if p.key == period.key %}aria-current="page"{% endif %}>{{ p.label }}</a>{% endfor %}
+</nav>
+
+<form class="filters" method="get">
+  <input type="hidden" name="period" value="{{ period.key }}">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search reason, paid to, bill no." aria-label="Search expenses" autocomplete="off">
+  <select name="category" aria-label="Category" onchange="this.form.submit()">
+    <option value="">All categories</option>
+    {% for v, l in categories %}<option value="{{ v }}" {% if category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+  </select>
+  <button class="btn btn-outline">Search</button>
+</form>
+
+<div class="grid-2">
+  <section class="card money-hero">
+    <span class="money-label">Total spent · {{ period.label|lower }}</span>
+    <b class="money-big">{{ total|inr }}</b>
+    <span class="muted small">{{ page.paginator.count }} expense{{ page.paginator.count|pluralize }}</span>
+    {% if by_mode %}
+    <ul class="money-split">{% for m in by_mode %}<li><span>{{ m.label }}</span><b>{{ m.total|inr }}</b></li>{% endfor %}</ul>
+    {% endif %}
+  </section>
+  <section class="card">
+    <h2>By category</h2>
+    {% for row in by_category %}
+      <div class="hbar">
+        <div class="hbar-head"><span>{{ row.label }}</span><b>{{ row.total|inr }}</b></div>
+        <div class="hbar-track"><div class="vseg vseg-spend" style="width: {{ row.pct|stringformat:'.2f' }}%"></div></div>
+        <small class="muted">{{ row.n }} expense{{ row.n|pluralize }}</small>
+      </div>
+    {% empty %}<p class="muted">No expenses in this period.</p>{% endfor %}
+  </section>
+</div>
+
+{% if page.object_list %}
+<div class="table-wrap">
+<table class="table table-cards">
+  <thead><tr><th>Date</th><th>Category</th><th>Reason</th><th>Paid to</th><th>Mode</th><th>Bill / ref</th><th class="num">Amount</th></tr></thead>
+  <tbody>
+  {% for e in page.object_list %}
+    <tr>
+      <td data-label="Date">{{ e.date|date:"d-m-Y" }}</td>
+      <td data-label="Category">{{ e.get_category_display }}{% if e.room %} <span class="tag">Room {{ e.room.number }}</span>{% endif %}</td>
+      <td data-label="Reason"><a href="{% url 'expense_edit' e.pk %}"><b>{{ e.reason }}</b></a>{% if e.notes %}<br><small class="muted">{{ e.notes|truncatechars:80 }}</small>{% endif %}</td>
+      <td data-label="Paid to">{{ e.paid_to|default:"—" }}</td>
+      <td data-label="Mode">{{ e.get_payment_mode_display }}</td>
+      <td data-label="Bill / ref">{{ e.reference|default:"—" }}</td>
+      <td data-label="Amount" class="num"><b>{{ e.amount|inr }}</b></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if page.has_other_pages %}
+<nav class="pager" aria-label="Pages">
+  {% if page.has_previous %}<a class="btn btn-outline btn-sm" href="?{% for k, v in request.GET.items %}{% if k != 'page' %}{{ k }}={{ v|urlencode }}&{% endif %}{% endfor %}page={{ page.previous_page_number }}">‹ Newer</a>{% endif %}
+  <span class="muted">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+  {% if page.has_next %}<a class="btn btn-outline btn-sm" href="?{% for k, v in request.GET.items %}{% if k != 'page' %}{{ k }}={{ v|urlencode }}&{% endif %}{% endfor %}page={{ page.next_page_number }}">Older ›</a>{% endif %}
+</nav>
+{% endif %}
+{% else %}
+<div class="card empty"><p>No expenses found.</p><a class="btn btn-primary" href="{% url 'expense_new' %}">+ Add expense</a></div>
+{% endif %}
+{% endblock %}

@@ -8,12 +8,15 @@ forgotten password can be reset from Render's settings (the free plan has no she
 import hmac
 import os
 import time
+from functools import wraps
+from urllib.parse import quote
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.cache import cache
 from django.shortcuts import redirect, render
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .. import revenue
@@ -46,6 +49,23 @@ def _fail_key(request) -> str:
     return f"revenue-fail:{_client_ip(request)}"
 
 
+def revenue_unlocked(view):
+    """Other money pages (expenses) need the revenue password too; ask for it, then come back."""
+    @wraps(view)
+    def wrapper(request, *args, **kwargs):
+        if not _unlocked(request):
+            return redirect(f"/revenue/?next={quote(request.get_full_path())}")
+        return view(request, *args, **kwargs)
+    return wrapper
+
+
+def _after_unlock(request):
+    nxt = request.GET.get("next", "")
+    if url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        return redirect(nxt)
+    return redirect("revenue")
+
+
 def revenue_page(request):
     has_password = _has_password()
     if request.method == "POST":
@@ -60,14 +80,15 @@ def revenue_page(request):
                 AuditLog.record("revenue_password", "Revenue password set")
                 request.session[SESSION_KEY] = time.time() + UNLOCK_SECONDS
                 messages.success(request, "Revenue password set.")
-            return redirect("revenue")
+                return _after_unlock(request)
+            return redirect(request.get_full_path())
         key = _fail_key(request)
         if cache.get(key, 0) >= settings.LOGIN_MAX_ATTEMPTS:
             messages.error(request, f"Too many wrong passwords. Try again in {settings.LOGIN_LOCKOUT_SECONDS // 60} minutes.")
         elif _password_ok(password):
             cache.delete(key)
             request.session[SESSION_KEY] = time.time() + UNLOCK_SECONDS
-            return redirect(request.get_full_path())
+            return _after_unlock(request)
         else:
             cache.set(key, cache.get(key, 0) + 1, settings.LOGIN_LOCKOUT_SECONDS)
             messages.error(request, "Wrong password.")

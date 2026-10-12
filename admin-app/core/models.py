@@ -257,6 +257,48 @@ class StayGuest(models.Model):
         return "".join(c for c in self.phone if c.isdigit())
 
 
+class Expense(models.Model):
+    class Category(models.TextChoices):
+        SALARY = "salary", "Staff salary / wages"
+        ELECTRICITY = "electricity", "Electricity"
+        WATER = "water", "Water"
+        GAS = "gas", "Gas / fuel"
+        INTERNET = "internet", "Internet / phone / TV"
+        LAUNDRY = "laundry", "Laundry"
+        SUPPLIES = "supplies", "Housekeeping & guest supplies"
+        REPAIRS = "repairs", "Repairs & maintenance"
+        FURNITURE = "furniture", "Furniture & equipment"
+        FOOD = "food", "Food & kitchen"
+        COMMISSION = "commission", "OTA / agent commission"
+        RENT = "rent", "Building rent / lease"
+        TAX = "tax", "Taxes, licences & fees"
+        MARKETING = "marketing", "Marketing"
+        REFUND = "refund", "Refund to guest"
+        OTHER = "other", "Other"
+
+    date = models.DateField(default=timezone.localdate, db_index=True)
+    category = models.CharField(max_length=20, choices=Category.choices, default=Category.OTHER, db_index=True)
+    reason = models.CharField("Reason / description", max_length=200, help_text="e.g. AC repair in room 103")
+    amount = models.DecimalField("Amount (₹)", max_digits=10, decimal_places=2)
+    payment_mode = models.CharField(max_length=20, choices=Stay.PaymentMode.choices, default=Stay.PaymentMode.CASH)
+    paid_to = models.CharField("Paid to", max_length=120, blank=True, help_text="Person, shop or company")
+    reference = models.CharField("Bill / reference no.", max_length=60, blank=True,
+                                 help_text="Invoice number, UPI transaction ID, …")
+    room = models.ForeignKey(Room, null=True, blank=True, on_delete=models.SET_NULL, related_name="expenses",
+                             help_text="Only if the expense is for one room")
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "expenses"
+        ordering = ["-date", "-pk"]
+        constraints = [models.CheckConstraint(condition=Q(amount__gt=0), name="expense_amount_positive")]
+
+    def __str__(self):
+        return f"{self.date:%d-%m-%Y} · {self.get_category_display()} · ₹{self.amount:,.0f}"
+
+
 class AuditLog(models.Model):
     at = models.DateTimeField(default=timezone.now, db_index=True)
     action = models.CharField(max_length=40)

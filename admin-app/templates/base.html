@@ -26,6 +26,7 @@
       <a href="{% url 'guest_list' %}" {% if 'guest' in url %}aria-current="page"{% endif %}>Guests</a>
       <a href="{% url 'rooms' %}" {% if 'room' in url and url != 'room_month' %}aria-current="page"{% endif %}>Rooms</a>
       <a href="{% url 'revenue' %}" {% if url == 'revenue' %}aria-current="page"{% endif %}>Revenue</a>
+      <a href="{% url 'expense_list' %}" {% if 'expense' in url %}aria-current="page"{% endif %}>Expenses</a>
       <a href="{% url 'export' %}" {% if url == 'export' %}aria-current="page"{% endif %}>Export</a>
       <a href="{% url 'backups' %}" {% if url == 'backups' %}aria-current="page"{% endif %}>Backups</a>
       <a href="{% url 'settings' %}" {% if url == 'settings' %}aria-current="page"{% endif %}>Settings &amp; log</a>
@@ -58,6 +59,7 @@
         <a href="{% url 'guest_list' %}">Guests (search by phone)</a>
         <a href="{% url 'rooms' %}">Rooms</a>
         <a href="{% url 'revenue' %}">Revenue</a>
+        <a href="{% url 'expense_list' %}">Expenses</a>
         <a href="{% url 'export' %}">Export</a>
         <a href="{% url 'backups' %}">Backups</a>
         <a href="{% url 'settings' %}">Settings &amp; log</a>

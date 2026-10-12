@@ -20,8 +20,8 @@
   <summary>Show as table</summary>
   <div class="table-wrap">
   <table class="table">
-    <thead><tr><th>{{ first_col }}</th><th class="num">Earned</th><th class="num">Booked ahead</th><th class="num">Total</th><th class="num">Room-nights</th><th class="num">Avg / night</th></tr></thead>
-    <tbody>{% for c in chart.cols reversed %}<tr{% if c.current %} class="is-current"{% endif %}><td>{{ c.full }}</td><td class="num">{{ c.b.earned|inr }}</td><td class="num">{{ c.b.ahead|inr }}</td><td class="num"><b>{{ c.b.total|inr }}</b></td><td class="num">{{ c.b.nights }}</td><td class="num">{{ c.b.avg_rate|inr }}</td></tr>{% endfor %}</tbody>
+    <thead><tr><th>{{ first_col }}</th><th class="num">Earned</th><th class="num">Booked ahead</th><th class="num">Total</th><th class="num">Room-nights</th><th class="num">Avg / night</th><th class="num">Expenses</th><th class="num">Profit</th></tr></thead>
+    <tbody>{% for c in chart.cols reversed %}<tr{% if c.current %} class="is-current"{% endif %}><td>{{ c.full }}</td><td class="num">{{ c.b.earned|inr }}</td><td class="num">{{ c.b.ahead|inr }}</td><td class="num"><b>{{ c.b.total|inr }}</b></td><td class="num">{{ c.b.nights }}</td><td class="num">{{ c.b.avg_rate|inr }}</td><td class="num">{{ c.b.expenses|inr }}</td><td class="num{% if c.b.profit < 0 %} warn{% endif %}">{{ c.b.profit|inr }}</td></tr>{% endfor %}</tbody>
   </table>
   </div>
 </details>

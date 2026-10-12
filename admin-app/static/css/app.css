@@ -366,3 +366,9 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
   .colchart-labels span { overflow: visible; white-space: nowrap; }
   .col-bar { max-width: 14px; }
 }
+.vseg-spend { background: #eb6834; }
+.profit-sum { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 16px; }
+.profit-sum > div { display: grid; }
+.profit-sum b { font-size: 1.4rem; }
+.profit-sum .op { font-size: 1.4rem; color: var(--ink-soft); padding-bottom: 2px; }
+.good { color: var(--green); }

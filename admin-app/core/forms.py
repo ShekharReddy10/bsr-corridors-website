@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from django import forms
 
-from .models import Guest, Room, RoomType, Stay, StayGuest
+from .models import Expense, Guest, Room, RoomType, Stay, StayGuest
 
 DATE = forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")
 
@@ -278,3 +278,25 @@ class DateRangeForm(forms.Form):
         if data.get("start") and data.get("end") and data["end"] < data["start"]:
             self.add_error("end", "End date must be on or after the start date.")
         return data
+
+
+class ExpenseForm(forms.ModelForm):
+    class Meta:
+        model = Expense
+        fields = ["date", "category", "reason", "amount", "payment_mode", "paid_to", "reference", "room", "notes"]
+        widgets = {
+            "date": DATE,
+            "amount": forms.NumberInput(attrs={"inputmode": "decimal", "min": "1", "step": "0.01"}),
+            "notes": forms.Textarea(attrs={"rows": 2}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["room"].queryset = Room.objects.filter(is_active=True)
+        self.fields["room"].empty_label = "— Not for one room —"
+
+    def clean_amount(self):
+        amount = self.cleaned_data["amount"]
+        if amount <= 0:
+            raise forms.ValidationError("Amount must be more than zero.")
+        return amount

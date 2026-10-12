@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 
-from .models import Room, Stay
+from .models import Expense, Room, Stay
 from .services import today
 
 ZERO = Decimal(0)
@@ -23,10 +23,16 @@ class Bucket:
     earned: Decimal = ZERO
     ahead: Decimal = ZERO
     nights: int = 0
+    expenses: Decimal = ZERO
 
     @property
     def total(self) -> Decimal:
         return self.earned + self.ahead
+
+    @property
+    def profit(self) -> Decimal:
+        """Earned room revenue minus expenses (booked-ahead nights aren't counted until stayed)."""
+        return self.earned - self.expenses
 
     @property
     def avg_rate(self) -> Decimal:
@@ -95,8 +101,13 @@ class Report:
     due_upcoming: Decimal = ZERO
     due_checked_out: Decimal = ZERO
     deposits_held: Decimal = ZERO
+    expenses_all_time: Decimal = ZERO
     unpaid: list = field(default_factory=list)
     room_count: int = 0
+
+    @property
+    def net_cash(self) -> Decimal:
+        return self.collected - self.expenses_all_time
 
     @property
     def to_receive(self) -> Decimal:
@@ -159,6 +170,15 @@ def build(period_key: str = "month") -> Report:
             r.unpaid.append(s)
 
     r.unpaid.sort(key=lambda s: (s.status != Stay.Status.CHECKED_OUT, -s.balance))
+
+    for d, amount in Expense.objects.values_list("date", "amount"):
+        r.expenses_all_time += amount
+        if month0 <= d < month_end:
+            r.by_month[d.replace(day=1)].expenses += amount
+        if week0 <= d < week_end:
+            r.by_week[d - timedelta(days=d.weekday())].expenses += amount
+        if (period.start is None or d >= period.start) and (period.end is None or d < period.end):
+            r.in_period.expenses += amount
     return r
 
 

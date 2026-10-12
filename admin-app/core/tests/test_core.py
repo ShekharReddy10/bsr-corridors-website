@@ -1,3 +1,4 @@
+import io
 import json
 from datetime import timedelta
 from decimal import Decimal
@@ -251,7 +252,7 @@ class ExportTests(TestCase):
         values = [c.value for row in wb["Stays"].iter_rows() for c in row]
         self.assertIn("••••1234", values)
         self.assertNotIn("123412341234", values)
-        self.assertEqual(wb.sheetnames, ["Stays", "Guests", "Rooms"])
+        self.assertEqual(wb.sheetnames, ["Stays", "Guests", "Rooms", "Expenses"])
 
 
 class ViewTests(TestCase):
@@ -605,3 +606,56 @@ class RevenueTests(TestCase):
         self._unlock()
         for key in ("week", "month", "last_month", "year", "all", "junk"):
             self.assertContains(self.client.get(f"/revenue/?period={key}"), "Monthly revenue")
+
+
+class ExpenseTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        _, _, self.rooms = make_rooms()
+        self.client.force_login(get_user_model().objects.create_user("exp-admin", password="test-pass-123456"))
+
+    def test_expenses_need_revenue_password_then_come_back(self):
+        r = self.client.get("/expenses/new/")
+        self.assertRedirects(r, "/revenue/?next=/expenses/new/", fetch_redirect_response=False)
+        r = self.client.post("/revenue/?next=/expenses/new/", {"password": "secret1", "confirm": "secret1"})
+        self.assertRedirects(r, "/expenses/new/", fetch_redirect_response=False)
+        r = self.client.post("/revenue/?next=https://evil.example/", {"password": "secret1"})
+        self.assertRedirects(r, "/revenue/", fetch_redirect_response=False)
+
+    def test_add_list_edit_delete_and_profit(self):
+        from core import revenue
+        from core.models import Expense
+        self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
+        r = self.client.post("/expenses/new/", {
+            "date": T.isoformat(), "category": "repairs", "reason": "AC repair", "amount": "2500",
+            "payment_mode": "upi", "paid_to": "Cool Air Services", "reference": "INV-42", "room": self.rooms["101"].pk})
+        self.assertRedirects(r, "/expenses/", fetch_redirect_response=False)
+        self.client.post("/expenses/new/", {"date": T.isoformat(), "category": "electricity", "reason": "Bill",
+                                            "amount": "4000", "payment_mode": "bank"})
+        self.assertContains(self.client.post("/expenses/new/", {"date": T.isoformat(), "category": "other",
+                                                                "reason": "x", "amount": "0", "payment_mode": "cash"}),
+                            "more than zero")
+        page = self.client.get("/expenses/?period=month")
+        self.assertContains(page, "AC repair")
+        self.assertContains(page, "₹6,500")
+        self.assertContains(self.client.get("/expenses/?period=month&category=repairs"), "₹2,500")
+
+        stay(make_guest(), self.rooms["102"], -2, 2, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(3000))
+        rep = revenue.build("all")
+        self.assertEqual(rep.in_period.expenses, Decimal(6500))
+        self.assertEqual(rep.in_period.profit, Decimal(3000) - Decimal(6500))
+        self.assertEqual(rep.net_cash, Decimal(3000) - Decimal(6500))
+        self.assertContains(self.client.get("/revenue/?period=all"), "Left after expenses")
+
+        e = Expense.objects.get(reason="AC repair")
+        self.client.post(f"/expenses/{e.pk}/delete/")
+        self.assertFalse(Expense.objects.filter(pk=e.pk).exists())
+        self.assertTrue(AuditLog.objects.filter(action="expense", summary__contains="Deleted").exists())
+
+    def test_expenses_in_export_and_backup(self):
+        from core.models import Expense
+        from openpyxl import load_workbook
+        Expense.objects.create(date=T, category="laundry", reason="Bedsheets", amount=Decimal(800))
+        wb = load_workbook(io.BytesIO(build_workbook()))
+        self.assertEqual(wb["Expenses"]["C2"].value, "Bedsheets")
+        self.assertIn('"model": "core.expense"', backup_json().decode())
