@@ -16,7 +16,7 @@
   {% if stay.status == 'upcoming' %}
     <form method="post" action="{% url 'stay_action' stay.pk 'check-in' %}"{% if wa_welcome and g.has_contact_details %} data-wa-open="{% url 'stay_whatsapp' stay.pk %}?t=checkin"{% endif %}>{% csrf_token %}<button class="btn btn-primary">Check in{% if wa_welcome and g.has_contact_details %} &amp; send welcome{% endif %}</button></form>
   {% elif stay.status == 'checked_in' %}
-    <form method="post" action="{% url 'stay_action' stay.pk 'check-out' %}" data-confirm="{% if today < stay.check_out and today > stay.check_in %}Guest is booked until {{ stay.check_out|date:'d-m-Y' }}. Check out today (early checkout)?{% endif %}">{% csrf_token %}<button class="btn btn-primary">Check out</button></form>
+    <form method="post" action="{% url 'stay_action' stay.pk 'check-out' %}" data-confirm="{% if today < stay.check_out and today > stay.check_in %}Guest is booked until {{ stay.check_out|date:'d-m-Y' }}. Check out today (early checkout)?{% endif %}"{% if wa_departure and g.phone %} data-wa-open="{% url 'stay_whatsapp' stay.pk %}?t=checkout"{% endif %}>{% csrf_token %}<button class="btn btn-primary">Check out{% if wa_departure and g.phone %} &amp; send message{% endif %}</button></form>
     <form method="post" action="{% url 'stay_action' stay.pk 'undo-check-in' %}" data-confirm="Undo check-in? The stay goes back to upcoming.">{% csrf_token %}<button class="btn btn-ghost">Undo check-in</button></form>
   {% elif stay.status == 'checked_out' %}
     <form method="post" action="{% url 'stay_action' stay.pk 'undo-check-out' %}" class="inline-form" data-confirm="Undo check-out? {{ g.name }} goes back to checked in.">{% csrf_token %}
@@ -41,6 +41,10 @@
 {% if just_checked_in and wa_welcome and g.phone %}
   <div class="alert">Checked in. <b>Welcome message</b> didn’t open in WhatsApp?
     <a class="btn btn-sm btn-primary" href="{% url 'stay_whatsapp' stay.pk %}?t=checkin" target="_blank" rel="noopener">Send welcome message</a></div>
+{% endif %}
+{% if just_checked_out and wa_departure and g.phone %}
+  <div class="alert">Checked out. <b>Departure message</b> didn’t open in WhatsApp?
+    <a class="btn btn-sm btn-primary" href="{% url 'stay_whatsapp' stay.pk %}?t=checkout" target="_blank" rel="noopener">Send departure message</a></div>
 {% endif %}
 
 {% if stay.form_c_due %}

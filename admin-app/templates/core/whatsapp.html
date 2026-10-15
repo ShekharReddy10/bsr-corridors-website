@@ -9,10 +9,10 @@
 
 <section class="card">
   <h2>Ready-made messages</h2>
-  <p class="muted small">Each one is a button on the stay page. The one marked <b>at check-in</b> opens by itself when you tap Check in.</p>
+  <p class="muted small">Each one is a button on the stay page. The one marked <b>at check-in</b> opens by itself when you tap Check in, and the one marked <b>at check-out</b> when you tap Check out.</p>
   {% for t in templates %}
     <div class="wa-template">
-      <div class="card-head"><h3>{{ t.name }}{% if t.on_check_in %} <span class="status status-checked_in">at check-in</span>{% endif %}</h3>
+      <div class="card-head"><h3>{{ t.name }}{% if t.on_check_in %} <span class="status status-checked_in">at check-in</span>{% endif %}{% if t.on_check_out %} <span class="status status-checked_out">at check-out</span>{% endif %}</h3>
         <a class="btn btn-outline btn-sm" href="{% url 'wa_template_edit' t.pk %}">Edit</a></div>
       <p class="wa-body">{{ t.body }}</p>
     </div>

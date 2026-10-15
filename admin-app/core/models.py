@@ -326,6 +326,8 @@ class MessageTemplate(models.Model):
     body = models.TextField(help_text="Use {guest}, {room}, {check_out}, {wifi_password} … — see the list on the page")
     on_check_in = models.BooleanField("Send when checking in", default=False,
                                       help_text="Opens automatically when you tap Check in (only one message can)")
+    on_check_out = models.BooleanField("Send when checking out", default=False,
+                                       help_text="Opens automatically when you tap Check out (only one message can)")
     sort_order = models.PositiveIntegerField(default=0)
 
     class Meta:

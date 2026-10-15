@@ -773,3 +773,15 @@ class HostSettlementWhatsAppTests(TestCase):
         self.rooms["201"].save()
         s.refresh_from_db()
         self.assertEqual(whatsapp.context(s)["wifi_name"], "BSR Second")
+
+    def test_check_out_opens_departure_message(self):
+        from urllib.parse import parse_qs, urlparse
+        s = stay(make_guest(), self.rooms["101"], -2, 2, status=Stay.Status.CHECKED_IN)
+        page = self.client.get(f"/stays/{s.pk}/").content.decode()
+        self.assertIn(f'data-wa-open="/stays/{s.pk}/whatsapp/?t=checkout"', page)
+        self.assertIn("Check out &amp; send message", page)
+        self.assertEqual(self.client.post(f"/stays/{s.pk}/check-out/")["Location"], f"/stays/{s.pk}/?departed=1")
+        self.assertContains(self.client.get(f"/stays/{s.pk}/?departed=1"), "Send departure message")
+        text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/?t=checkout")["Location"]).query)["text"][0]
+        self.assertIn("Thank you for staying", text)
+        self.assertIn("Room 101", text)

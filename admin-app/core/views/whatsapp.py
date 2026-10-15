@@ -9,6 +9,9 @@ from .. import whatsapp
 from ..forms import MessageTemplateForm
 from ..models import AuditLog, MessageTemplate, Stay
 
+# ?t=checkin / ?t=checkout → the message that opens at check-in / check-out.
+AUTO = {"checkin": "on_check_in", "checkout": "on_check_out"}
+
 
 def whatsapp_page(request):
     if request.method == "POST":
@@ -30,8 +33,11 @@ def template_edit(request, pk=None):
     if request.method == "POST" and form.is_valid():
         with transaction.atomic():
             saved = form.save()
-            if saved.on_check_in:  # only one message opens at check-in
+            # Only one message opens at check-in, and one at check-out.
+            if saved.on_check_in:
                 MessageTemplate.objects.exclude(pk=saved.pk).update(on_check_in=False)
+            if saved.on_check_out:
+                MessageTemplate.objects.exclude(pk=saved.pk).update(on_check_out=False)
         AuditLog.record("whatsapp", f"{'Updated' if obj else 'Added'} WhatsApp message: {saved}")
         messages.success(request, f"Message “{saved}” saved.")
         return redirect("whatsapp")
@@ -55,7 +61,8 @@ def template_delete(request, pk):
 def send(request, pk):
     """Fill in a message for this stay's guest and open it in WhatsApp (logged in the stay's history).
 
-    ?t=<id> a saved message · ?t=checkin the check-in (welcome) message · ?text=… a custom message.
+    ?t=<id> a saved message · ?t=checkin / ?t=checkout the check-in (welcome) / check-out (departure)
+    message · ?text=… a custom message.
     """
     stay = get_object_or_404(Stay.objects.select_related("guest", "room"), pk=pk)
     if not stay.guest.phone:
@@ -64,8 +71,10 @@ def send(request, pk):
     t = request.GET.get("t", "")
     if t:
         templates = MessageTemplate.objects.all()
-        template = templates.filter(on_check_in=True).first() if t == "checkin" else (
-            templates.filter(pk=int(t)).first() if t.isdigit() else None)
+        if t in AUTO:
+            template = templates.filter(**{AUTO[t]: True}).first()
+        else:
+            template = templates.filter(pk=int(t)).first() if t.isdigit() else None
         if not template:
             messages.error(request, "That message no longer exists.")
             return redirect("stay_detail", pk=pk)

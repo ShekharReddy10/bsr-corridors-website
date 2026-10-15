@@ -174,6 +174,7 @@ def stay_detail(request, pk):
         "wa_templates": MessageTemplate.objects.all(),
         "wa_number": whatsapp.wa_number(stay.guest.phone),
         "just_checked_in": request.GET.get("welcome") == "1" and stay.status == Stay.Status.CHECKED_IN,
+        "just_checked_out": request.GET.get("departed") == "1" and stay.status == Stay.Status.CHECKED_OUT,
     }
     if stay.status == Stay.Status.CHECKED_OUT:
         context["booked_check_out"] = services.booked_check_out(stay)
@@ -197,6 +198,7 @@ def stay_action(request, pk, action):
         elif action == "check-out":
             services.check_out(stay)
             messages.success(request, f"{stay.guest.name} checked out of {stay.room}.")
+            return redirect(f"/stays/{stay.pk}/?departed=1")
         elif action == "cancel":
             services.cancel(stay)
             messages.success(request, "Stay cancelled. The room is free again.")

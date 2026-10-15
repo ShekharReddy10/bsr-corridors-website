@@ -4,7 +4,7 @@
     <span><b>{{ s.guest.name }}</b><small>{{ s.guest.phone|default:"No phone yet" }}{% if note and d1 %} · {{ note }} {{ d1|date:"d-m" }}{% if d2 %} → {{ d2|date:"d-m" }}{% endif %}{% elif note and not s.is_open_ended %} · {{ note }}{% endif %}{% if s.is_open_ended %} · Monthly{% endif %}{% if s.balance > 0 and s.status != 'upcoming' %} · <span class="warn">{{ s.balance|inr }} due</span>{% endif %}</small></span>
   </a>
   {% if action %}
-  <form method="post" action="{% url 'stay_action' s.pk action %}"{% if action == 'check-in' and wa_welcome and s.guest.has_contact_details %} data-wa-open="{% url 'stay_whatsapp' s.pk %}?t=checkin"{% endif %}>{% csrf_token %}
+  <form method="post" action="{% url 'stay_action' s.pk action %}"{% if action == 'check-in' and wa_welcome and s.guest.has_contact_details %} data-wa-open="{% url 'stay_whatsapp' s.pk %}?t=checkin"{% elif action == 'check-out' and wa_departure and s.guest.phone %} data-wa-open="{% url 'stay_whatsapp' s.pk %}?t=checkout"{% endif %}>{% csrf_token %}
     <button class="btn btn-sm {% if action == 'check-in' %}btn-primary{% else %}btn-outline{% endif %}">{% if action == 'check-in' %}Check in{% else %}Check out{% endif %}</button>
   </form>
   {% endif %}

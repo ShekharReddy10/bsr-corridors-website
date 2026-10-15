@@ -6,9 +6,13 @@ from .models import MessageTemplate
 
 
 def app(request):
-    # Callable (and cached per request), so the query runs only on pages that show a Check-in button.
+    # Callables (cached per request), so the queries run only on pages with a Check-in / Check-out button.
     @cache
     def wa_welcome():
         return MessageTemplate.objects.filter(on_check_in=True).exists()
 
-    return {"HOTEL_NAME": settings.HOTEL_NAME, "wa_welcome": wa_welcome}
+    @cache
+    def wa_departure():
+        return MessageTemplate.objects.filter(on_check_out=True).exists()
+
+    return {"HOTEL_NAME": settings.HOTEL_NAME, "wa_welcome": wa_welcome, "wa_departure": wa_departure}
