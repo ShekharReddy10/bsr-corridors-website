@@ -1,4 +1,4 @@
-"""WhatsApp click-to-send: build a wa.me link with the message already typed.
+"""WhatsApp click-to-send: open the guest's chat with the message already typed.
 
 The link opens WhatsApp on this phone / computer (whichever number is logged in there — ours is
 7013684602); you check the text and tap Send. Nothing is sent by the server and no Meta account is needed.
@@ -90,7 +90,7 @@ def render(body: str, ctx: dict[str, str]) -> str:
 
 
 def wa_number(phone: str) -> str:
-    """Digits for wa.me: country code + number. A bare 10-digit (or 0-prefixed) number is taken as Indian."""
+    """Digits for WhatsApp: country code + number. A bare 10-digit (or 0-prefixed) number is taken as Indian."""
     digits = "".join(c for c in phone if c.isdigit())
     if len(digits) == 11 and digits.startswith("0"):
         digits = digits[1:]
@@ -99,5 +99,8 @@ def wa_number(phone: str) -> str:
     return digits
 
 
-def link(phone: str, text: str) -> str:
-    return f"https://wa.me/{wa_number(phone)}?text={quote(text)}"
+def link(phone: str, text: str, mobile: bool) -> str:
+    """Straight to the chat: the WhatsApp app on a phone, WhatsApp Web on a computer
+    (wa.me would first show a "Chat on WhatsApp" page)."""
+    query = f"phone={wa_number(phone)}" + (f"&text={quote(text)}" if text else "")
+    return f"whatsapp://send?{query}" if mobile else f"https://web.whatsapp.com/send?{query}"

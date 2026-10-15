@@ -7,9 +7,10 @@
   document.addEventListener("submit", (e) => {
     const msg = e.target.dataset && e.target.dataset.confirm;
     if (msg && !window.confirm(msg)) { e.preventDefault(); return; }
-    // Check in / out: open the welcome / departure message in WhatsApp in the same tap (a new tab, so the form still goes through).
+    // Check in / out: open the welcome / departure message in WhatsApp in the same tap, in the "whatsapp"
+    // tab (reused for every message, so WhatsApp Web isn't opened twice), while the form still goes through.
     const wa = e.target.dataset && e.target.dataset.waOpen;
-    if (wa) window.open(wa, "_blank", "noopener");
+    if (wa) window.open(wa, "whatsapp");
   });
 
   // Close the mobile "More" sheet when tapping elsewhere

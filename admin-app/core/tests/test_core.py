@@ -735,15 +735,20 @@ class HostSettlementWhatsAppTests(TestCase):
         s = stay(make_guest(phone="98765 43210"), self.rooms["101"], 0, 2)
         response = self.client.get(f"/stays/{s.pk}/whatsapp/?t=checkin")
         url = urlparse(response["Location"])
-        self.assertEqual((url.netloc, url.path), ("wa.me", "/919876543210"))
+        self.assertEqual((url.netloc, url.path), ("web.whatsapp.com", "/send"))  # computer: WhatsApp Web
+        self.assertEqual(parse_qs(url.query)["phone"], ["919876543210"])
         text = parse_qs(url.query)["text"][0]
         self.assertIn("Ravi Kumar", text)
         self.assertIn("Room 101", text)
         self.assertIn("corridors@123", text)
         self.assertTrue(AuditLog.objects.filter(stay=s, action="whatsapp").exists())
 
+        self.assertIn("🙏", text)
         custom = self.client.get(f"/stays/{s.pk}/whatsapp/", {"text": "Hello {guest}"})
         self.assertIn("text=Hello%20%7Bguest%7D", custom["Location"])  # custom text is sent as typed
+        # Phone: straight into the WhatsApp app. No text: just open the chat.
+        phone = self.client.get(f"/stays/{s.pk}/whatsapp/", HTTP_USER_AGENT="Mozilla/5.0 (Linux; Android 14) Mobile")
+        self.assertEqual(phone["Location"], "whatsapp://send?phone=919876543210")
 
     def test_check_in_opens_welcome_and_only_one_check_in_message(self):
         s = stay(make_guest(), self.rooms["101"], 0, 2)
@@ -783,5 +788,6 @@ class HostSettlementWhatsAppTests(TestCase):
         self.assertEqual(self.client.post(f"/stays/{s.pk}/check-out/")["Location"], f"/stays/{s.pk}/?departed=1")
         self.assertContains(self.client.get(f"/stays/{s.pk}/?departed=1"), "Send departure message")
         text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/?t=checkout")["Location"]).query)["text"][0]
+        self.assertTrue(text.startswith("Thank you for staying at BSR Corridors, Ravi Kumar! 🙏\n\n"))
         self.assertIn("Thank you for staying", text)
         self.assertIn("Room 101", text)

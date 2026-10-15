@@ -10,7 +10,7 @@ from django.utils.dateparse import parse_date
 from django.utils.html import escape
 from django.views.decorators.http import require_POST
 
-from .. import services, whatsapp
+from .. import services
 from ..fields import mask
 from ..forms import ExtendForm, GuestForm, PaymentForm, ShortenForm, StayForm, other_guests_formset
 from ..models import AuditLog, Guest, MessageTemplate, Room, Stay
@@ -172,7 +172,6 @@ def stay_detail(request, pk):
         "shorten_form": ShortenForm(initial={"new_check_out": services.today()}),
         "today": services.today(),
         "wa_templates": MessageTemplate.objects.all(),
-        "wa_number": whatsapp.wa_number(stay.guest.phone),
         "just_checked_in": request.GET.get("welcome") == "1" and stay.status == Stay.Status.CHECKED_IN,
         "just_checked_out": request.GET.get("departed") == "1" and stay.status == Stay.Status.CHECKED_OUT,
     }

@@ -40,11 +40,11 @@
 
 {% if just_checked_in and wa_welcome and g.phone %}
   <div class="alert">Checked in. <b>Welcome message</b> didn’t open in WhatsApp?
-    <a class="btn btn-sm btn-primary" href="{% url 'stay_whatsapp' stay.pk %}?t=checkin" target="_blank" rel="noopener">Send welcome message</a></div>
+    <a class="btn btn-sm btn-primary" href="{% url 'stay_whatsapp' stay.pk %}?t=checkin" target="whatsapp">Send welcome message</a></div>
 {% endif %}
 {% if just_checked_out and wa_departure and g.phone %}
   <div class="alert">Checked out. <b>Departure message</b> didn’t open in WhatsApp?
-    <a class="btn btn-sm btn-primary" href="{% url 'stay_whatsapp' stay.pk %}?t=checkout" target="_blank" rel="noopener">Send departure message</a></div>
+    <a class="btn btn-sm btn-primary" href="{% url 'stay_whatsapp' stay.pk %}?t=checkout" target="whatsapp">Send departure message</a></div>
 {% endif %}
 
 {% if stay.form_c_due %}
@@ -118,10 +118,10 @@
 <section class="card" id="whatsapp">
   <div class="card-head"><h2>WhatsApp {{ g.name }}</h2><a class="btn btn-ghost btn-sm" href="{% url 'whatsapp' %}">Edit messages</a></div>
   <div class="wa-buttons">
-    {% for t in wa_templates %}<a class="btn btn-outline btn-sm" href="{% url 'stay_whatsapp' stay.pk %}?t={{ t.pk }}" target="_blank" rel="noopener">{{ t.name }}</a>{% endfor %}
-    <a class="btn btn-ghost btn-sm" href="https://wa.me/{{ wa_number }}" target="_blank" rel="noopener">Open chat</a>
+    {% for t in wa_templates %}<a class="btn btn-outline btn-sm" href="{% url 'stay_whatsapp' stay.pk %}?t={{ t.pk }}" target="whatsapp">{{ t.name }}</a>{% endfor %}
+    <a class="btn btn-ghost btn-sm" href="{% url 'stay_whatsapp' stay.pk %}" target="whatsapp">Open chat</a>
   </div>
-  <form method="get" action="{% url 'stay_whatsapp' stay.pk %}" target="_blank" class="wa-custom">
+  <form method="get" action="{% url 'stay_whatsapp' stay.pk %}" target="whatsapp" class="wa-custom">
     <label for="wa-text">Custom message</label>
     <textarea id="wa-text" name="text" rows="3" placeholder="Type a message to {{ g.name }}…" required></textarea>
     <button class="btn btn-primary btn-sm">Send on WhatsApp</button>

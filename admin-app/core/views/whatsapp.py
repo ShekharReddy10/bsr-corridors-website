@@ -1,13 +1,23 @@
 """WhatsApp messages: ready-made texts, hotel info (Wi-Fi, rules, timings) and click-to-send links."""
 
+import re
+
 from django.contrib import messages
 from django.db import transaction
+from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from .. import whatsapp
 from ..forms import MessageTemplateForm
 from ..models import AuditLog, MessageTemplate, Stay
+
+MOBILE = re.compile(r"Android|iPhone|iPad|iPod|Mobile", re.I)
+
+
+class AppRedirect(HttpResponseRedirect):
+    allowed_schemes = ["https", "whatsapp"]
+
 
 # ?t=checkin / ?t=checkout → the message that opens at check-in / check-out.
 AUTO = {"checkin": "on_check_in", "checkout": "on_check_out"}
@@ -62,7 +72,7 @@ def send(request, pk):
     """Fill in a message for this stay's guest and open it in WhatsApp (logged in the stay's history).
 
     ?t=<id> a saved message · ?t=checkin / ?t=checkout the check-in (welcome) / check-out (departure)
-    message · ?text=… a custom message.
+    message · ?text=… a custom message · nothing: just open the chat.
     """
     stay = get_object_or_404(Stay.objects.select_related("guest", "room"), pk=pk)
     if not stay.guest.phone:
@@ -80,6 +90,8 @@ def send(request, pk):
             return redirect("stay_detail", pk=pk)
         name, text = template.name, whatsapp.render(template.body, whatsapp.context(stay))
     else:
-        name, text = "custom message", request.GET.get("text", "").strip()
+        text = request.GET.get("text", "").strip()
+        name = "custom message" if text else "chat"
     AuditLog.record("whatsapp", f"WhatsApp {name} opened for {stay.guest.name}", stay)
-    return redirect(whatsapp.link(stay.guest.phone, text))
+    mobile = bool(MOBILE.search(request.headers.get("User-Agent", "")))
+    return AppRedirect(whatsapp.link(stay.guest.phone, text, mobile))
