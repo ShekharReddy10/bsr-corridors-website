@@ -13,7 +13,7 @@ from .models import AppSetting, Stay
 
 # Hotel-wide details used in messages, edited on the WhatsApp page. key → (label, default).
 HOTEL_INFO = {
-    "wifi_name": ("Wi-Fi name", "BSR {floor}"),
+    "wifi_name": ("Wi-Fi name", "BSR (your floor name)"),
     "wifi_password": ("Wi-Fi password", ""),  # never in the code: the repo is public
     "check_in_time": ("Check-in time", "11:00 AM – 10:00 PM"),
     "check_out_time": ("Check-out time", "10:00 AM"),
@@ -80,7 +80,7 @@ def context(stay: Stay) -> dict[str, str]:
         "host": stay.host,
         "hotel": settings.HOTEL_NAME,
     }
-    # Hotel info may use stay placeholders too, e.g. Wi-Fi name "BSR {floor}".
+    # Hotel info may use stay placeholders too, e.g. a Wi-Fi name "BSR {floor}".
     return {**{k: render(v, ctx) for k, v in hotel_info().items()}, **ctx}
 
 

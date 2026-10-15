@@ -763,9 +763,11 @@ class HostSettlementWhatsAppTests(TestCase):
         self.assertEqual(wa_number("09876543210"), "919876543210")
         self.assertEqual(wa_number("+1 415 555 0100"), "14155550100")
 
-    def test_wifi_name_uses_floor(self):
+    def test_wifi_name_can_use_floor(self):
         from core import whatsapp
         s = stay(make_guest(), self.rooms["201"], 0, 1)
+        self.assertEqual(whatsapp.context(s)["wifi_name"], "BSR (your floor name)")
+        whatsapp.save_hotel_info({**whatsapp.hotel_info(), "wifi_name": "BSR {floor}"})
         self.assertEqual(whatsapp.context(s)["wifi_name"], "BSR 2")
         self.rooms["201"].floor = "Second"
         self.rooms["201"].save()
