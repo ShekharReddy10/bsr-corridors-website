@@ -42,8 +42,8 @@
       </a>
       {% for d in days %}<a class="tape-cell{% if d.is_today %} is-today{% endif %}{% if d.is_weekend %} is-weekend{% endif %}" style="grid-column: {{ d.col }}" href="{% url 'stay_new' %}?room={{ row.room.pk }}&check_in={{ d.date|date:'Y-m-d' }}" aria-label="New stay in {{ row.room }} on {{ d.date|date:'d-m-Y' }}"></a>{% endfor %}
       {% for b in row.bars %}
-      <a class="tape-bar {{ b.cls }}{% if b.cut_left %} cut-left{% endif %}{% if b.cut_right %} cut-right{% endif %}" style="grid-column: {{ b.col }} / span {{ b.span }}" href="{% url 'stay_detail' b.stay.pk %}" title="{{ b.stay.guest.name }} · {{ b.stay.check_in|date:'d-m' }} → {{ b.stay.check_out|date:'d-m' }} · {{ b.stay.get_status_display }}">
-        <span>{{ b.stay.guest.name }}</span>
+      <a class="tape-bar {{ b.cls }}{% if b.cut_left %} cut-left{% endif %}{% if b.cut_right %} cut-right{% endif %}" style="grid-column: {{ b.col }} / span {{ b.span }}" href="{% url 'stay_detail' b.stay.pk %}" title="{{ b.stay.guest.name }}{% if b.stay.host %} (host: {{ b.stay.host }}){% endif %} · {{ b.stay.check_in|date:'d-m' }} → {{ b.stay.check_out|date:'d-m' }} · {{ b.stay.get_status_display }}">
+        <span>{{ b.stay.guest.name }}</span>{% if b.stay.host %}<small>{{ b.stay.host }}</small>{% endif %}
       </a>
       {% endfor %}
     </div>

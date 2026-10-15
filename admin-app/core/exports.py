@@ -9,7 +9,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from .models import AuditLog, Expense, Guest, Room, RoomType, Stay, StayGuest
+from .models import AuditLog, Expense, Guest, MessageTemplate, Room, RoomType, Settlement, Stay, StayGuest
 
 HEADER_FILL = PatternFill("solid", fgColor="1F2A30")
 HEADER_FONT = Font(bold=True, color="FFFFFF")
@@ -53,14 +53,14 @@ def build_workbook(start: date | None = None, end: date | None = None, full_ids:
         "Stays",
         ["Stay ID", "Guest", "Phone", "Room", "Room type", "Stay type", "Check-in", "Check-out", "Nights", "Guests",
          "Booked via", "Booking ref", "Total", "Paid", "Balance", "Monthly rent", "Deposit", "Payment mode", "Status",
-         "Transferred to", "Transfer reason",
+         "Host", "Transferred to", "Transfer reason",
          "Nationality",
          "ID proof", "ID number", "Address", "Other guests", "Form C filed", "Notes"],
         [
             [s.pk, s.guest.name, s.guest.phone, s.room.number, s.room.room_type.name, s.get_kind_display(), s.check_in,
              s.check_out or "Open (monthly)", s.nights, s.num_guests, s.get_source_display(), s.source_ref,
              float(s.total), float(s.amount_paid), float(s.balance), float(s.monthly_rent), float(s.deposit_amount),
-             s.get_payment_mode_display(), s.get_status_display(), s.transferred_to, s.transfer_reason,
+             s.get_payment_mode_display(), s.get_status_display(), s.host, s.transferred_to, s.transfer_reason,
              s.guest.nationality,
              s.guest.get_id_type_display(), _id(s.guest.id_number, full_ids), s.guest.address,
              "; ".join(f"{o.name or 'Guest ' + str(o.position)}"
@@ -117,7 +117,7 @@ def build_workbook(start: date | None = None, end: date | None = None, full_ids:
     return buf.getvalue()
 
 
-BACKUP_MODELS = [RoomType, Room, Guest, Stay, StayGuest, Expense, AuditLog]
+BACKUP_MODELS = [RoomType, Room, Guest, Stay, StayGuest, Expense, Settlement, MessageTemplate, AuditLog]
 
 
 def backup_json() -> bytes:

@@ -38,6 +38,37 @@
   {% if r.deposits_held %}<p class="muted small">Also holding {{ r.deposits_held|inr }} in refundable deposits (not counted).</p>{% endif %}
 </section>
 
+<section class="card profit-card" id="settlement">
+  <div class="card-head">
+    <h2>Since last settlement <span class="muted small">— {% if r.last_settlement %}settled {{ r.last_settlement.at|date:"d-m-Y" }}{% else %}no settlement yet, so all time{% endif %}</span></h2>
+  </div>
+  <div class="profit-sum">
+    <div><span class="muted small">Received</span><b>{{ r.received_since|inr }}</b></div>
+    <span class="op" aria-hidden="true">−</span>
+    <div><span class="muted small">Expenses</span><b>{{ r.expenses_since|inr }}</b></div>
+    <span class="op" aria-hidden="true">=</span>
+    <div><span class="muted small">Profit to settle</span><b class="{% if r.profit_since < 0 %}warn{% else %}good{% endif %}">{{ r.profit_since|inr }}</b></div>
+  </div>
+  <p class="muted small">After you settle, received money and expenses count again from ₹0. Totals above (“Money so far”) are not affected.</p>
+  <form method="post" action="{% url 'settle' %}" class="inline-form" data-confirm="Record this settlement? Received money and expenses will count again from ₹0.">{% csrf_token %}
+    <label>Amount settled ₹ {{ settle_form.amount }}</label>
+    {{ settle_form.notes }}
+    <button class="btn btn-primary btn-sm">Settle now</button>
+  </form>
+  {% if r.settlements %}
+  <details>
+    <summary class="btn btn-ghost btn-sm">Past settlements ({{ r.settlements|length }}, {{ r.settled_total|inr }} in all)</summary>
+    <ul class="log">
+      {% for s in r.settlements %}
+      <li><time>{{ s.at|date:"d-m-Y H:i" }}</time> <b>{{ s.amount|inr }}</b>{% if s.notes %} · {{ s.notes }}{% endif %}
+        <form method="post" action="{% url 'settlement_delete' s.pk %}" class="inline-form" data-confirm="Delete this settlement?{% if forloop.first %} The count goes back to the one before it.{% endif %}">{% csrf_token %}<button class="btn btn-ghost btn-sm">Delete</button></form>
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</section>
+
 <nav class="period-tabs" aria-label="Period">
   {% for p in periods %}<a href="?period={{ p.key }}" {% if p.key == r.period.key %}aria-current="page"{% endif %}>{{ p.label }}</a>{% endfor %}
 </nav>

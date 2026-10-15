@@ -160,6 +160,8 @@ class Stay(models.Model):
     transferred_to = models.CharField("Transferred to (hotel)", max_length=120, blank=True)
     transfer_reason = models.CharField("Reason for transfer", max_length=200, blank=True)
     form_c_filed = models.BooleanField("Form C filed", default=False)
+    # Which of us is looking after this guest (just a label; the list of names is in AppSetting "hosts").
+    host = models.CharField(max_length=40, blank=True)
     notes = models.TextField(blank=True)
     # Split stays (guest moved rooms during an extension) point at the first stay of the chain.
     linked_to = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="continuations")
@@ -297,6 +299,41 @@ class Expense(models.Model):
 
     def __str__(self):
         return f"{self.date:%d-%m-%Y} · {self.get_category_display()} · ₹{self.amount:,.0f}"
+
+
+class Settlement(models.Model):
+    """Profit shared out on a given day. The revenue page counts received money and expenses again from zero
+    after the latest settlement: it stores the all-time totals at that moment and subtracts them later."""
+
+    at = models.DateTimeField(default=timezone.now, db_index=True)
+    received_total = models.DecimalField(max_digits=12, decimal_places=2, help_text="All-time received when settled")
+    expenses_total = models.DecimalField(max_digits=12, decimal_places=2, help_text="All-time expenses when settled")
+    amount = models.DecimalField("Amount settled (₹)", max_digits=12, decimal_places=2)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "settlements"
+        ordering = ["-at", "-pk"]
+
+    def __str__(self):
+        return f"{self.at:%d-%m-%Y} · ₹{self.amount:,.0f}"
+
+
+class MessageTemplate(models.Model):
+    """A ready-made WhatsApp message. {placeholders} are filled in from the stay and the hotel info."""
+
+    name = models.CharField(max_length=60, help_text="Button label, e.g. Check-out details")
+    body = models.TextField(help_text="Use {guest}, {room}, {check_out}, {wifi_password} … — see the list on the page")
+    on_check_in = models.BooleanField("Send when checking in", default=False,
+                                      help_text="Opens automatically when you tap Check in (only one message can)")
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "message_templates"
+        ordering = ["sort_order", "pk"]
+
+    def __str__(self):
+        return self.name
 
 
 class AuditLog(models.Model):

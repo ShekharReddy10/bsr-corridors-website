@@ -12,8 +12,8 @@ from django.views.decorators.http import require_POST
 from .. import gdrive
 from ..exports import build_workbook
 from ..forms import DateRangeForm
-from ..models import AuditLog, BackupRun, Guest, Stay
-from ..services import today
+from ..models import AppSetting, AuditLog, BackupRun, Guest, Stay
+from ..services import HOSTS_KEY, host_names, today
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -63,6 +63,13 @@ def backup_hook(request):
 
 def settings_page(request):
     years = request.POST.get("years", "3")
+    if request.method == "POST" and request.POST.get("action") == "hosts":
+        names = [n.strip() for n in request.POST.get("hosts", "").replace("\n", ",").split(",") if n.strip()]
+        names = list(dict.fromkeys(n[:40] for n in names))
+        AppSetting.put(HOSTS_KEY, ", ".join(names))
+        AuditLog.record("settings", f"Hosts list: {', '.join(names) or '(empty)'}")
+        messages.success(request, "Hosts saved.")
+        return redirect("settings")
     if request.method == "POST":
         if request.POST.get("confirm", "").strip().upper() != "PURGE" or not years.isdigit() or int(years) < 1:
             messages.error(request, "Type PURGE and choose at least 1 year to delete old records.")
@@ -82,5 +89,6 @@ def settings_page(request):
         "drive_ready": gdrive.is_configured(),
         "encryption_set": bool(settings.FIELD_ENCRYPTION_KEY),
         "backup_hook_set": bool(settings.BACKUP_TOKEN),
+        "hosts": ", ".join(host_names()),
         "logs": AuditLog.objects.select_related("stay")[:100],
     })

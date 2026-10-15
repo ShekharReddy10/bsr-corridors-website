@@ -15,12 +15,13 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.cache import cache
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .. import revenue
-from ..models import AppSetting, AuditLog
+from ..forms import SettlementForm
+from ..models import AppSetting, AuditLog, Settlement
 from .auth import _client_ip
 
 HASH_KEY = "revenue_password_hash"
@@ -105,6 +106,7 @@ def revenue_page(request):
         "weekly": revenue.weekly_chart(r),
         "types": revenue.bar_rows(r.by_type),
         "sources": revenue.bar_rows(r.by_source),
+        "settle_form": SettlementForm(initial={"amount": round(max(r.profit_since, revenue.ZERO))}),
         "env_password": bool(os.environ.get("REVENUE_PASSWORD")),
     })
 
@@ -130,4 +132,33 @@ def revenue_change_password(request):
         AppSetting.put(HASH_KEY, make_password(new))
         AuditLog.record("revenue_password", "Revenue password changed")
         messages.success(request, "Revenue password changed.")
+    return redirect("revenue")
+
+
+@require_POST
+def settle(request):
+    """Share out the profit: save today's all-time totals so "since last settlement" starts from zero."""
+    if not _unlocked(request):
+        return redirect("revenue")
+    form = SettlementForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Enter the amount settled (₹0 or more).")
+        return redirect("revenue")
+    r = revenue.build()
+    s = Settlement.objects.create(received_total=r.collected, expenses_total=r.expenses_all_time,
+                                  amount=form.cleaned_data["amount"], notes=form.cleaned_data["notes"])
+    AuditLog.record("settlement", f"Settled ₹{s.amount:,.0f} (received ₹{r.received_since:,.0f} − expenses "
+                                  f"₹{r.expenses_since:,.0f} since the last settlement){': ' + s.notes if s.notes else ''}")
+    messages.success(request, f"Settled ₹{s.amount:,.0f}. Received money and expenses now count again from zero.")
+    return redirect("revenue")
+
+
+@require_POST
+def settlement_delete(request, pk):
+    if not _unlocked(request):
+        return redirect("revenue")
+    s = get_object_or_404(Settlement, pk=pk)
+    AuditLog.record("settlement", f"Deleted settlement of {s.at:%d-%m-%Y}: ₹{s.amount:,.0f}")
+    s.delete()
+    messages.success(request, "Settlement deleted.")
     return redirect("revenue")

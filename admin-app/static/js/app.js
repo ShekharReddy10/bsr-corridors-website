@@ -6,7 +6,10 @@
   // Confirm before submitting forms marked data-confirm="…"
   document.addEventListener("submit", (e) => {
     const msg = e.target.dataset && e.target.dataset.confirm;
-    if (msg && !window.confirm(msg)) e.preventDefault();
+    if (msg && !window.confirm(msg)) { e.preventDefault(); return; }
+    // Check in: open the welcome message in WhatsApp in the same tap (a new tab, so check-in still goes through).
+    const wa = e.target.dataset && e.target.dataset.waOpen;
+    if (wa) window.open(wa, "_blank", "noopener");
   });
 
   // Close the mobile "More" sheet when tapping elsewhere

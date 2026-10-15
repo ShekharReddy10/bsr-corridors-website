@@ -11,7 +11,7 @@ from django.test import TestCase, override_settings
 
 from core import services
 from core.exports import backup_json, build_workbook
-from core.models import AppSetting, AuditLog, Guest, Room, RoomType, Stay, StayGuest
+from core.models import AppSetting, AuditLog, Expense, Guest, MessageTemplate, Room, RoomType, Settlement, Stay, StayGuest
 
 T = services.today()
 
@@ -682,3 +682,92 @@ class ExpenseTests(TestCase):
         wb = load_workbook(io.BytesIO(build_workbook()))
         self.assertEqual(wb["Expenses"]["C2"].value, "Bedsheets")
         self.assertIn('"model": "core.expense"', backup_json().decode())
+
+
+class HostSettlementWhatsAppTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        _, _, self.rooms = make_rooms()
+        self.client.force_login(get_user_model().objects.create_user("x-admin", password="test-pass-123456"))
+
+    def test_host_shown_in_calendar_and_list_editable(self):
+        self.assertEqual(services.host_names(), ["Shekhar", "Mounika", "Satish"])
+        stay(make_guest(), self.rooms["101"], 0, 2, host="Mounika")
+        page = self.client.get("/calendar/").content.decode()
+        self.assertIn("<small>Mounika</small>", page)
+        self.client.post("/settings/", {"action": "hosts", "hosts": "Shekhar, Satish, Shekhar"})
+        self.assertEqual(services.host_names(), ["Shekhar", "Satish"])
+        # A stay's old host stays selectable after being removed from the list.
+        form = self.client.get(f"/stays/{Stay.objects.get().pk}/edit/").content.decode()
+        self.assertIn('value="Mounika" selected', form)
+
+    def test_settlement_counts_again_from_zero(self):
+        from core import revenue
+        stay(make_guest(), self.rooms["101"], -3, 2, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(3000))
+        Expense.objects.create(reason="Soap", amount=Decimal(500))
+        r = revenue.build()
+        self.assertEqual((r.received_since, r.expenses_since, r.profit_since), (Decimal(3000), Decimal(500), Decimal(2500)))
+
+        self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
+        self.client.post("/revenue/settle/", {"amount": "2500", "notes": "Split three ways"})
+        r = revenue.build()
+        self.assertEqual((r.received_since, r.expenses_since, r.profit_since), (0, 0, 0))
+        self.assertEqual(r.collected, Decimal(3000))  # all-time totals are kept
+
+        stay(make_guest("B", "+91 90000 00001"), self.rooms["102"], 0, 1, status=Stay.Status.CHECKED_IN,
+             amount_paid=Decimal(1200))
+        Expense.objects.create(reason="Bulb", amount=Decimal(200))
+        r = revenue.build()
+        self.assertEqual((r.received_since, r.expenses_since, r.profit_since), (Decimal(1200), Decimal(200), Decimal(1000)))
+        self.assertContains(self.client.get("/revenue/"), "Split three ways")
+
+        self.client.post(f"/revenue/settle/{Settlement.objects.get().pk}/delete/")
+        self.assertEqual(revenue.build().received_since, Decimal(4200))
+
+    def test_settle_needs_revenue_password(self):
+        self.client.post("/revenue/settle/", {"amount": "100"})
+        self.assertFalse(Settlement.objects.exists())
+
+    def test_whatsapp_message_filled_in_and_logged(self):
+        from urllib.parse import parse_qs, urlparse
+        from core import whatsapp
+        whatsapp.save_hotel_info({**whatsapp.hotel_info(), "wifi_password": "corridors@123"})
+        s = stay(make_guest(phone="98765 43210"), self.rooms["101"], 0, 2)
+        response = self.client.get(f"/stays/{s.pk}/whatsapp/?t=checkin")
+        url = urlparse(response["Location"])
+        self.assertEqual((url.netloc, url.path), ("wa.me", "/919876543210"))
+        text = parse_qs(url.query)["text"][0]
+        self.assertIn("Ravi Kumar", text)
+        self.assertIn("Room 101", text)
+        self.assertIn("corridors@123", text)
+        self.assertTrue(AuditLog.objects.filter(stay=s, action="whatsapp").exists())
+
+        custom = self.client.get(f"/stays/{s.pk}/whatsapp/", {"text": "Hello {guest}"})
+        self.assertIn("text=Hello%20%7Bguest%7D", custom["Location"])  # custom text is sent as typed
+
+    def test_check_in_opens_welcome_and_only_one_check_in_message(self):
+        s = stay(make_guest(), self.rooms["101"], 0, 2)
+        page = self.client.get(f"/stays/{s.pk}/").content.decode()
+        self.assertIn(f'data-wa-open="/stays/{s.pk}/whatsapp/?t=checkin"', page)
+        response = self.client.post(f"/stays/{s.pk}/check-in/")
+        self.assertEqual(response["Location"], f"/stays/{s.pk}/?welcome=1")
+
+        other = MessageTemplate.objects.exclude(on_check_in=True).first()
+        self.client.post(f"/whatsapp/messages/{other.pk}/", {"name": other.name, "body": other.body,
+                                                             "on_check_in": "on", "sort_order": 0})
+        self.assertEqual(list(MessageTemplate.objects.filter(on_check_in=True)), [other])
+
+    def test_wa_number(self):
+        from core.whatsapp import wa_number
+        self.assertEqual(wa_number("+91 98765 43210"), "919876543210")
+        self.assertEqual(wa_number("09876543210"), "919876543210")
+        self.assertEqual(wa_number("+1 415 555 0100"), "14155550100")
+
+    def test_wifi_name_uses_floor(self):
+        from core import whatsapp
+        s = stay(make_guest(), self.rooms["201"], 0, 1)
+        self.assertEqual(whatsapp.context(s)["wifi_name"], "BSR 2")
+        self.rooms["201"].floor = "Second"
+        self.rooms["201"].save()
+        s.refresh_from_db()
+        self.assertEqual(whatsapp.context(s)["wifi_name"], "BSR Second")

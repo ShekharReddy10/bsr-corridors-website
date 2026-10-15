@@ -20,7 +20,7 @@
   {% for week in weeks %}{% for c in week %}
     {% if c.stay %}
       <a class="month-day is-booked bar-{{ c.stay.status }}{% if not c.in_month %} is-out{% endif %}{% if c.is_today %} is-today{% endif %}" href="{% url 'stay_detail' c.stay.pk %}">
-        <b>{{ c.date.day }}</b>{% if c.starts or c.date.weekday == 0 or c.date.day == 1 %}<small>{{ c.stay.guest.name }}</small>{% endif %}
+        <b>{{ c.date.day }}</b>{% if c.starts or c.date.weekday == 0 or c.date.day == 1 %}<small>{{ c.stay.guest.name }}</small>{% if c.stay.host %}<small class="host">{{ c.stay.host }}</small>{% endif %}{% endif %}
       </a>
     {% else %}
       <a class="month-day{% if not c.in_month %} is-out{% endif %}{% if c.is_today %} is-today{% endif %}" href="{% url 'stay_new' %}?room={{ room.pk }}&check_in={{ c.date|date:'Y-m-d' }}" aria-label="New stay on {{ c.date|date:'d-m-Y' }}"><b>{{ c.date.day }}</b></a>

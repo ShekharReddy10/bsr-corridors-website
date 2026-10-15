@@ -268,10 +268,11 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .is-weekend { background: #fbf9f5; }
 .tape-cell.is-today { background: #fbf1df; }
 .tape-bar {
-  z-index: 1; margin: 7px 2px; border-radius: 8px; padding: 0 8px; display: flex; align-items: center; overflow: hidden;
+  z-index: 1; margin: 7px 2px; border-radius: 8px; padding: 0 8px; display: flex; flex-direction: column; justify-content: center; overflow: hidden;
   color: #fff; text-decoration: none; font-size: .82rem; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.15);
 }
-.tape-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tape-bar span, .tape-bar small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tape-bar small { font-size: .66rem; font-weight: 500; opacity: .9; line-height: 1.1; }
 .tape-bar.cut-left { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; }
 .tape-bar.cut-right { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
 .bar-upcoming { background: var(--blue); }
@@ -290,6 +291,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
   text-decoration: none; color: var(--ink); display: flex; flex-direction: column; overflow: hidden;
 }
 .month-day small { font-size: .68rem; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.month-day small.host { font-size: .6rem; opacity: .85; }
 .month-day.is-booked { color: #fff; border-color: transparent; }
 .month-day.bar-upcoming { background: var(--blue); }
 .month-day.bar-checked_in { background: var(--green); }
@@ -375,3 +377,12 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .good { color: var(--green); }
 .section-title { margin: 4px 0 10px; }
 .money-check { margin: 14px 0 0; padding-top: 10px; border-top: 1px dashed var(--line); color: var(--ink-soft); font-size: .9rem; }
+
+/* WhatsApp */
+.wa-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.wa-custom { display: grid; gap: 6px; margin-bottom: 8px; }
+.wa-custom label { font-size: .85rem; font-weight: 600; }
+.wa-custom .btn { justify-self: start; }
+.wa-template { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+.wa-template h3 { margin: 0; font-size: 1rem; }
+.wa-body { white-space: pre-wrap; font-size: .9rem; color: var(--ink-soft); margin: 4px 0 0; }

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}WhatsApp messages{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>WhatsApp messages</h1>
+    <p class="muted">Messages open in WhatsApp with the text already typed, from the number logged in on this phone or computer (7013684602). Check it and tap Send.</p></div>
+  <a class="btn btn-primary" href="{% url 'wa_template_new' %}">+ Add message</a>
+</div>
+
+<section class="card">
+  <h2>Ready-made messages</h2>
+  <p class="muted small">Each one is a button on the stay page. The one marked <b>at check-in</b> opens by itself when you tap Check in.</p>
+  {% for t in templates %}
+    <div class="wa-template">
+      <div class="card-head"><h3>{{ t.name }}{% if t.on_check_in %} <span class="status status-checked_in">at check-in</span>{% endif %}</h3>
+        <a class="btn btn-outline btn-sm" href="{% url 'wa_template_edit' t.pk %}">Edit</a></div>
+      <p class="wa-body">{{ t.body }}</p>
+    </div>
+  {% empty %}<p class="muted">No messages yet.</p>{% endfor %}
+</section>
+
+<form method="post" class="card">{% csrf_token %}
+  <h2>Hotel info used in messages</h2>
+  <p class="muted small">Fill these once — messages pick them up wherever they say {wifi_password}, {house_rules} and so on.</p>
+  <div class="form-grid">
+    {% for key, label, value in info %}
+      <div class="field{% if key == 'house_rules' %} span-2{% endif %}"><label for="wa-{{ key }}">{{ label }} <code>{{ "{" }}{{ key }}{{ "}" }}</code></label>
+        {% if key == 'house_rules' %}<textarea id="wa-{{ key }}" name="{{ key }}" rows="5">{{ value }}</textarea>
+        {% else %}<input id="wa-{{ key }}" name="{{ key }}" value="{{ value }}" autocomplete="off">{% endif %}
+        {% if not value and key|slice:":4" == "wifi" %}<small class="warn">Not set — messages will show it empty.</small>{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+  <div class="form-actions"><button class="btn btn-primary">Save</button></div>
+</form>
+
+<section class="card">
+  <h2>Filled in from the stay</h2>
+  <dl class="dl">{% for key, label in stay_fields %}<dt><code>{{ "{" }}{{ key }}{{ "}" }}</code></dt><dd>{{ label }}</dd>{% endfor %}</dl>
+</section>
+{% endblock %}

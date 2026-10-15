@@ -10,6 +10,15 @@
     <dt>Nightly backup token</dt><dd>{% if backup_hook_set %}Set ✓{% else %}<span class="warn">Not set</span> — nightly backups won’t run{% endif %}</dd>
   </dl>
 </section>
+<form method="post" class="card">{% csrf_token %}
+  <input type="hidden" name="action" value="hosts">
+  <h2>Hosts</h2>
+  <p class="muted small">Names you can pick as “Host” on a stay. They show under the guest’s name in the calendar. Separate with commas.</p>
+  <div class="inline-form">
+    <input name="hosts" value="{{ hosts }}" size="36" aria-label="Hosts" placeholder="Shekhar, Mounika, Satish">
+    <button class="btn btn-outline btn-sm">Save hosts</button>
+  </div>
+</form>
 <form method="post" class="card danger-zone" data-confirm="Permanently delete old stays and guests?">{% csrf_token %}
   <h2>Delete old records</h2>
   <p class="muted small">Removes finished or cancelled stays that ended more than the chosen number of years ago, and guests with no remaining stays. Back up first.</p>

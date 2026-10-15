@@ -8,7 +8,10 @@ from decimal import Decimal
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from .models import AuditLog, Room, Stay
+from .models import AppSetting, AuditLog, Room, Stay
+
+HOSTS_KEY = "hosts"
+DEFAULT_HOSTS = "Shekhar, Mounika, Satish"
 
 
 class StayConflict(Exception):
@@ -22,6 +25,11 @@ class StayConflict(Exception):
 
 def today() -> date:
     return timezone.localdate()
+
+
+def host_names() -> list[str]:
+    """Names offered in the stay form's "Host" list (edited on the Settings page)."""
+    return [n.strip() for n in AppSetting.get(HOSTS_KEY, DEFAULT_HOSTS).split(",") if n.strip()]
 
 
 def conflicts(room: Room, start: date, end: date | None, exclude_ids=()):

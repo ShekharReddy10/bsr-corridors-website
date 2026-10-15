@@ -10,6 +10,9 @@ Received + balance pending + yet to receive = the full amount of all bookings.
 Payment dates aren't stored, so for week/month figures a daily stay's payments count on its
 check-in day, and a monthly guest's are spread evenly over the days stayed. Profit = received − expenses.
 Cancelled and transferred stays are left out.
+
+Settlements: when profit is shared out, the all-time received and expense totals are saved. "Since last
+settlement" figures are today's totals minus those, so they start again from zero after each settlement.
 """
 
 from collections import defaultdict
@@ -17,7 +20,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 
-from .models import Expense, Room, Stay
+from .models import Expense, Room, Settlement, Stay
 from .services import today
 
 ZERO = Decimal(0)
@@ -110,6 +113,29 @@ class Report:
     expenses_all_time: Decimal = ZERO
     unpaid: list = field(default_factory=list)
     room_count: int = 0
+    settlements: list = field(default_factory=list)  # newest first
+
+    @property
+    def last_settlement(self) -> Settlement | None:
+        return self.settlements[0] if self.settlements else None
+
+    @property
+    def received_since(self) -> Decimal:
+        last = self.last_settlement
+        return self.collected - (last.received_total if last else ZERO)
+
+    @property
+    def expenses_since(self) -> Decimal:
+        last = self.last_settlement
+        return self.expenses_all_time - (last.expenses_total if last else ZERO)
+
+    @property
+    def profit_since(self) -> Decimal:
+        return self.received_since - self.expenses_since
+
+    @property
+    def settled_total(self) -> Decimal:
+        return sum((x.amount for x in self.settlements), ZERO)
 
     @property
     def net_cash(self) -> Decimal:
@@ -211,6 +237,7 @@ def build(period_key: str = "month") -> Report:
             r.by_week[d - timedelta(days=d.weekday())].expenses += amount
         if (period.start is None or d >= period.start) and (period.end is None or d < period.end):
             r.in_period.expenses += amount
+    r.settlements = list(Settlement.objects.all())
     return r
 
 

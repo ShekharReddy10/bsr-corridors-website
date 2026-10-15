@@ -1,7 +1,7 @@
 from django.contrib.auth.views import LogoutView
 from django.urls import path
 
-from .views import auth, calendar, dashboard, data, expenses, guests, revenue, rooms, stays
+from .views import auth, calendar, dashboard, data, expenses, guests, revenue, rooms, stays, whatsapp
 
 urlpatterns = [
     path("login/", auth.ThrottledLoginView.as_view(), name="login"),
@@ -17,6 +17,7 @@ urlpatterns = [
     path("stays/<int:pk>/edit/", stays.stay_form, name="stay_edit"),
     path("stays/<int:pk>/extend/", stays.extend, name="stay_extend"),
     path("stays/<int:pk>/reveal-id/", stays.reveal_id, name="stay_reveal_id"),
+    path("stays/<int:pk>/whatsapp/", whatsapp.send, name="stay_whatsapp"),
     path("stays/<int:pk>/<slug:action>/", stays.stay_action, name="stay_action"),
     path("guests/", guests.guest_list, name="guest_list"),
     path("guests/<int:pk>/", guests.guest_detail, name="guest_detail"),
@@ -29,11 +30,17 @@ urlpatterns = [
     path("rooms/<str:kind>/<int:pk>/delete/", rooms.delete, name="room_delete"),
     path("revenue/", revenue.revenue_page, name="revenue"),
     path("revenue/lock/", revenue.revenue_lock, name="revenue_lock"),
+    path("revenue/settle/", revenue.settle, name="settle"),
+    path("revenue/settle/<int:pk>/delete/", revenue.settlement_delete, name="settlement_delete"),
     path("revenue/password/", revenue.revenue_change_password, name="revenue_password"),
     path("expenses/", expenses.expense_list, name="expense_list"),
     path("expenses/new/", expenses.expense_form, name="expense_new"),
     path("expenses/<int:pk>/", expenses.expense_form, name="expense_edit"),
     path("expenses/<int:pk>/delete/", expenses.expense_delete, name="expense_delete"),
+    path("whatsapp/", whatsapp.whatsapp_page, name="whatsapp"),
+    path("whatsapp/messages/new/", whatsapp.template_edit, name="wa_template_new"),
+    path("whatsapp/messages/<int:pk>/", whatsapp.template_edit, name="wa_template_edit"),
+    path("whatsapp/messages/<int:pk>/delete/", whatsapp.template_delete, name="wa_template_delete"),
     path("export/", data.export, name="export"),
     path("backups/", data.backups, name="backups"),
     path("backup/run/", data.backup_hook, name="backup_hook"),

@@ -6,7 +6,7 @@
   <div>
     <h1>{{ g.name }} <span class="status status-{{ stay.status }}">{{ stay.get_status_display }}</span></h1>
     <p class="muted">{{ stay.room }} · {{ stay.room.room_type.name }} · {{ stay.check_in|date:"D d-m-Y" }} → {% if stay.check_out %}{{ stay.check_out|date:"D d-m-Y" }} · {{ stay.nights }} night{{ stay.nights|pluralize }}{% else %}<b>open (monthly)</b> · {{ stay.nights }} night{{ stay.nights|pluralize }} so far{% endif %}</p>
-    <p class="muted">Booked via <b>{{ stay.get_source_display }}</b>{% if stay.source_ref %} · Ref {{ stay.source_ref }}{% endif %}</p>
+    <p class="muted">Booked via <b>{{ stay.get_source_display }}</b>{% if stay.source_ref %} · Ref {{ stay.source_ref }}{% endif %}{% if stay.host %} · Host <b>{{ stay.host }}</b>{% endif %}</p>
     {% if stay.transferred_to %}<p>Transferred to <b>{{ stay.transferred_to }}</b>{% if stay.transfer_reason %} · {{ stay.transfer_reason }}{% endif %}</p>{% endif %}
   </div>
   <a class="btn btn-outline" href="{% url 'stay_edit' stay.pk %}">Edit</a>
@@ -14,7 +14,7 @@
 
 <div class="action-bar">
   {% if stay.status == 'upcoming' %}
-    <form method="post" action="{% url 'stay_action' stay.pk 'check-in' %}">{% csrf_token %}<button class="btn btn-primary">Check in</button></form>
+    <form method="post" action="{% url 'stay_action' stay.pk 'check-in' %}"{% if wa_welcome and g.has_contact_details %} data-wa-open="{% url 'stay_whatsapp' stay.pk %}?t=checkin"{% endif %}>{% csrf_token %}<button class="btn btn-primary">Check in{% if wa_welcome and g.has_contact_details %} &amp; send welcome{% endif %}</button></form>
   {% elif stay.status == 'checked_in' %}
     <form method="post" action="{% url 'stay_action' stay.pk 'check-out' %}" data-confirm="{% if today < stay.check_out and today > stay.check_in %}Guest is booked until {{ stay.check_out|date:'d-m-Y' }}. Check out today (early checkout)?{% endif %}">{% csrf_token %}<button class="btn btn-primary">Check out</button></form>
     <form method="post" action="{% url 'stay_action' stay.pk 'undo-check-in' %}" data-confirm="Undo check-in? The stay goes back to upcoming.">{% csrf_token %}<button class="btn btn-ghost">Undo check-in</button></form>
@@ -31,12 +31,17 @@
   {% endif %}
   {% if stay.status == 'upcoming' and not g.has_contact_details %}<a class="btn btn-ghost" href="{% url 'stay_edit' stay.pk %}?checkin=1">Add guest details</a>{% endif %}
   {% if g.phone %}
-  <a class="btn btn-outline" href="https://wa.me/{{ g.phone_digits }}" target="_blank" rel="noopener">WhatsApp</a>
+  <a class="btn btn-outline" href="#whatsapp">WhatsApp</a>
   <a class="btn btn-outline" href="tel:{{ g.phone }}">Call</a>
   {% endif %}
 </div>
 
 {% include "partials/transfer_form.html" %}
+
+{% if just_checked_in and wa_welcome and g.phone %}
+  <div class="alert">Checked in. <b>Welcome message</b> didn’t open in WhatsApp?
+    <a class="btn btn-sm btn-primary" href="{% url 'stay_whatsapp' stay.pk %}?t=checkin" target="_blank" rel="noopener">Send welcome message</a></div>
+{% endif %}
 
 {% if stay.form_c_due %}
   <div class="alert"><b>Form C due.</b> Foreign national — file Form C with the FRRO within 24 hours of check-in.
@@ -102,6 +107,22 @@
     </div>
   {% endfor %}
   <p><b>All rooms together:</b> total {{ chain_total|inr }}, paid {{ chain_paid|inr }}, balance <span class="{% if chain_balance > 0 %}warn{% endif %}">{{ chain_balance|inr }}</span></p>
+</section>
+{% endif %}
+
+{% if g.phone %}
+<section class="card" id="whatsapp">
+  <div class="card-head"><h2>WhatsApp {{ g.name }}</h2><a class="btn btn-ghost btn-sm" href="{% url 'whatsapp' %}">Edit messages</a></div>
+  <div class="wa-buttons">
+    {% for t in wa_templates %}<a class="btn btn-outline btn-sm" href="{% url 'stay_whatsapp' stay.pk %}?t={{ t.pk }}" target="_blank" rel="noopener">{{ t.name }}</a>{% endfor %}
+    <a class="btn btn-ghost btn-sm" href="https://wa.me/{{ wa_number }}" target="_blank" rel="noopener">Open chat</a>
+  </div>
+  <form method="get" action="{% url 'stay_whatsapp' stay.pk %}" target="_blank" class="wa-custom">
+    <label for="wa-text">Custom message</label>
+    <textarea id="wa-text" name="text" rows="3" placeholder="Type a message to {{ g.name }}…" required></textarea>
+    <button class="btn btn-primary btn-sm">Send on WhatsApp</button>
+  </form>
+  <p class="muted small">Opens WhatsApp with the message typed in — check it and tap Send. Replies come to your WhatsApp.</p>
 </section>
 {% endif %}
 

@@ -3,7 +3,8 @@ from decimal import Decimal
 
 from django import forms
 
-from .models import Expense, Guest, Room, RoomType, Stay, StayGuest
+from .models import Expense, Guest, MessageTemplate, Room, RoomType, Settlement, Stay, StayGuest
+from .services import host_names
 
 DATE = forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")
 
@@ -85,7 +86,7 @@ class StayForm(forms.ModelForm):
     class Meta:
         model = Stay
         fields = ["source", "source_ref", "kind", "room", "check_in", "check_out", "num_guests",
-                  "total_amount", "amount_paid", "payment_mode", "monthly_rent", "deposit_amount", "notes"]
+                  "total_amount", "amount_paid", "payment_mode", "monthly_rent", "deposit_amount", "host", "notes"]
         widgets = {
             "check_in": DATE,
             "check_out": DATE,
@@ -109,6 +110,12 @@ class StayForm(forms.ModelForm):
         self.fields["room"].widget.attrs["data-rooms"] = ",".join(
             f"{r.pk}:{r.room_type.max_guests}" for r in self.fields["room"].queryset
         )
+        # Host: pick from the names on the Settings page; keep an old name that has since been removed.
+        names = host_names()
+        if self.instance.host and self.instance.host not in names:
+            names.append(self.instance.host)
+        self.fields["host"].widget = forms.Select(choices=[("", "—"), *((n, n) for n in names)])
+        self.fields["host"].help_text = "Optional — shown under the guest’s name in the calendar"
         self.fields["total_amount"].help_text = "Agreed price for the whole stay (monthly: rent added so far)"
         self.fields["check_out"].required = False
         # Only room and dates are essential; empty amounts count as ₹0, stay type defaults to Daily.
@@ -300,3 +307,26 @@ class ExpenseForm(forms.ModelForm):
         if amount <= 0:
             raise forms.ValidationError("Amount must be more than zero.")
         return amount
+
+
+class SettlementForm(forms.ModelForm):
+    class Meta:
+        model = Settlement
+        fields = ["amount", "notes"]
+        widgets = {
+            "amount": forms.NumberInput(attrs={"inputmode": "decimal", "step": "1", "min": "0"}),
+            "notes": forms.TextInput(attrs={"placeholder": "e.g. Shared equally – Shekhar, Mounika, Satish"}),
+        }
+
+    def clean_amount(self):
+        amount = self.cleaned_data["amount"]
+        if amount < 0:
+            raise forms.ValidationError("Can’t be negative.")
+        return amount
+
+
+class MessageTemplateForm(forms.ModelForm):
+    class Meta:
+        model = MessageTemplate
+        fields = ["name", "body", "on_check_in", "sort_order"]
+        widgets = {"body": forms.Textarea(attrs={"rows": 10})}

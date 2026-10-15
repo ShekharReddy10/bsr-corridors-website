@@ -10,10 +10,10 @@ from django.utils.dateparse import parse_date
 from django.utils.html import escape
 from django.views.decorators.http import require_POST
 
-from .. import services
+from .. import services, whatsapp
 from ..fields import mask
 from ..forms import ExtendForm, GuestForm, PaymentForm, ShortenForm, StayForm, other_guests_formset
-from ..models import AuditLog, Guest, Room, Stay
+from ..models import AuditLog, Guest, MessageTemplate, Room, Stay
 
 
 def stay_list(request):
@@ -110,6 +110,8 @@ def stay_form(request, pk=None):
                     if checking_in and new.status == Stay.Status.UPCOMING:
                         services.check_in(new)
                 messages.success(request, f"{guest.name} checked in to {new.room}." if checking_in else f"Stay for {guest.name} saved.")
+                if checking_in:
+                    return redirect(f"/stays/{new.pk}/?welcome=1")
                 return redirect("stay_detail", pk=new.pk)
             except services.StayConflict as exc:
                 sform.add_error("room", str(exc))
@@ -169,6 +171,9 @@ def stay_detail(request, pk):
         "payment_form": PaymentForm(),
         "shorten_form": ShortenForm(initial={"new_check_out": services.today()}),
         "today": services.today(),
+        "wa_templates": MessageTemplate.objects.all(),
+        "wa_number": whatsapp.wa_number(stay.guest.phone),
+        "just_checked_in": request.GET.get("welcome") == "1" and stay.status == Stay.Status.CHECKED_IN,
     }
     if stay.status == Stay.Status.CHECKED_OUT:
         context["booked_check_out"] = services.booked_check_out(stay)
@@ -185,6 +190,7 @@ def stay_action(request, pk, action):
                 return redirect(f"/stays/{stay.pk}/edit/?checkin=1")
             services.check_in(stay)
             messages.success(request, f"{stay.guest.name} checked in to {stay.room}.")
+            return redirect(f"/stays/{stay.pk}/?welcome=1")
         elif action == "add-rent":
             services.add_month_rent(stay)
             messages.success(request, f"Added a month’s rent ₹{stay.monthly_rent:,.0f}. Total is now ₹{stay.total:,.0f}.")
