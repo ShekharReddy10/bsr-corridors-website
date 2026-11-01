@@ -6,8 +6,9 @@ Nights already stayed are "earned"; later nights of current and upcoming stays a
 
 Money: guests who have checked in owe "balance pending" (bill − paid). What they paid only counts as
 "received" when it is done: a daily stay on its check-out day, so a 29th → 2nd stay counts in the month of the
-2nd; a monthly guest's rent month by month, on the day each month completes (joined 14 Oct → the first month
-counts on 14 Nov), and whatever is left over on the day they leave. Until then it is "held" (paid by guests
+2nd; a monthly guest's rent month by month, on the last day of each of their months (joined 1 Oct → the first
+month is 1–31 Oct and counts on 31 Oct; joined 14 Oct → 14 Oct–13 Nov, counts on 13 Nov), and whatever is
+left over on the day they leave. Until then it is "held" (paid by guests
 staying now). Bookings not checked in yet are "yet to receive" in full (advances included).
 Received + held + balance pending + yet to receive = the full amount of all bookings.
 Each month's received money is fixed once the month is over, and the next month starts from zero.
@@ -106,7 +107,8 @@ def received_on(stay: Stay, t: date) -> list[tuple[date, Decimal]]:
     if stay.kind == Stay.Kind.MONTHLY and stay.monthly_rent and stay.monthly_rent > 0:
         limit = stay.check_out if done else t
         k = 1
-        while paid > 0 and (end := _same_day_months_later(stay.check_in, k)) <= limit:
+        # Month k is complete on its last day: the day before the same date k months later.
+        while paid > 0 and (end := _same_day_months_later(stay.check_in, k) - timedelta(days=1)) <= limit:
             part = min(stay.monthly_rent, paid)
             out.append((end, part))
             paid -= part

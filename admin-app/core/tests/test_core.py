@@ -654,14 +654,19 @@ class RevenueTests(TestCase):
 
     def test_monthly_rent_counts_when_each_month_completes(self):
         from core import revenue
-        s = Stay(kind=Stay.Kind.MONTHLY, check_in=date(2026, 10, 14), status=Stay.Status.CHECKED_IN,
+        # Joined 1 Oct: the first month is 1–31 Oct, so it counts on 31 Oct (in October).
+        s = Stay(kind=Stay.Kind.MONTHLY, check_in=date(2026, 10, 1), status=Stay.Status.CHECKED_IN,
                  monthly_rent=Decimal(8000), amount_paid=Decimal(16000))
-        self.assertEqual(revenue.received_on(s, date(2026, 11, 13)), [])  # first month not complete yet
-        self.assertEqual(revenue.received_on(s, date(2026, 11, 14)), [(date(2026, 11, 14), Decimal(8000))])
+        self.assertEqual(revenue.received_on(s, date(2026, 10, 30)), [])  # first month not complete yet
+        self.assertEqual(revenue.received_on(s, date(2026, 10, 31)), [(date(2026, 10, 31), Decimal(8000))])
+        # Joined 14 Oct: 14 Oct – 13 Nov, counts on 13 Nov.
+        s.check_in = date(2026, 10, 14)
+        self.assertEqual(revenue.received_on(s, date(2026, 11, 12)), [])
+        self.assertEqual(revenue.received_on(s, date(2026, 11, 13)), [(date(2026, 11, 13), Decimal(8000))])
         # Paid for a third month and leaves 20 Dec: the leftover counts on the leaving day.
         s.amount_paid, s.status, s.check_out = Decimal(20000), Stay.Status.CHECKED_OUT, date(2026, 12, 20)
         self.assertEqual(revenue.received_on(s, date(2026, 12, 25)), [
-            (date(2026, 11, 14), Decimal(8000)), (date(2026, 12, 14), Decimal(8000)), (date(2026, 12, 20), Decimal(4000))])
+            (date(2026, 11, 13), Decimal(8000)), (date(2026, 12, 13), Decimal(8000)), (date(2026, 12, 20), Decimal(4000))])
         s.check_in = date(2026, 1, 31)  # short months
         self.assertEqual(revenue._same_day_months_later(s.check_in, 1), date(2026, 2, 28))
 
