@@ -29,6 +29,23 @@
     {% for s in form_c_due %}<a href="{% url 'stay_detail' s.pk %}">{{ s.guest.name }} ({{ s.room.number }})</a>{% if not forloop.last %}, {% endif %}{% endfor %}.
   </div>
 {% endif %}
+{% if rent_due %}
+  <div class="alert">
+    <b>Monthly rent to add to the bill</b> — a new month has started:
+    {% for s, n, missing in rent_due %}
+    <div class="stay-line"><a class="stay-line-main" href="{% url 'stay_detail' s.pk %}"><span class="room-badge">{{ s.room.number }}</span>
+      <span><b>{{ s.guest.name }}</b><small>month {{ n }} · {{ missing|inr }} not added yet</small></span></a>
+      <form method="post" action="{% url 'stay_action' s.pk 'add-rent' %}" class="inline-form" data-confirm="Add a month’s rent ({{ s.monthly_rent|inr }}) to {{ s.guest.name }}’s bill?">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn btn-outline btn-sm">Add {{ s.monthly_rent|inr }}</button></form>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+{% if missed %}
+  <div class="alert">
+    <b>Never checked in:</b> these bookings’ dates have passed — check them in (if they stayed) or cancel them, so their money is counted right:
+    {% for s in missed %}<a href="{% url 'stay_detail' s.pk %}">{{ s.guest.name }} ({{ s.room.number }}, {{ s.check_in|date:"d-m" }} → {{ s.check_out|date:"d-m" }}{% if s.amount_paid %}, paid {{ s.amount_paid|inr }}{% endif %})</a>{% if not forloop.last %}, {% endif %}{% endfor %}
+  </div>
+{% endif %}
 {% if last_backup and not last_backup.ok %}
   <div class="alert alert-error"><b>Last backup failed</b> ({{ last_backup.started_at|date:"d-m H:i" }}): {{ last_backup.message|truncatechars:160 }} — <a href="{% url 'backups' %}">see backups</a></div>
 {% endif %}

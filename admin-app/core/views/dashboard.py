@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.db.models import Q
 from django.shortcuts import render
 
+from .. import revenue
 from ..models import BackupRun, Room, Stay
 from ..services import today
 
@@ -54,6 +55,10 @@ def dashboard(request):
         "unpaid": sorted(unpaid, key=lambda s: s.check_in),
         "unpaid_total": sum((s.balance for s in unpaid), Decimal(0)),
         "form_c_due": [s for s in in_house if s.form_c_due],
+        # Money that could slip through: monthly rent not added to the bill, and bookings whose dates have passed
+        # without a check-in (their advance sits in "yet to receive" until they're checked in or cancelled).
+        "rent_due": revenue.rent_not_added(t),
+        "missed": list(upcoming.filter(check_out__lte=t).order_by("check_in")),
         "last_backup": BackupRun.objects.filter(kind=BackupRun.Kind.BACKUP).first(),
     }
     return render(request, "core/dashboard.html", context)

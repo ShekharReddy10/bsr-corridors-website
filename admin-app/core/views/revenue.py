@@ -123,6 +123,7 @@ def revenue_page(request, year=None, month_no=None):
         "is_current": month == this_month,
         "past_months": months[1:],
         "rooms": revenue.rooms_for_month(r, month),
+        "rent_due": revenue.rent_not_added(r.t),
         "settle": {"amount": round(left), "share": left / len(hosts) if hosts else left},
         "hosts": hosts,
         "month_links": [(f"{m:%b %Y}", _month_url(m), m == month) for m, _ in months],

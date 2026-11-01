@@ -16,7 +16,7 @@
   {% if stay.status == 'upcoming' %}
     <form method="post" action="{% url 'stay_action' stay.pk 'check-in' %}"{% if wa_welcome and g.has_contact_details %} data-wa-open="{% url 'stay_whatsapp' stay.pk %}?t=checkin"{% endif %}>{% csrf_token %}<button class="btn btn-primary">Check in{% if wa_welcome and g.has_contact_details %} &amp; send welcome{% endif %}</button></form>
   {% elif stay.status == 'checked_in' %}
-    <form method="post" action="{% url 'stay_action' stay.pk 'check-out' %}" data-confirm="{% if today < stay.check_out and today > stay.check_in %}Guest is booked until {{ stay.check_out|date:'d-m-Y' }}. Check out today (early checkout)?{% endif %}"{% if wa_departure and g.phone %} data-wa-open="{% url 'stay_whatsapp' stay.pk %}?t=checkout"{% endif %}>{% csrf_token %}<button class="btn btn-primary">Check out{% if wa_departure and g.phone %} &amp; send message{% endif %}</button></form>
+    <form method="post" action="{% url 'stay_action' stay.pk 'check-out' %}" data-confirm="{% if today < stay.check_out and today > stay.check_in %}Guest is booked until {{ stay.check_out|date:'d-m-Y' }}. Check out today (early checkout)?{% elif stay.check_out and today > stay.check_out %}Guest was booked only until {{ stay.check_out|date:'d-m-Y' }}. If they stayed the extra nights, tap Cancel and use Extend first so those nights are charged. Check out anyway?{% endif %}"{% if wa_departure and g.phone %} data-wa-open="{% url 'stay_whatsapp' stay.pk %}?t=checkout"{% endif %}>{% csrf_token %}<button class="btn btn-primary">Check out{% if wa_departure and g.phone %} &amp; send message{% endif %}</button></form>
     <form method="post" action="{% url 'stay_action' stay.pk 'undo-check-in' %}" data-confirm="Undo check-in? The stay goes back to upcoming.">{% csrf_token %}<button class="btn btn-ghost">Undo check-in</button></form>
   {% elif stay.status == 'checked_out' %}
     <form method="post" action="{% url 'stay_action' stay.pk 'undo-check-out' %}" class="inline-form" data-confirm="Undo check-out? {{ g.name }} goes back to checked in.">{% csrf_token %}
@@ -146,11 +146,11 @@
     <label>{% if stay.check_out %}Leaving early on{% else %}Leaving on{% endif %} <input type="date" name="new_check_out" value="{{ today|date:'Y-m-d' }}"></label>
     <button class="btn btn-outline btn-sm">{% if stay.check_out %}Shorten stay{% else %}Set leaving date{% endif %}</button>
   </form>
-  <form method="post" action="{% url 'stay_action' stay.pk 'cancel' %}" class="inline-form" data-confirm="Cancel this stay? The room becomes free.">{% csrf_token %}<button class="btn btn-outline btn-sm">Cancel stay</button></form>
+  <form method="post" action="{% url 'stay_action' stay.pk 'cancel' %}" class="inline-form" data-confirm="Cancel this stay? The room becomes free.{% if stay.amount_paid %} The ₹{{ stay.amount_paid|floatformat:0 }} paid stays counted as received — if you refund it, add a “Refund to guest” expense.{% endif %}">{% csrf_token %}<button class="btn btn-outline btn-sm">Cancel stay</button></form>
   {% elif stay.is_void %}
   <form method="post" action="{% url 'stay_action' stay.pk 'undo-cancel' %}" class="inline-form">{% csrf_token %}<button class="btn btn-outline btn-sm">Restore stay</button></form>
   {% endif %}
-  <form method="post" action="{% url 'stay_action' stay.pk 'delete' %}" class="inline-form" data-confirm="Delete this stay permanently? This cannot be undone.">{% csrf_token %}<button class="btn btn-danger btn-sm">Delete stay</button></form>
+  <form method="post" action="{% url 'stay_action' stay.pk 'delete' %}" class="inline-form" data-confirm="Delete this stay permanently? This cannot be undone.{% if stay.amount_paid %} The ₹{{ stay.amount_paid|floatformat:0 }} paid will disappear from revenue — to keep it, cancel the stay instead.{% endif %}">{% csrf_token %}<button class="btn btn-danger btn-sm">Delete stay</button></form>
 </details>
 {% endwith %}
 {% endblock %}

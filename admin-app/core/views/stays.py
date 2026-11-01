@@ -8,6 +8,7 @@ from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.dateparse import parse_date
 from django.utils.html import escape
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .. import services
@@ -217,6 +218,9 @@ def stay_action(request, pk, action):
         elif action == "cancel":
             services.cancel(stay)
             messages.success(request, "Stay cancelled. The room is free again.")
+            if stay.amount_paid:
+                messages.info(request, f"₹{stay.amount_paid:,.0f} was paid on this booking — it stays counted as received "
+                                       f"(today). If you give it back, add it as an expense: “Refund to guest”.")
         elif action == "undo-check-out":
             services.undo_check_out(stay, parse_date(request.POST.get("check_out") or ""))
             messages.success(request, f"Check-out undone. {stay.guest.name} is checked in to {stay.room} again.")
@@ -260,6 +264,9 @@ def stay_action(request, pk, action):
             raise Http404
     except (services.StayConflict, ValueError) as exc:
         messages.error(request, str(exc))
+    nxt = request.POST.get("next", "")  # e.g. "Add month's rent" tapped on the Today page
+    if nxt and url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        return redirect(nxt)
     return redirect("stay_detail", pk=stay.pk)
 
 

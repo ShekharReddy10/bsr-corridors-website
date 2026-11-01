@@ -593,6 +593,11 @@ class SecurityTests(TestCase):
         self.assertIn("not connected", r.json()["message"])
 
 
+def got(s, t):
+    from core import revenue
+    return [(x.day, x.amount) for x in revenue.received_on(s, t)]
+
+
 class RevenueTests(TestCase):
     def setUp(self):
         cache.clear()
@@ -650,25 +655,56 @@ class RevenueTests(TestCase):
         from core import revenue
         s = stay(make_guest(), self.rooms["101"], 0, 1, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(4000))
         s.check_in, s.check_out = date(2026, 10, 29), date(2026, 11, 2)
-        self.assertEqual(revenue.received_on(s, date(2026, 11, 5)), [(date(2026, 11, 2), Decimal(4000))])
+        self.assertEqual(got(s, date(2026, 11, 5)), [(date(2026, 11, 2), Decimal(4000))])
 
     def test_monthly_rent_counts_when_each_month_completes(self):
         from core import revenue
         # Joined 1 Oct: the first month is 1–31 Oct, so it counts on 31 Oct (in October).
         s = Stay(kind=Stay.Kind.MONTHLY, check_in=date(2026, 10, 1), status=Stay.Status.CHECKED_IN,
                  monthly_rent=Decimal(8000), amount_paid=Decimal(16000))
-        self.assertEqual(revenue.received_on(s, date(2026, 10, 30)), [])  # first month not complete yet
-        self.assertEqual(revenue.received_on(s, date(2026, 10, 31)), [(date(2026, 10, 31), Decimal(8000))])
+        self.assertEqual(got(s, date(2026, 10, 30)), [])  # first month not complete yet
+        self.assertEqual(got(s, date(2026, 10, 31)), [(date(2026, 10, 31), Decimal(8000))])
         # Joined 14 Oct: 14 Oct – 13 Nov, counts on 13 Nov.
         s.check_in = date(2026, 10, 14)
-        self.assertEqual(revenue.received_on(s, date(2026, 11, 12)), [])
-        self.assertEqual(revenue.received_on(s, date(2026, 11, 13)), [(date(2026, 11, 13), Decimal(8000))])
+        self.assertEqual(got(s, date(2026, 11, 12)), [])
+        self.assertEqual(got(s, date(2026, 11, 13)), [(date(2026, 11, 13), Decimal(8000))])
         # Paid for a third month and leaves 20 Dec: the leftover counts on the leaving day.
         s.amount_paid, s.status, s.check_out = Decimal(20000), Stay.Status.CHECKED_OUT, date(2026, 12, 20)
-        self.assertEqual(revenue.received_on(s, date(2026, 12, 25)), [
+        self.assertEqual(got(s, date(2026, 12, 25)), [
             (date(2026, 11, 13), Decimal(8000)), (date(2026, 12, 13), Decimal(8000)), (date(2026, 12, 20), Decimal(4000))])
         s.check_in = date(2026, 1, 31)  # short months
         self.assertEqual(revenue._same_day_months_later(s.check_in, 1), date(2026, 2, 28))
+
+    def test_received_shows_dates_covered(self):
+        from core import revenue
+        s = Stay(kind=Stay.Kind.MONTHLY, check_in=date(2026, 10, 14), status=Stay.Status.CHECKED_OUT,
+                 check_out=date(2026, 12, 1), monthly_rent=Decimal(8000), amount_paid=Decimal(12000))
+        self.assertEqual([(x.what, x.start, x.end) for x in revenue.received_on(s, date(2026, 12, 5))], [
+            ("Month 1 rent", date(2026, 10, 14), date(2026, 11, 13)),
+            ("Final payment", date(2026, 11, 14), date(2026, 12, 1))])
+
+    def test_cancelled_booking_keeps_paid_amount(self):
+        from core import revenue
+        s = stay(make_guest(), self.rooms["101"], 5, 2, amount_paid=Decimal(1500))
+        self.assertEqual(revenue.build("all").advance_upcoming, Decimal(1500))
+        services.cancel(s)
+        r = revenue.build("all")
+        self.assertEqual((r.collected, r.advance_upcoming, r.in_period.received), (Decimal(1500), 0, Decimal(1500)))
+        self.assertEqual([x.what for x in r.ledger[T.replace(day=1)].items], ["Cancelled — paid amount kept"])
+
+    def test_reminders_rent_not_added_and_never_checked_in(self):
+        from core import revenue
+        s = Stay(guest=make_guest(), room=self.rooms["201"], kind=Stay.Kind.MONTHLY, check_in=T - timedelta(days=40),
+                 status=Stay.Status.CHECKED_IN, monthly_rent=Decimal(8000), total_amount=Decimal(8000))
+        services.save_stay(s, action="create", summary="test")
+        self.assertEqual(revenue.rent_not_added(T), [(s, 2, Decimal(8000))])  # month 2 started, not added
+        missed = stay(make_guest("M", "+91 90000 00005"), self.rooms["101"], -5, 2, amount_paid=Decimal(500))
+        page = self.client.get("/")
+        self.assertContains(page, "Monthly rent to add")
+        self.assertContains(page, "Never checked in")
+        self.client.post(f"/stays/{s.pk}/add-rent/", {"next": "/"})
+        self.assertEqual(revenue.rent_not_added(T), [])
+        self.assertEqual(missed.status, Stay.Status.UPCOMING)
 
     def test_monthly_guest_in_house_held_until_month_completes(self):
         from core import revenue
