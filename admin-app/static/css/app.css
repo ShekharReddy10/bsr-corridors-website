@@ -395,3 +395,9 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .settle-form h3 { margin: 0 0 10px; font-size: 1rem; }
 .settle-form .btn { margin-top: 10px; }
 .month-nav { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 0 0 12px; }
+.center { text-align: center; margin: -4px 0 12px; }
+.month-settle { margin-top: 12px; }
+.month-items { margin-top: 14px; }
+.month-items > summary { cursor: pointer; padding: 6px 0; }
+.settled-line { justify-content: space-between; align-items: center; }
+.month-nav b { min-width: 9em; text-align: center; }

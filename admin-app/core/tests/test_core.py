@@ -596,7 +596,7 @@ class RevenueTests(TestCase):
     def test_password_set_unlock_and_lockout(self):
         self.assertContains(self.client.get("/revenue/"), "Set a revenue password")
         self._unlock()
-        self.assertContains(self.client.get("/revenue/"), "Money so far")
+        self.assertContains(self.client.get("/revenue/"), "Previous months")
         self.assertNotIn("secret1", AppSetting.get("revenue_password_hash"))
         self.client.post("/revenue/lock/")
         self.assertContains(self.client.get("/revenue/"), "Enter the revenue password")
@@ -737,16 +737,32 @@ class HostSettlementWhatsAppTests(TestCase):
         self.assertEqual(r.left_to_settle, Decimal(2500))  # this month is still running
 
         self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
-        page = self.client.get("/revenue/").content.decode()
-        self.assertIn(f'value="{last_month:%Y-%m-%d}" selected', page)  # oldest unsettled month picked
+        page = self.client.get("/revenue/").content.decode()  # this month, with past months listed below
+        self.assertIn(f'name="month" value="{month:%Y-%m-%d}"', page)
+        self.assertIn(f'/revenue/{last_month:%Y-%m}/', page)
+        self.assertIn("₹2,500 profit from past months is not settled yet", page)
+        page = self.client.get(f"/revenue/{last_month:%Y-%m}/").content.decode()
+        self.assertIn(f'name="month" value="{last_month:%Y-%m-%d}"', page)
         self.assertIn('value="2500"', page)
+        self.assertIn("Checked out", page)  # the stay's payment is listed under its month
+        # By room: a stay that checked in last month but checks out this month is shown there for info only.
+        s2 = stay(make_guest("Z", "+91 90000 00009"), self.rooms["102"], 0, 1, status=Stay.Status.CHECKED_IN)
+        s2.check_in, s2.check_out = last_month + timedelta(days=27), month + timedelta(days=1)
+        s2.total_amount = Decimal(7000)
+        s2.save()
+        rows = {x["room"].number: x for x in revenue.rooms_for_month(revenue.build(), last_month)}
+        self.assertEqual((rows["101"]["received"], rows["102"]["later"], rows["102"]["later_total"]),
+                         (Decimal(3000), [s2], Decimal(7000)))
+        self.assertContains(self.client.get(f"/revenue/{last_month:%Y-%m}/"), "checks out later")
+        self.assertEqual(self.client.get("/revenue/2099-01/").status_code, 302)  # future month
+        self.assertEqual(self.client.get("/revenue/2026-13/").status_code, 404)
         # Settle in two parts.
         self.client.post("/revenue/settle/", {"month": last_month.isoformat(), "amount": "1000", "notes": "Part 1"})
         self.client.post("/revenue/settle/", {"month": last_month.isoformat(), "amount": "1500"})
         r = revenue.build()
         self.assertEqual((r.ledger[last_month].settled, r.ledger[last_month].left, r.left_to_settle), (Decimal(2500), 0, 0))
         self.assertEqual(Settlement.objects.filter(month=last_month).count(), 2)
-        self.assertContains(self.client.get("/revenue/"), "Part 1")
+        self.assertContains(self.client.get(f"/revenue/{last_month:%Y-%m}/"), "Part 1")
         # A month that hasn't started can't be settled.
         future = (month + timedelta(days=40)).replace(day=1)
         self.client.post("/revenue/settle/", {"month": future.isoformat(), "amount": "10"})

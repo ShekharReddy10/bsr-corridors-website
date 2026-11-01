@@ -1,13 +1,141 @@
 {% extends "base.html" %}{% load bsr %}
-{% block title %}Revenue{% endblock %}
+{% block title %}Revenue · {{ month|date:"F Y" }}{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Revenue</h1><p class="muted">Money counts as received when the guest checks out (monthly guests: as each month completes). Cancelled and transferred stays are left out.</p></div>
+  <div><h1>Revenue</h1><p class="muted">Money counts as received when the guest checks out; monthly rent as each month completes. Cancelled and transferred stays are left out.</p></div>
   <form method="post" action="{% url 'revenue_lock' %}">{% csrf_token %}<button class="btn btn-outline">Lock</button></form>
 </div>
 
+<nav class="month-nav" aria-label="Month">
+  {% if prev_month %}<a class="btn btn-ghost btn-sm" href="{% url 'revenue_month' prev_month.year prev_month.month %}">‹ {{ prev_month|date:"M Y" }}</a>{% else %}<span></span>{% endif %}
+  <b>{{ month|date:"F Y" }}</b>
+  {% if next_month %}<a class="btn btn-ghost btn-sm" href="{% url 'revenue_month' next_month.year next_month.month %}">{{ next_month|date:"M Y" }} ›</a>{% else %}<span></span>{% endif %}
+</nav>
+{% if not is_current %}<p class="center"><a href="{% url 'revenue' %}">Back to this month</a></p>{% endif %}
+
+<section class="card profit-card" id="month">
+  <div class="card-head">
+    <h2>{{ month|date:"F Y" }}{% if is_current %} <span class="muted small">— so far</span>{% endif %}</h2>
+    <a class="btn btn-outline btn-sm" href="{% url 'expense_list' %}?month={{ month|date:'Y-m' }}">Expenses</a>
+  </div>
+  <div class="profit-sum">
+    <div><span class="muted small">Received</span><b>{{ mb.received|inr }}</b></div>
+    <span class="op" aria-hidden="true">−</span>
+    <div><span class="muted small">Expenses</span><b>{{ mb.expenses|inr }}</b></div>
+    <span class="op" aria-hidden="true">=</span>
+    <div><span class="muted small">Profit</span><b class="{% if mb.profit < 0 %}warn{% else %}good{% endif %}">{{ mb.profit|inr }}</b></div>
+  </div>
+  <ul class="money-split month-settle">
+    <li><span>Settled</span><b>{{ mb.settled|inr }}</b></li>
+    <li class="{% if mb.left > 0 and not is_current %}warn{% endif %}"><span>Left to settle</span><b>{% if mb.left == 0 and mb.settled %}✓ Done{% else %}{{ mb.left|inr }}{% endif %}</b></li>
+  </ul>
+
+  <details class="month-items"{% if mb.items|length <= 8 %} open{% endif %}>
+    <summary><b>Received in {{ month|date:"F" }}</b> <span class="muted small">({{ mb.items|length }} payment{{ mb.items|length|pluralize }})</span></summary>
+    {% for d, s, amount, what in mb.items %}
+    <div class="stay-line">
+      <a class="stay-line-main" href="{% url 'stay_detail' s.pk %}"><span class="room-badge">{{ s.room.number }}</span>
+        <span><b>{{ s.guest.name }}</b><small>{{ d|date:"d-m-Y" }} · {{ what }} · {{ s.dates_label }}</small></span></a>
+      <b>{{ amount|inr }}</b>
+    </div>
+    {% empty %}<p class="muted">Nothing received in {{ month|date:"F" }}{% if is_current %} yet — it counts when guests check out{% endif %}.</p>{% endfor %}
+  </details>
+
+  <form method="post" action="{% url 'settle' %}" class="settle-form" data-confirm="Record this settlement for {{ month|date:'F Y' }}?">{% csrf_token %}
+    <h3>Settle {{ month|date:"F Y" }}</h3>
+    <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
+    <div class="form-grid">
+      <div class="field"><label for="st-amount">Amount settled ₹</label>
+        <input id="st-amount" type="number" name="amount" inputmode="decimal" step="1" min="0" value="{{ settle.amount }}" required></div>
+      <div class="field"><label for="st-notes">Notes</label>
+        <input id="st-notes" type="text" name="notes" value="{% if hosts %}Shared equally – {{ hosts|join:', ' }}{% endif %}"></div>
+    </div>
+    {% if hosts|length > 1 and settle.amount %}<p class="muted small">{{ settle.amount|inr }} shared by {{ hosts|length }} = <b>{{ settle.share|inr }} each</b>.</p>{% endif %}
+    <button class="btn btn-primary btn-sm">Settle</button>
+  </form>
+  {% for x in r.settlements %}{% if x.month == month %}
+  <div class="stay-line settled-line"><span><b>{{ x.amount|inr }}</b> settled {{ x.at|date:"d-m-Y" }}{% if x.notes %} · <small class="muted">{{ x.notes }}</small>{% endif %}</span>
+    <form method="post" action="{% url 'settlement_delete' x.pk %}" class="inline-form" data-confirm="Delete this settlement?">{% csrf_token %}<button class="btn btn-ghost btn-sm">Delete</button></form>
+  </div>
+  {% endif %}{% endfor %}
+</section>
+
+<section class="card" id="rooms">
+  <h2>By room <span class="muted small">— {{ month|date:"F Y" }} · {{ mb.received|inr }} received</span></h2>
+  <div class="table-wrap"><table class="table table-cards room-month-table">
+    <thead><tr><th>Room</th><th class="num">Received in {{ month|date:"M" }}</th><th>Checked in {{ month|date:"M" }}, checks out later <small class="muted">(info only)</small></th></tr></thead>
+    <tbody>
+      {% for x in rooms %}
+      <tr>
+        <td data-label="Room"><span class="room-badge">{{ x.room.number }}</span></td>
+        <td data-label="Received" class="num"><div><b>{{ x.received|inr }}</b>
+          {% for d, s, amount, what in x.items %}<br><small class="muted"><a href="{% url 'stay_detail' s.pk %}">{{ s.guest.name }}</a> · {{ what }} {{ d|date:"d-m" }} · {{ amount|inr }}</small>{% endfor %}</div></td>
+        <td data-label="Checks out later"><div>{% for s in x.later %}<a href="{% url 'stay_detail' s.pk %}">{{ s.guest.name }}</a> <small class="muted">{{ s.check_in|date:"d-m" }} → {% if s.check_out %}{{ s.check_out|date:"d-m-Y" }}{% else %}open (monthly){% endif %} · {{ s.get_status_display|lower }}</small> <b>{{ s.total|inr }}</b>{% if s.amount_paid %} <small class="muted">(paid {{ s.amount_paid|inr }})</small>{% endif %}{% if not forloop.last %}<br>{% endif %}{% empty %}<span class="muted">—</span>{% endfor %}</div></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="muted small">Stays that check out in a later month are counted as received in that month — shown here only so you can see what’s coming.</p>
+</section>
+
+{% if is_current %}
 <section class="card">
-  <h2>Money so far <span class="muted small">— all bookings</span></h2>
+  <h2>Right now <span class="muted small">— not received yet</span></h2>
+  {% if r.monthly_no_rent %}<p class="alert">{{ r.monthly_no_rent|length }} monthly guest{{ r.monthly_no_rent|length|pluralize }} staying now ha{{ r.monthly_no_rent|length|pluralize:"s,ve" }} no monthly rent set, so what they paid waits until they leave. Set “Monthly rent” on the stay (Edit) to count it month by month:
+    {% for s in r.monthly_no_rent %}<a href="{% url 'stay_edit' s.pk %}">{{ s.guest.name }} ({{ s.room.number }})</a>{% if not forloop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+  <div class="money-grid">
+    <div class="money-hero">
+      <span class="money-label">Held <small class="muted">(paid by guests staying now)</small></span>
+      <b class="money-big">{{ r.held_in_house|inr }}</b>
+      <span class="muted small">Counts as received when they check out (monthly guests: as each month completes).</span>
+      {% if r.held %}<details><summary class="btn btn-ghost btn-sm">Who ({{ r.held|length }})</summary>
+        {% for s, amount in r.held %}<div class="stay-line"><a class="stay-line-main" href="{% url 'stay_detail' s.pk %}"><span class="room-badge">{{ s.room.number }}</span><span><b>{{ s.guest.name }}</b><small>{{ s.get_kind_display }} · {{ s.dates_label }}</small></span></a><b>{{ amount|inr }}</b></div>{% endfor %}
+      </details>{% endif %}
+    </div>
+    <div class="money-hero">
+      <span class="money-label">Balance pending <small class="muted">(checked-in guests still owe)</small></span>
+      <b class="money-big{% if r.balance_pending > 0 %} warn{% endif %}">{{ r.balance_pending|inr }}</b>
+      <ul class="money-split">
+        <li><span>Guests staying now</span><b>{{ r.balance_in_house|inr }}</b></li>
+        <li class="{% if r.due_checked_out > 0 %}warn{% endif %}"><span>Checked out without paying in full</span><b>{{ r.due_checked_out|inr }}</b></li>
+      </ul>
+      <span class="muted small"><a href="#unpaid">Who owes money</a></span>
+    </div>
+    <div class="money-hero">
+      <span class="money-label">Yet to receive <small class="muted">(not checked in yet)</small></span>
+      <b class="money-big">{{ r.to_receive|inr }}</b>
+      <span class="muted small">Full amount of upcoming bookings{% if r.advance_upcoming %}, including {{ r.advance_upcoming|inr }} already paid as advance{% endif %}.</span>
+    </div>
+  </div>
+  {% if r.deposits_held %}<p class="muted small">Also holding {{ r.deposits_held|inr }} in refundable deposits (not counted).</p>{% endif %}
+</section>
+{% endif %}
+
+<section class="card" id="months">
+  <h2>Previous months</h2>
+  {% if r.left_to_settle > 0 %}<p class="alert">{{ r.left_to_settle|inr }} profit from past months is not settled yet.</p>{% endif %}
+  {% if past_months %}
+  <div class="table-wrap"><table class="table month-table">
+    <thead><tr><th>Month</th><th class="num">Received</th><th class="num">Expenses</th><th class="num">Profit</th><th class="num">Settled</th><th class="num">Left</th></tr></thead>
+    <tbody>
+      {% for m, b in past_months %}
+      <tr{% if m == month %} class="picked"{% endif %}>
+        <td><a href="{% url 'revenue_month' m.year m.month %}"><b>{{ m|date:"M Y" }}</b></a></td>
+        <td class="num">{{ b.received|inr }}</td>
+        <td class="num">{{ b.expenses|inr }}</td>
+        <td class="num {% if b.profit < 0 %}warn{% endif %}">{{ b.profit|inr }}</td>
+        <td class="num">{{ b.settled|inr }}</td>
+        <td class="num {% if b.left > 0 %}warn{% elif b.left == 0 and b.settled %}good{% endif %}">{% if b.left == 0 and b.settled %}✓ Done{% else %}{{ b.left|inr }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="muted small">Tap a month to see what was received, its expenses and to settle it.</p>
+  {% else %}<p class="muted">No earlier months yet.</p>{% endif %}
+</section>
+
+<details class="card">
+  <summary><b>All-time totals</b> <span class="muted small">— every booking so far</span></summary>
   <div class="money-grid">
     <div class="money-hero">
       <span class="money-label">Received <small class="muted">(guests checked out + completed months)</small></span>
@@ -37,73 +165,11 @@
   </div>
   <p class="money-check">Received {{ r.collected|inr }}{% if r.held_in_house %} + held {{ r.held_in_house|inr }}{% endif %} + balance pending {{ r.balance_pending|inr }} + yet to receive {{ r.to_receive|inr }} = <b>{{ r.booked_value|inr }}</b> from all bookings</p>
   {% if r.deposits_held %}<p class="muted small">Also holding {{ r.deposits_held|inr }} in refundable deposits (not counted).</p>{% endif %}
-</section>
-
-<section class="card" id="settlement">
-  <div class="card-head">
-    <h2>Month by month <span class="muted small">— received, expenses and settlement</span></h2>
-  </div>
-  {% if r.left_to_settle > 0 %}<p class="alert">{{ r.left_to_settle|inr }} profit from past months is not settled yet.</p>{% endif %}
-  <div class="table-wrap"><table class="table month-table">
-    <thead><tr><th>Month</th><th class="num">Received</th><th class="num">Expenses</th><th class="num">Profit</th><th class="num">Settled</th><th class="num">Left</th><th></th></tr></thead>
-    <tbody>
-      {% for m, b in r.months %}
-      <tr{% if m == pick.month %} class="picked"{% endif %}>
-        <td><b>{{ m|date:"M Y" }}</b>{% if forloop.first %} <small class="muted">(so far)</small>{% endif %}</td>
-        <td class="num">{{ b.received|inr }}</td>
-        <td class="num"><a href="{% url 'expense_list' %}?month={{ m|date:'Y-m' }}">{{ b.expenses|inr }}</a></td>
-        <td class="num {% if b.profit < 0 %}warn{% endif %}">{{ b.profit|inr }}</td>
-        <td class="num">{{ b.settled|inr }}</td>
-        <td class="num {% if b.left > 0 and not forloop.first %}warn{% elif b.left == 0 and b.settled %}good{% endif %}">{% if b.left == 0 and b.settled %}✓ Done{% else %}{{ b.left|inr }}{% endif %}</td>
-        <td>{% if b.left != 0 %}<a class="btn btn-ghost btn-sm" href="?period={{ r.period.key }}&settle={{ m|date:'Y-m' }}#settle-form">Settle</a>{% endif %}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table></div>
-  <p class="muted small">Received = what guests paid, counted on their check-out day (a 29th → 2nd stay counts in the month of the 2nd). Monthly rent counts on the day each month completes (joined 14th → counts on the 14th of next month). Tap an expenses amount to see that month’s bills.</p>
-
-  <form method="post" action="{% url 'settle' %}" class="settle-form" id="settle-form" data-confirm="Record this settlement?">{% csrf_token %}
-    <h3>Settle a month</h3>
-    <div class="form-grid">
-      <div class="field"><label for="st-month">Month</label>
-        <select id="st-month" name="month">{% for m, b in r.months %}<option value="{{ m|date:'Y-m-d' }}"{% if m == pick.month %} selected{% endif %}>{{ m|date:"F Y" }} — left {{ b.left|inr }}</option>{% endfor %}</select></div>
-      <div class="field"><label for="st-amount">Amount settled ₹</label>
-        <input id="st-amount" type="number" name="amount" inputmode="decimal" step="1" min="0" value="{{ pick.amount }}" required></div>
-      <div class="field span-2"><label for="st-notes">Notes</label>
-        <input id="st-notes" type="text" name="notes" value="{% if hosts %}Shared equally – {{ hosts|join:', ' }}{% endif %}"></div>
-    </div>
-    {% if hosts|length > 1 and pick.amount %}<p class="muted small">{{ pick.month|date:"F" }}: {{ pick.amount|inr }} shared by {{ hosts|length }} = <b>{{ pick.share|inr }} each</b>.</p>{% endif %}
-    <button class="btn btn-primary btn-sm">Settle</button>
-  </form>
-
-  {% if r.settlements %}
-  <details>
-    <summary class="btn btn-ghost btn-sm">All settlements ({{ r.settlements|length }}, {{ r.settled_total|inr }} in all)</summary>
-    <ul class="log">
-      {% for s in r.settlements %}
-      <li><b>{{ s.month|date:"F Y" }}</b> · {{ s.amount|inr }} <time>settled {{ s.at|date:"d-m-Y" }}</time>{% if s.notes %} · {{ s.notes }}{% endif %}
-        <form method="post" action="{% url 'settlement_delete' s.pk %}" class="inline-form" data-confirm="Delete this settlement?">{% csrf_token %}<button class="btn btn-ghost btn-sm">Delete</button></form>
-      </li>
-      {% endfor %}
-    </ul>
-  </details>
-  {% endif %}
-</section>
+</details>
 
 <nav class="period-tabs" aria-label="Period">
   {% for p in periods %}<a href="?period={{ p.key }}" {% if p.key == r.period.key %}aria-current="page"{% endif %}>{{ p.label }}</a>{% endfor %}
 </nav>
-
-<section class="card profit-card">
-  <div class="card-head"><h2>Profit · {{ r.period.label|lower }}</h2><a class="btn btn-outline btn-sm" href="{% url 'expense_list' %}?period={{ r.period.key }}">Expenses</a></div>
-  <div class="profit-sum">
-    <div><span class="muted small">Received</span><b>{{ r.in_period.received|inr }}</b></div>
-    <span class="op" aria-hidden="true">−</span>
-    <div><span class="muted small">Expenses</span><b>{{ r.in_period.expenses|inr }}</b></div>
-    <span class="op" aria-hidden="true">=</span>
-    <div><span class="muted small">Profit</span><b class="{% if r.in_period.profit < 0 %}warn{% else %}good{% endif %}">{{ r.in_period.profit|inr }}</b></div>
-  </div>
-</section>
 
 <h2 class="section-title">Room sales <span class="muted small">— {{ r.period.label|lower }}, counted per night</span></h2>
 <div class="stats rev-stats">

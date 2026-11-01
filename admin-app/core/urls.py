@@ -1,7 +1,21 @@
 from django.contrib.auth.views import LogoutView
-from django.urls import path
+from django.urls import path, register_converter
 
 from .views import auth, calendar, dashboard, data, expenses, guests, revenue, rooms, stays, whatsapp
+
+
+class TwoDigits:
+    """Month in /revenue/2026-01/."""
+    regex = "[0-9]{2}"
+
+    def to_python(self, value):
+        return int(value)
+
+    def to_url(self, value):
+        return f"{int(value):02d}"
+
+
+register_converter(TwoDigits, "mm")
 
 urlpatterns = [
     path("login/", auth.ThrottledLoginView.as_view(), name="login"),
@@ -29,6 +43,7 @@ urlpatterns = [
     path("rooms/room/<int:pk>/", rooms.edit, {"kind": "room"}, name="room_edit"),
     path("rooms/<str:kind>/<int:pk>/delete/", rooms.delete, name="room_delete"),
     path("revenue/", revenue.revenue_page, name="revenue"),
+    path("revenue/<int:year>-<mm:month_no>/", revenue.revenue_page, name="revenue_month"),
     path("revenue/lock/", revenue.revenue_lock, name="revenue_lock"),
     path("revenue/settle/", revenue.settle, name="settle"),
     path("revenue/settle/<int:pk>/delete/", revenue.settlement_delete, name="settlement_delete"),

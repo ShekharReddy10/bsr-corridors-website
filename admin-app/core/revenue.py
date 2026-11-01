@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.db.models import Q
+
 from .models import Expense, Room, Settlement, Stay
 from .services import today
 
@@ -36,6 +38,7 @@ class Bucket:
     received: Decimal = ZERO  # see received_on()
     expenses: Decimal = ZERO
     settled: Decimal = ZERO  # profit shared out for this month (month buckets only)
+    items: list = field(default_factory=list)  # month buckets: (day, stay, amount, what) for each received payment
 
     @property
     def left(self) -> Decimal:
@@ -143,6 +146,8 @@ class Report:
     ledger: dict = field(default_factory=lambda: defaultdict(Bucket))  # every month: received, expenses, settled
     collected: Decimal = ZERO  # received so far (see received_on)
     held_in_house: Decimal = ZERO  # paid by guests staying now, not counted as received yet
+    held: list = field(default_factory=list)  # (stay, amount held)
+    monthly_no_rent: list = field(default_factory=list)  # monthly guests staying now with no monthly rent set
     balance_in_house: Decimal = ZERO  # still owed by guests staying now
     due_checked_out: Decimal = ZERO  # still owed by guests who checked out
     due_upcoming: Decimal = ZERO  # full amount of bookings not checked in yet
@@ -249,12 +254,21 @@ def build(period_key: str = "month") -> Report:
             r.deposits_held += s.deposit_amount or ZERO
         else:
             got = ZERO
-            for d, amount in received_on(s, t):
+            for i, (d, amount) in enumerate(received_on(s, t)):
                 add_received(d, amount)
                 got += amount
+                if s.status == Stay.Status.CHECKED_OUT and d == s.check_out and (got == paid):
+                    what = "Left (final payment)" if s.kind == Stay.Kind.MONTHLY and i else "Checked out"
+                else:
+                    what = f"Month {i + 1} rent"
+                r.ledger[d.replace(day=1)].items.append((d, s, amount, what))
             r.collected += got
             if s.status == Stay.Status.CHECKED_IN:
                 r.held_in_house += paid - got
+                if paid > got:
+                    r.held.append((s, paid - got))
+                if s.kind == Stay.Kind.MONTHLY and not s.monthly_rent:
+                    r.monthly_no_rent.append(s)
                 r.balance_in_house += due
                 r.deposits_held += s.deposit_amount or ZERO
             else:
@@ -273,6 +287,9 @@ def build(period_key: str = "month") -> Report:
             r.by_week[d - timedelta(days=d.weekday())].expenses += amount
         if (period.start is None or d >= period.start) and (period.end is None or d < period.end):
             r.in_period.expenses += amount
+    for b in r.ledger.values():
+        b.items.sort(key=lambda x: x[0], reverse=True)
+    r.held.sort(key=lambda x: -x[1])
     r.settlements = list(Settlement.objects.all())
     for x in r.settlements:
         r.ledger[x.month].settled += x.amount
@@ -326,3 +343,27 @@ def bar_rows(groups: dict) -> list[dict]:
     top = max((b.total for _, b in rows), default=ZERO) or Decimal(1)
     return [{"name": n, "b": b, "earned_pct": float(b.earned / top * 100), "ahead_pct": float(b.ahead / top * 100)}
             for n, b in rows]
+
+
+def rooms_for_month(r: Report, month: date) -> list[dict]:
+    """Per room for one month: money received in it (check-outs, completed monthly rent), and — just for
+    information — stays that checked in this month but check out in a later month (counted then)."""
+    next_month = _add_months(month, 1)
+    rows = {}
+
+    def row(room):
+        return rows.setdefault(room.pk, {"room": room, "received": ZERO, "items": [], "later": [], "later_total": ZERO})
+
+    for room in Room.objects.filter(is_active=True):
+        row(room)
+    for d, s, amount, what in r.ledger[month].items:
+        x = row(s.room)
+        x["received"] += amount
+        x["items"].append((d, s, amount, what))
+    later = (Stay.objects.live().filter(check_in__gte=month, check_in__lt=next_month)
+             .filter(Q(check_out__gte=next_month) | Q(check_out__isnull=True)).select_related("guest", "room"))
+    for s in later:
+        x = row(s.room)
+        x["later"].append(s)
+        x["later_total"] += s.total
+    return sorted(rows.values(), key=lambda x: (x["room"].sort_order, x["room"].floor, x["room"].number))
