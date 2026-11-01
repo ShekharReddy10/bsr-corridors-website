@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 
 from django.contrib import messages
@@ -18,6 +19,11 @@ def expense_list(request):
     t = today()
     periods = revenue.periods(t)
     period = next((p for p in periods if p.key == request.GET.get("period", "month")), periods[1])
+    try:  # ?month=2026-10 (from the revenue page's month table)
+        start = datetime.strptime(request.GET.get("month", ""), "%Y-%m").date()
+        period = revenue.Period("", start.strftime("%B %Y"), start, revenue._add_months(start, 1))
+    except ValueError:
+        pass
     expenses = Expense.objects.select_related("room")
     if period.start:
         expenses = expenses.filter(date__gte=period.start, date__lt=period.end)
@@ -43,6 +49,7 @@ def expense_list(request):
         "page": page, "total": total, "by_category": by_category, "by_mode": by_mode,
         "periods": periods, "period": period, "category": category, "q": q,
         "categories": Expense.Category.choices,
+        "prev_month": revenue._add_months(period.start, -1) if period.start else None,
     })
 
 

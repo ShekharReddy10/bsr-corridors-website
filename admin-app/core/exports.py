@@ -9,6 +9,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from . import revenue
 from .models import AuditLog, Expense, Guest, MessageTemplate, Room, RoomType, Settlement, Stay, StayGuest
 
 HEADER_FILL = PatternFill("solid", fgColor="1F2A30")
@@ -106,6 +107,16 @@ def build_workbook(start: date | None = None, end: date | None = None, full_ids:
              e.reference, e.room.number if e.room else "", e.notes]
             for e in expenses
         ],
+    )
+    months = revenue.build("all").months()
+    if start and end:
+        months = [(m, b) for m, b in months if start.replace(day=1) <= m <= end]
+    _sheet(
+        wb,
+        "Monthly summary",
+        ["Month", "Received", "Expenses", "Profit", "Settled", "Left to settle"],
+        [[m.strftime("%B %Y"), float(b.received), float(b.expenses), float(b.profit), float(b.settled), float(b.left)]
+         for m, b in months],
     )
     for ws in wb.worksheets:
         for row in ws.iter_rows(min_row=2):

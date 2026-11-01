@@ -4,15 +4,17 @@ Room revenue is counted per night stayed: a stay's total is spread evenly over i
 3-night ₹4,500 stay adds ₹1,500 to each night (and to that night's week, month and room type).
 Nights already stayed are "earned"; later nights of current and upcoming stays are "booked ahead".
 
-Money, once a guest has checked in: what they paid is "received" and what they still owe is
-"balance pending". Bookings not checked in yet are "yet to receive" in full (advances included).
-Received + balance pending + yet to receive = the full amount of all bookings.
-Payment dates aren't stored, so for week/month figures a daily stay's payments count on its
-check-in day, and a monthly guest's are spread evenly over the days stayed. Profit = received − expenses.
-Cancelled and transferred stays are left out.
+Money: guests who have checked in owe "balance pending" (bill − paid). What they paid only counts as
+"received" when it is done: a daily stay on its check-out day, so a 29th → 2nd stay counts in the month of the
+2nd; a monthly guest's rent month by month, on the day each month completes (joined 14 Oct → the first month
+counts on 14 Nov), and whatever is left over on the day they leave. Until then it is "held" (paid by guests
+staying now). Bookings not checked in yet are "yet to receive" in full (advances included).
+Received + held + balance pending + yet to receive = the full amount of all bookings.
+Each month's received money is fixed once the month is over, and the next month starts from zero.
+Profit = received − expenses. Cancelled and transferred stays are left out.
 
-Settlements: when profit is shared out, the all-time received and expense totals are saved. "Since last
-settlement" figures are today's totals minus those, so they start again from zero after each settlement.
+Settlements are per month: each month's profit (received − expenses in that month) is shared out, in one go or
+in parts, and the page shows what is still left to settle for every month.
 """
 
 from collections import defaultdict
@@ -31,8 +33,14 @@ class Bucket:
     earned: Decimal = ZERO
     ahead: Decimal = ZERO
     nights: int = 0
-    received: Decimal = ZERO  # paid by guests who checked out in this bucket
+    received: Decimal = ZERO  # see received_on()
     expenses: Decimal = ZERO
+    settled: Decimal = ZERO  # profit shared out for this month (month buckets only)
+
+    @property
+    def left(self) -> Decimal:
+        """Profit not settled yet."""
+        return self.profit - self.settled
 
     @property
     def total(self) -> Decimal:
@@ -73,6 +81,34 @@ def _add_months(d: date, n: int) -> date:
     return d.replace(year=d.year + m // 12, month=m % 12 + 1, day=1)
 
 
+def _same_day_months_later(d: date, n: int) -> date:
+    """14 Oct + 1 → 14 Nov; 31 Jan + 1 → 28/29 Feb."""
+    first = _add_months(d, n)
+    nxt = _add_months(d, n + 1)
+    return first.replace(day=min(d.day, (nxt - timedelta(days=1)).day))
+
+
+def received_on(stay: Stay, t: date) -> list[tuple[date, Decimal]]:
+    """(day, amount) for the money this stay has paid that counts as received by today (see module doc).
+    The rest of amount_paid is still held."""
+    paid = stay.amount_paid or ZERO
+    if stay.status not in (Stay.Status.CHECKED_IN, Stay.Status.CHECKED_OUT) or paid <= 0:
+        return []
+    done = stay.status == Stay.Status.CHECKED_OUT
+    out = []
+    if stay.kind == Stay.Kind.MONTHLY and stay.monthly_rent and stay.monthly_rent > 0:
+        limit = stay.check_out if done else t
+        k = 1
+        while paid > 0 and (end := _same_day_months_later(stay.check_in, k)) <= limit:
+            part = min(stay.monthly_rent, paid)
+            out.append((end, part))
+            paid -= part
+            k += 1
+    if done and paid > 0:
+        out.append((stay.check_out or t, paid))
+    return out
+
+
 def nightly(stay: Stay, t: date):
     """Yield (night, amount, earned?) for every night of the stay.
     Open (monthly) stays: the rent added so far is spread over the nights up to today."""
@@ -104,7 +140,9 @@ class Report:
     by_source: dict = field(default_factory=lambda: defaultdict(Bucket))
     by_month: dict = field(default_factory=lambda: defaultdict(Bucket))
     by_week: dict = field(default_factory=lambda: defaultdict(Bucket))
-    collected: Decimal = ZERO  # paid by guests who have checked in (staying now or checked out)
+    ledger: dict = field(default_factory=lambda: defaultdict(Bucket))  # every month: received, expenses, settled
+    collected: Decimal = ZERO  # received so far (see received_on)
+    held_in_house: Decimal = ZERO  # paid by guests staying now, not counted as received yet
     balance_in_house: Decimal = ZERO  # still owed by guests staying now
     due_checked_out: Decimal = ZERO  # still owed by guests who checked out
     due_upcoming: Decimal = ZERO  # full amount of bookings not checked in yet
@@ -116,26 +154,14 @@ class Report:
     settlements: list = field(default_factory=list)  # newest first
 
     @property
-    def last_settlement(self) -> Settlement | None:
-        return self.settlements[0] if self.settlements else None
-
-    @property
-    def received_since(self) -> Decimal:
-        last = self.last_settlement
-        return self.collected - (last.received_total if last else ZERO)
-
-    @property
-    def expenses_since(self) -> Decimal:
-        last = self.last_settlement
-        return self.expenses_all_time - (last.expenses_total if last else ZERO)
-
-    @property
-    def profit_since(self) -> Decimal:
-        return self.received_since - self.expenses_since
-
-    @property
     def settled_total(self) -> Decimal:
         return sum((x.amount for x in self.settlements), ZERO)
+
+    @property
+    def left_to_settle(self) -> Decimal:
+        """Profit not shared out yet, over all months that are over (the current month is still running)."""
+        month = self.t.replace(day=1)
+        return sum((b.left for m, b in self.ledger.items() if m < month), ZERO)
 
     @property
     def net_cash(self) -> Decimal:
@@ -151,11 +177,21 @@ class Report:
 
     @property
     def booked_value(self) -> Decimal:
-        return self.collected + self.balance_pending + self.to_receive
+        return self.collected + self.held_in_house + self.balance_pending + self.to_receive
 
     @property
     def collected_pct(self) -> int:
         return round(self.collected / self.booked_value * 100) if self.booked_value > 0 else 0
+
+    def months(self) -> list[tuple[date, Bucket]]:
+        """Every month from the first one with money in it up to this one, newest first."""
+        month = self.t.replace(day=1)
+        first = min((m for m in self.ledger if m <= month), default=month)
+        out = []
+        while month >= first:
+            out.append((month, self.ledger[month]))
+            month = _add_months(month, -1)
+        return out
 
     @property
     def occupancy(self) -> int | None:
@@ -202,6 +238,7 @@ def build(period_key: str = "month") -> Report:
                 buckets.append(r.by_week[d - timedelta(days=d.weekday())])
             if (period.start is None or d >= period.start) and (period.end is None or d < period.end):
                 buckets.append(r.in_period)
+            buckets.append(r.ledger[d.replace(day=1)])
             for b in buckets:
                 b.received += amount
 
@@ -211,19 +248,17 @@ def build(period_key: str = "month") -> Report:
             r.advance_upcoming += paid
             r.deposits_held += s.deposit_amount or ZERO
         else:
-            r.collected += paid
+            got = ZERO
+            for d, amount in received_on(s, t):
+                add_received(d, amount)
+                got += amount
+            r.collected += got
             if s.status == Stay.Status.CHECKED_IN:
+                r.held_in_house += paid - got
                 r.balance_in_house += due
                 r.deposits_held += s.deposit_amount or ZERO
             else:
                 r.due_checked_out += due
-            if s.kind == Stay.Kind.MONTHLY:
-                last = min(s.check_out - timedelta(days=1), t) if s.check_out else t
-                days = max((last - s.check_in).days + 1, 1)
-                for i in range(days):
-                    add_received(s.check_in + timedelta(days=i), paid / days)
-            else:
-                add_received(s.check_in, paid)
         if due > 0 and s.status != Stay.Status.UPCOMING:
             r.unpaid.append(s)
 
@@ -231,6 +266,7 @@ def build(period_key: str = "month") -> Report:
 
     for d, amount in Expense.objects.values_list("date", "amount"):
         r.expenses_all_time += amount
+        r.ledger[d.replace(day=1)].expenses += amount
         if month0 <= d < month_end:
             r.by_month[d.replace(day=1)].expenses += amount
         if week0 <= d < week_end:
@@ -238,6 +274,8 @@ def build(period_key: str = "month") -> Report:
         if (period.start is None or d >= period.start) and (period.end is None or d < period.end):
             r.in_period.expenses += amount
     r.settlements = list(Settlement.objects.all())
+    for x in r.settlements:
+        r.ledger[x.month].settled += x.amount
     return r
 
 

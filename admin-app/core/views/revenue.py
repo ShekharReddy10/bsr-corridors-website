@@ -22,6 +22,7 @@ from django.views.decorators.http import require_POST
 from .. import revenue
 from ..forms import SettlementForm
 from ..models import AppSetting, AuditLog, Settlement
+from ..services import host_names
 from .auth import _client_ip
 
 HASH_KEY = "revenue_password_hash"
@@ -99,6 +100,15 @@ def revenue_page(request):
         return render(request, "core/revenue_lock.html", {"has_password": has_password, "min_length": MIN_LENGTH})
 
     r = revenue.build(request.GET.get("period", "month"))
+    months = r.months()
+    # The settle form opens on the month picked with a row's "Settle" link, else the oldest past month with
+    # profit still to share out, else this month; the amount is what's left for that month.
+    wanted = request.GET.get("settle", "")
+    month = next((m for m, _ in months if f"{m:%Y-%m}" == wanted), None)
+    if month is None:
+        month = next((m for m, b in reversed(months[1:]) if b.left > 0), months[0][0])
+    left = max(r.ledger[month].left, revenue.ZERO)
+    hosts = host_names()
     return render(request, "core/revenue.html", {
         "r": r,
         "periods": revenue.periods(r.t),
@@ -106,7 +116,8 @@ def revenue_page(request):
         "weekly": revenue.weekly_chart(r),
         "types": revenue.bar_rows(r.by_type),
         "sources": revenue.bar_rows(r.by_source),
-        "settle_form": SettlementForm(initial={"amount": round(max(r.profit_since, revenue.ZERO))}),
+        "hosts": hosts,
+        "pick": {"month": month, "amount": round(left), "share": left / len(hosts) if hosts else left},
         "env_password": bool(os.environ.get("REVENUE_PASSWORD")),
     })
 
@@ -137,20 +148,22 @@ def revenue_change_password(request):
 
 @require_POST
 def settle(request):
-    """Share out the profit: save today's all-time totals so "since last settlement" starts from zero."""
+    """Share out (part of) one month's profit."""
     if not _unlocked(request):
         return redirect("revenue")
     form = SettlementForm(request.POST)
     if not form.is_valid():
-        messages.error(request, "Enter the amount settled (₹0 or more).")
-        return redirect("revenue")
-    r = revenue.build()
-    s = Settlement.objects.create(received_total=r.collected, expenses_total=r.expenses_all_time,
+        messages.error(request, "Enter the amount settled (₹0 or more) for a month that has started.")
+        return redirect("/revenue/#settlement")
+    month = form.cleaned_data["month"]
+    b = revenue.build().ledger[month]
+    s = Settlement.objects.create(month=month, received_total=b.received, expenses_total=b.expenses,
                                   amount=form.cleaned_data["amount"], notes=form.cleaned_data["notes"])
-    AuditLog.record("settlement", f"Settled ₹{s.amount:,.0f} (received ₹{r.received_since:,.0f} − expenses "
-                                  f"₹{r.expenses_since:,.0f} since the last settlement){': ' + s.notes if s.notes else ''}")
-    messages.success(request, f"Settled ₹{s.amount:,.0f}. Received money and expenses now count again from zero.")
-    return redirect("revenue")
+    AuditLog.record("settlement", f"Settled ₹{s.amount:,.0f} for {month:%B %Y} (received ₹{b.received:,.0f} − "
+                                  f"expenses ₹{b.expenses:,.0f}){': ' + s.notes if s.notes else ''}")
+    messages.success(request, f"Settled ₹{s.amount:,.0f} for {month:%B %Y}. Left for that month: "
+                              f"₹{b.left - s.amount:,.0f}.")
+    return redirect("/revenue/#settlement")
 
 
 @require_POST
@@ -158,7 +171,7 @@ def settlement_delete(request, pk):
     if not _unlocked(request):
         return redirect("revenue")
     s = get_object_or_404(Settlement, pk=pk)
-    AuditLog.record("settlement", f"Deleted settlement of {s.at:%d-%m-%Y}: ₹{s.amount:,.0f}")
+    AuditLog.record("settlement", f"Deleted settlement for {s.month:%B %Y} (made {s.at:%d-%m-%Y}): ₹{s.amount:,.0f}")
     s.delete()
     messages.success(request, "Settlement deleted.")
-    return redirect("revenue")
+    return redirect("/revenue/#settlement")

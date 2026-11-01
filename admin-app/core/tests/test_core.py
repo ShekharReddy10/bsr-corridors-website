@@ -1,6 +1,6 @@
 import io
 import json
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from unittest import skipUnless
 
@@ -252,7 +252,7 @@ class ExportTests(TestCase):
         values = [c.value for row in wb["Stays"].iter_rows() for c in row]
         self.assertIn("••••1234", values)
         self.assertNotIn("123412341234", values)
-        self.assertEqual(wb.sheetnames, ["Stays", "Guests", "Rooms", "Expenses"])
+        self.assertEqual(wb.sheetnames, ["Stays", "Guests", "Rooms", "Expenses", "Monthly summary"])
 
 
 class ViewTests(TestCase):
@@ -583,13 +583,13 @@ class RevenueTests(TestCase):
         self.assertEqual(r.in_period.nights, 4 + 2 + 1)
         self.assertEqual(r.in_period.earned, Decimal(1500) * 2 + Decimal(3000))
         self.assertEqual(r.in_period.ahead, Decimal(1500) * 2 + Decimal(1500))
-        # Checked-in guests (in-house + checked out): paid is received, the rest is balance pending.
-        self.assertEqual(r.collected, Decimal(2000 + 3000))
+        # Received only once checked out; the in-house guest's ₹2,000 is held. Unpaid bills are balance pending.
+        self.assertEqual((r.collected, r.held_in_house), (Decimal(3000), Decimal(2000)))
         self.assertEqual(r.balance_pending, Decimal(4000))
         # Not checked in yet: the whole booking is yet to receive, advance included.
         self.assertEqual((r.to_receive, r.advance_upcoming), (Decimal(1500), Decimal(500)))
-        self.assertEqual(r.in_period.received, Decimal(5000))
-        self.assertEqual(r.collected + r.balance_pending + r.to_receive, Decimal(3000 + 6000 + 1500))
+        self.assertEqual(r.in_period.received, Decimal(3000))
+        self.assertEqual(r.collected + r.held_in_house + r.balance_pending + r.to_receive, Decimal(3000 + 6000 + 1500))
         self.assertEqual(r.by_type["Luxury AC"].total, Decimal(9000))
         self.assertEqual([s.pk for s in r.unpaid], [a.pk])
 
@@ -605,23 +605,43 @@ class RevenueTests(TestCase):
         self.client.post("/revenue/", {"password": "secret1"})
         self.assertContains(self.client.get("/revenue/"), "Enter the revenue password")  # locked out
 
-    def test_received_counted_on_check_in_day(self):
+    def test_received_counted_on_check_out_day(self):
         from core import revenue
         stay(make_guest(), self.rooms["101"], -60, 3, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(4500))
         stay(make_guest("B", "+91 90000 00001"), self.rooms["102"], -1, 2, status=Stay.Status.CHECKED_IN,
              amount_paid=Decimal(1000))
         r = revenue.build("month")
-        self.assertEqual((r.in_period.received, r.in_period.profit), (Decimal(1000), Decimal(1000)))
-        self.assertEqual(revenue.build("all").in_period.received, Decimal(5500))
+        self.assertEqual((r.in_period.received, r.held_in_house), (0, Decimal(1000)))
+        self.assertEqual(revenue.build("all").in_period.received, Decimal(4500))
 
-    def test_monthly_rent_counts_as_received_while_staying(self):
+    def test_stay_across_month_end_counts_in_check_out_month(self):
+        from core import revenue
+        s = stay(make_guest(), self.rooms["101"], 0, 1, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(4000))
+        s.check_in, s.check_out = date(2026, 10, 29), date(2026, 11, 2)
+        self.assertEqual(revenue.received_on(s, date(2026, 11, 5)), [(date(2026, 11, 2), Decimal(4000))])
+
+    def test_monthly_rent_counts_when_each_month_completes(self):
+        from core import revenue
+        s = Stay(kind=Stay.Kind.MONTHLY, check_in=date(2026, 10, 14), status=Stay.Status.CHECKED_IN,
+                 monthly_rent=Decimal(8000), amount_paid=Decimal(16000))
+        self.assertEqual(revenue.received_on(s, date(2026, 11, 13)), [])  # first month not complete yet
+        self.assertEqual(revenue.received_on(s, date(2026, 11, 14)), [(date(2026, 11, 14), Decimal(8000))])
+        # Paid for a third month and leaves 20 Dec: the leftover counts on the leaving day.
+        s.amount_paid, s.status, s.check_out = Decimal(20000), Stay.Status.CHECKED_OUT, date(2026, 12, 20)
+        self.assertEqual(revenue.received_on(s, date(2026, 12, 25)), [
+            (date(2026, 11, 14), Decimal(8000)), (date(2026, 12, 14), Decimal(8000)), (date(2026, 12, 20), Decimal(4000))])
+        s.check_in = date(2026, 1, 31)  # short months
+        self.assertEqual(revenue._same_day_months_later(s.check_in, 1), date(2026, 2, 28))
+
+    def test_monthly_guest_in_house_held_until_month_completes(self):
         from core import revenue
         s = Stay(guest=make_guest(), room=self.rooms["201"], kind=Stay.Kind.MONTHLY, check_in=T - timedelta(days=9),
-                 status=Stay.Status.CHECKED_IN, total_amount=Decimal(10000), amount_paid=Decimal(8000))
+                 status=Stay.Status.CHECKED_IN, total_amount=Decimal(10000), amount_paid=Decimal(8000),
+                 monthly_rent=Decimal(10000))
         services.save_stay(s, action="create", summary="test")
         r = revenue.build("all")
-        self.assertEqual((r.collected, r.balance_pending, r.to_receive), (Decimal(8000), Decimal(2000), 0))
-        self.assertAlmostEqual(r.in_period.received, Decimal(8000), places=2)
+        self.assertEqual((r.collected, r.held_in_house, r.balance_pending, r.to_receive),
+                         (0, Decimal(8000), Decimal(2000), 0))
 
     def test_page_renders_with_data_for_every_period(self):
         stay(make_guest(), self.rooms["101"], -40, 3, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(1000))
@@ -701,28 +721,42 @@ class HostSettlementWhatsAppTests(TestCase):
         form = self.client.get(f"/stays/{Stay.objects.get().pk}/edit/").content.decode()
         self.assertIn('value="Mounika" selected', form)
 
-    def test_settlement_counts_again_from_zero(self):
+    def test_settlement_per_month(self):
         from core import revenue
-        stay(make_guest(), self.rooms["101"], -3, 2, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(3000))
-        Expense.objects.create(reason="Soap", amount=Decimal(500))
+        month = T.replace(day=1)
+        last_month = (month - timedelta(days=1)).replace(day=1)
+        s = stay(make_guest(), self.rooms["101"], -40, 2, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(3000))
+        s.check_in, s.check_out = last_month, last_month + timedelta(days=2)
+        s.save()
+        Expense.objects.create(date=last_month, reason="Soap", amount=Decimal(500))
+        Expense.objects.create(date=T, reason="Bulb", amount=Decimal(200))
         r = revenue.build()
-        self.assertEqual((r.received_since, r.expenses_since, r.profit_since), (Decimal(3000), Decimal(500), Decimal(2500)))
+        lm = r.ledger[last_month]
+        self.assertEqual((lm.received, lm.expenses, lm.profit, lm.left), (Decimal(3000), Decimal(500), Decimal(2500), Decimal(2500)))
+        self.assertEqual(r.ledger[month].expenses, Decimal(200))
+        self.assertEqual(r.left_to_settle, Decimal(2500))  # this month is still running
 
         self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
-        self.client.post("/revenue/settle/", {"amount": "2500", "notes": "Split three ways"})
+        page = self.client.get("/revenue/").content.decode()
+        self.assertIn(f'value="{last_month:%Y-%m-%d}" selected', page)  # oldest unsettled month picked
+        self.assertIn('value="2500"', page)
+        # Settle in two parts.
+        self.client.post("/revenue/settle/", {"month": last_month.isoformat(), "amount": "1000", "notes": "Part 1"})
+        self.client.post("/revenue/settle/", {"month": last_month.isoformat(), "amount": "1500"})
         r = revenue.build()
-        self.assertEqual((r.received_since, r.expenses_since, r.profit_since), (0, 0, 0))
-        self.assertEqual(r.collected, Decimal(3000))  # all-time totals are kept
+        self.assertEqual((r.ledger[last_month].settled, r.ledger[last_month].left, r.left_to_settle), (Decimal(2500), 0, 0))
+        self.assertEqual(Settlement.objects.filter(month=last_month).count(), 2)
+        self.assertContains(self.client.get("/revenue/"), "Part 1")
+        # A month that hasn't started can't be settled.
+        future = (month + timedelta(days=40)).replace(day=1)
+        self.client.post("/revenue/settle/", {"month": future.isoformat(), "amount": "10"})
+        self.assertFalse(Settlement.objects.filter(month=future).exists())
 
-        stay(make_guest("B", "+91 90000 00001"), self.rooms["102"], 0, 1, status=Stay.Status.CHECKED_IN,
-             amount_paid=Decimal(1200))
-        Expense.objects.create(reason="Bulb", amount=Decimal(200))
-        r = revenue.build()
-        self.assertEqual((r.received_since, r.expenses_since, r.profit_since), (Decimal(1200), Decimal(200), Decimal(1000)))
-        self.assertContains(self.client.get("/revenue/"), "Split three ways")
-
-        self.client.post(f"/revenue/settle/{Settlement.objects.get().pk}/delete/")
-        self.assertEqual(revenue.build().received_since, Decimal(4200))
+        self.client.post(f"/revenue/settle/{Settlement.objects.get(notes='Part 1').pk}/delete/")
+        self.assertEqual(revenue.build().ledger[last_month].left, Decimal(1000))
+        # Month link on the expenses page.
+        self.assertContains(self.client.get(f"/expenses/?month={last_month:%Y-%m}"), "Soap")
+        self.assertNotContains(self.client.get(f"/expenses/?month={last_month:%Y-%m}"), "Bulb")
 
     def test_settle_needs_revenue_password(self):
         self.client.post("/revenue/settle/", {"amount": "100"})

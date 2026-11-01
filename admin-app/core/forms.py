@@ -4,7 +4,7 @@ from decimal import Decimal
 from django import forms
 
 from .models import Expense, Guest, MessageTemplate, Room, RoomType, Settlement, Stay, StayGuest
-from .services import host_names
+from .services import host_names, today
 
 DATE = forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")
 
@@ -312,11 +312,13 @@ class ExpenseForm(forms.ModelForm):
 class SettlementForm(forms.ModelForm):
     class Meta:
         model = Settlement
-        fields = ["amount", "notes"]
-        widgets = {
-            "amount": forms.NumberInput(attrs={"inputmode": "decimal", "step": "1", "min": "0"}),
-            "notes": forms.TextInput(attrs={"placeholder": "e.g. Shared equally – Shekhar, Mounika, Satish"}),
-        }
+        fields = ["month", "amount", "notes"]
+
+    def clean_month(self):
+        month = self.cleaned_data["month"].replace(day=1)
+        if month > today().replace(day=1):
+            raise forms.ValidationError("Can’t settle a month that hasn’t started.")
+        return month
 
     def clean_amount(self):
         amount = self.cleaned_data["amount"]

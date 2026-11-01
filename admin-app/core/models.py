@@ -302,21 +302,23 @@ class Expense(models.Model):
 
 
 class Settlement(models.Model):
-    """Profit shared out on a given day. The revenue page counts received money and expenses again from zero
-    after the latest settlement: it stores the all-time totals at that moment and subtracts them later."""
+    """Profit shared out for one month. A month can be settled in more than one go (e.g. part now, rest later);
+    the revenue page adds them up and shows what is still left to settle for that month."""
 
+    month = models.DateField(db_index=True, help_text="First day of the month this settlement is for")
     at = models.DateTimeField(default=timezone.now, db_index=True)
-    received_total = models.DecimalField(max_digits=12, decimal_places=2, help_text="All-time received when settled")
-    expenses_total = models.DecimalField(max_digits=12, decimal_places=2, help_text="All-time expenses when settled")
+    # That month's received money and expenses when it was settled (for the record).
+    received_total = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    expenses_total = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     amount = models.DecimalField("Amount settled (₹)", max_digits=12, decimal_places=2)
     notes = models.TextField(blank=True)
 
     class Meta:
         db_table = "settlements"
-        ordering = ["-at", "-pk"]
+        ordering = ["-month", "-at", "-pk"]
 
     def __str__(self):
-        return f"{self.at:%d-%m-%Y} · ₹{self.amount:,.0f}"
+        return f"{self.month:%B %Y} · ₹{self.amount:,.0f}"
 
 
 class MessageTemplate(models.Model):
