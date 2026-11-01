@@ -13,7 +13,7 @@ from .. import gdrive
 from ..exports import build_workbook
 from ..forms import DateRangeForm
 from ..models import AppSetting, AuditLog, BackupRun, Guest, Stay
-from ..services import HOSTS_KEY, host_names, today
+from ..services import HOSTS_KEY, PARTNERS_KEY, host_names, partner_names, today
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -63,12 +63,15 @@ def backup_hook(request):
 
 def settings_page(request):
     years = request.POST.get("years", "3")
-    if request.method == "POST" and request.POST.get("action") == "hosts":
-        names = [n.strip() for n in request.POST.get("hosts", "").replace("\n", ",").split(",") if n.strip()]
+    name_lists = {"hosts": (HOSTS_KEY, "Hosts"), "partners": (PARTNERS_KEY, "Profit shared by")}
+    if request.method == "POST" and request.POST.get("action") in name_lists:
+        action = request.POST["action"]
+        key, label = name_lists[action]
+        names = [n.strip() for n in request.POST.get(action, "").replace("\n", ",").split(",") if n.strip()]
         names = list(dict.fromkeys(n[:40] for n in names))
-        AppSetting.put(HOSTS_KEY, ", ".join(names))
-        AuditLog.record("settings", f"Hosts list: {', '.join(names) or '(empty)'}")
-        messages.success(request, "Hosts saved.")
+        AppSetting.put(key, ", ".join(names))
+        AuditLog.record("settings", f"{label}: {', '.join(names) or '(empty)'}")
+        messages.success(request, f"{label} saved.")
         return redirect("settings")
     if request.method == "POST":
         if request.POST.get("confirm", "").strip().upper() != "PURGE" or not years.isdigit() or int(years) < 1:
@@ -90,5 +93,6 @@ def settings_page(request):
         "encryption_set": bool(settings.FIELD_ENCRYPTION_KEY),
         "backup_hook_set": bool(settings.BACKUP_TOKEN),
         "hosts": ", ".join(host_names()),
+        "partners": ", ".join(partner_names()),
         "logs": AuditLog.objects.select_related("stay")[:100],
     })

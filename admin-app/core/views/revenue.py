@@ -26,7 +26,7 @@ from django.views.decorators.http import require_POST
 from .. import revenue
 from ..forms import SettlementForm
 from ..models import AppSetting, AuditLog, Expense, Settlement
-from ..services import host_names, today
+from ..services import partner_names, today
 from .auth import _client_ip
 
 HASH_KEY = "revenue_password_hash"
@@ -116,7 +116,7 @@ def revenue_page(request, year=None, month_no=None):
     months = r.months()
     b = r.ledger[month]
     left = max(b.left, revenue.ZERO)
-    hosts = host_names()
+    partners = partner_names()
     return render(request, "core/revenue.html", {
         "r": r,
         "month": month,
@@ -125,8 +125,8 @@ def revenue_page(request, year=None, month_no=None):
         "past_months": months[1:],
         "rooms": revenue.rooms_for_month(r, month),
         "rent_due": revenue.rent_not_added(r.t),
-        "settle": {"amount": round(left), "share": left / len(hosts) if hosts else left},
-        "hosts": hosts,
+        "settle": {"amount": round(left), "share": left / len(partners) if partners else left},
+        "partners": partners,
         "month_links": _month_links(r, month),
         "monthly": revenue.monthly_chart(r),
         "weekly": revenue.weekly_chart(r),

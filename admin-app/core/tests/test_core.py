@@ -872,6 +872,18 @@ class HostSettlementWhatsAppTests(TestCase):
         self.assertContains(self.client.get(f"/expenses/?month={last_month:%Y-%m}"), "Soap")
         self.assertNotContains(self.client.get(f"/expenses/?month={last_month:%Y-%m}"), "Bulb")
 
+    def test_profit_shared_by_partners_not_hosts(self):
+        stay(make_guest(), self.rooms["101"], -3, 2, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(3000))
+        self.assertEqual((services.host_names(), services.partner_names()),
+                         (["Shekhar", "Mounika", "Satish"], ["Shekhar", "Satish"]))
+        self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
+        page = self.client.get(f"/revenue/{T - timedelta(days=1):%Y-%m}/").content.decode()  # month of check-out
+        self.assertIn("shared by Shekhar & Satish = <b>₹1,500 each</b>", page)
+        self.assertIn("Shared equally – Shekhar, Satish", page)
+        self.client.post("/settings/", {"action": "partners", "partners": "Shekhar, Satish, Mounika"})
+        self.assertEqual(services.partner_names(), ["Shekhar", "Satish", "Mounika"])
+        self.assertEqual(services.host_names(), ["Shekhar", "Mounika", "Satish"])  # hosts unchanged
+
     def test_settle_needs_revenue_password(self):
         self.client.post("/revenue/settle/", {"amount": "100"})
         self.assertFalse(Settlement.objects.exists())

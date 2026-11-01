@@ -12,6 +12,8 @@ from .models import AppSetting, AuditLog, Room, Stay
 
 HOSTS_KEY = "hosts"
 DEFAULT_HOSTS = "Shekhar, Mounika, Satish"
+PARTNERS_KEY = "partners"
+DEFAULT_PARTNERS = "Shekhar, Satish"
 
 
 class StayConflict(Exception):
@@ -29,7 +31,16 @@ def today() -> date:
 
 def host_names() -> list[str]:
     """Names offered in the stay form's "Host" list (edited on the Settings page)."""
-    return [n.strip() for n in AppSetting.get(HOSTS_KEY, DEFAULT_HOSTS).split(",") if n.strip()]
+    return _names(HOSTS_KEY, DEFAULT_HOSTS)
+
+
+def partner_names() -> list[str]:
+    """Who shares the profit at settlement (edited on the Settings page; not the same as the hosts)."""
+    return _names(PARTNERS_KEY, DEFAULT_PARTNERS)
+
+
+def _names(key: str, default: str) -> list[str]:
+    return [n.strip() for n in AppSetting.get(key, default).split(",") if n.strip()]
 
 
 def conflicts(room: Room, start: date, end: date | None, exclude_ids=()):

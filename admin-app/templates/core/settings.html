@@ -19,6 +19,15 @@
     <button class="btn btn-outline btn-sm">Save hosts</button>
   </div>
 </form>
+<form method="post" class="card">{% csrf_token %}
+  <input type="hidden" name="action" value="partners">
+  <h2>Profit shared by</h2>
+  <p class="muted small">Who shares the profit when you settle a month on the Revenue page (split equally). Separate with commas.</p>
+  <div class="inline-form">
+    <input name="partners" value="{{ partners }}" size="36" aria-label="Profit shared by" placeholder="Shekhar, Satish">
+    <button class="btn btn-outline btn-sm">Save</button>
+  </div>
+</form>
 <form method="post" class="card danger-zone" data-confirm="Permanently delete old stays and guests?">{% csrf_token %}
   <h2>Delete old records</h2>
   <p class="muted small">Removes finished or cancelled stays that ended more than the chosen number of years ago, and guests with no remaining stays. Back up first.</p>

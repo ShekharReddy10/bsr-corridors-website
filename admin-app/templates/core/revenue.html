@@ -43,9 +43,9 @@
       <div class="field"><label for="st-amount">Amount settled ₹</label>
         <input id="st-amount" type="number" name="amount" inputmode="decimal" step="1" min="0" value="{{ settle.amount }}" required></div>
       <div class="field"><label for="st-notes">Notes</label>
-        <input id="st-notes" type="text" name="notes" value="{% if hosts %}Shared equally – {{ hosts|join:', ' }}{% endif %}"></div>
+        <input id="st-notes" type="text" name="notes" value="{% if partners %}Shared equally – {{ partners|join:', ' }}{% endif %}"></div>
     </div>
-    {% if hosts|length > 1 and settle.amount %}<p class="muted small">{{ settle.amount|inr }} shared by {{ hosts|length }} = <b>{{ settle.share|inr }} each</b>.</p>{% endif %}
+    {% if partners|length > 1 and settle.amount %}<p class="muted small">{{ settle.amount|inr }} shared by {{ partners|join:" & " }} = <b>{{ settle.share|inr }} each</b> <a href="{% url 'settings' %}">change</a></p>{% endif %}
     <button class="btn btn-primary btn-sm">Settle</button>
   </form>
   {% for x in r.settlements %}{% if x.month == month %}
