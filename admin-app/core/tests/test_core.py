@@ -319,6 +319,38 @@ class ViewTests(TestCase):
         self.assertContains(r, "already booked")
         self.assertEqual(Stay.objects.count(), 1)
 
+    def test_clash_popup_moves_existing_booking(self):
+        # 101 booked for 2 nights; a new 4-night stay in 101 clashes. 102 is busy, 103 (same type) is free.
+        old = stay(make_guest("Old Guest", "+91 90000 00001"), self.rooms["101"], 0, 2)
+        stay(make_guest("Busy", "+91 90000 00002"), self.rooms["102"], 0, 4)
+        new = {"g-phone": "+91 90000 00009", "g-name": "New Guest",
+               "s-check_out": (T + timedelta(days=4)).isoformat()}
+        r = self._new_stay_post(**new)
+        self.assertContains(r, 'id="clash"')
+        self.assertEqual([(b, room.number) for b, room in r.context["clash"].moves], [(old, "103")])
+        self.assertEqual([room.number for room in r.context["clash"].rooms], ["103"])
+        self.assertFalse(Guest.objects.filter(name="New Guest").exists())  # nothing saved yet
+
+        r = self._new_stay_post(**new, resolve="move")
+        created = Stay.objects.get(guest__name="New Guest")
+        self.assertRedirects(r, f"/stays/{created.pk}/", fetch_redirect_response=False)
+        old.refresh_from_db()
+        self.assertEqual((created.room.number, old.room.number), ("101", "103"))
+        self.assertTrue(AuditLog.objects.filter(action="move", stay=old).exists())
+
+    def test_clash_popup_other_room_for_new_stay(self):
+        stay(make_guest("Old Guest", "+91 90000 00001"), self.rooms["101"], 0, 2)
+        new = {"g-phone": "+91 90000 00009", "g-name": "New Guest"}
+        r = self._new_stay_post(**new, resolve=f"room:{self.rooms['102'].pk}")
+        self.assertEqual(Stay.objects.get(guest__name="New Guest").room.number, "102")
+        # No same-type room free and nothing can be moved → the popup says so.
+        stay(make_guest("C", "+91 90000 00003"), self.rooms["103"], 0, 2)
+        r = self._new_stay_post(**{"g-phone": "+91 90000 00010", "g-name": "Third"})
+        self.assertContains(r, "No other Luxury AC room is free")
+        r = self._new_stay_post(**{"g-phone": "+91 90000 00010", "g-name": "Third"}, resolve="move")
+        self.assertContains(r, "already booked")
+        self.assertFalse(Stay.objects.filter(guest__name="Third").exists())
+
     def test_validation(self):
         r = self._new_stay_post(**{"g-id_number": "1234"})
         self.assertContains(r, "Aadhaar number must be 12 digits")

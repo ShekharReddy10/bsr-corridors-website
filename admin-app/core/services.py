@@ -43,9 +43,9 @@ def conflicts(room: Room, start: date, end: date | None, exclude_ids=()):
     )
 
 
-def free_rooms(start: date, end: date | None, *, room_type=None, exclude_room=None):
-    """Active rooms with no live stay in [start, end)."""
-    busy = Stay.objects.live().overlapping(start, end).values("room_id")
+def free_rooms(start: date, end: date | None, *, room_type=None, exclude_room=None, exclude_ids=()):
+    """Active rooms with no live stay in [start, end) (ignoring the stays in exclude_ids)."""
+    busy = Stay.objects.live().overlapping(start, end).exclude(pk__in=[i for i in exclude_ids if i]).values("room_id")
     rooms = Room.objects.filter(is_active=True, status=Room.Status.ACTIVE).exclude(pk__in=busy)
     if room_type is not None:
         rooms = rooms.filter(room_type=room_type)
@@ -122,11 +122,17 @@ def type_full_nights(stay: Stay, start: date, end: date) -> list[date]:
     return full
 
 
-def _reassign_blocking(stay: Stay, blocking: list) -> list | None:
-    """Find rooms of the same type for future bookings in the guest's room, so the guest can stay put."""
-    if any(b.status != Stay.Status.UPCOMING for b in blocking):
-        return None  # never move someone who is already in-house
-    candidates = list(_rooms_of_type(stay.room.room_type).exclude(pk=stay.room_id).order_by("sort_order", "number"))
+def _nearest_first(room: Room, rooms) -> list[Room]:
+    """Rooms on the same floor first, then by calendar order."""
+    return sorted(rooms, key=lambda r: (r.floor != room.floor, r.sort_order, r.number))
+
+
+def _reassign_blocking(room: Room, blocking: list, *, in_house_too: bool = False) -> list | None:
+    """Find rooms of the same type for the stays blocking `room`, so they can be moved out of it.
+    Guests already in-house are only moved when in_house_too (then it's the user's explicit choice)."""
+    if not in_house_too and any(b.status != Stay.Status.UPCOMING for b in blocking):
+        return None
+    candidates = _nearest_first(room, _rooms_of_type(room.room_type).exclude(pk=room.pk))
     planned: dict[int, list] = {}
     moves = []
     for b in sorted(blocking, key=lambda x: x.check_in):
@@ -143,6 +149,37 @@ def _reassign_blocking(stay: Stay, blocking: list) -> list | None:
     return moves
 
 
+@dataclass
+class Clash:
+    """A new or edited stay wants a room that other stays already hold for some of its nights. Two ways out:
+    move those stays to free rooms of the same type (moves), or put this stay in another free room (rooms)."""
+    room: Room
+    blocking: list
+    moves: list | None  # [(blocking_stay, new_room), …] or None if they can't all be moved
+    rooms: list  # same-type rooms free for the whole stay
+
+
+def plan_clash(room: Room, start: date, end: date | None, stay_id=None) -> Clash:
+    blocking = list(conflicts(room, start, end, exclude_ids=[stay_id]))
+    return Clash(room=room, blocking=blocking,
+                 moves=_reassign_blocking(room, blocking, in_house_too=True) if blocking else None,
+                 rooms=_nearest_first(room, free_rooms(start, end, room_type=room.room_type, exclude_room=room,
+                                                       exclude_ids=[stay_id])))
+
+
+def move_blocking(stay: Stay) -> list:
+    """Move the stays blocking stay.room to free rooms of the same type (call inside a transaction, then save stay)."""
+    clash = plan_clash(stay.room, stay.check_in, stay.check_out, stay.pk)
+    if clash.blocking and clash.moves is None:
+        raise StayConflict(clash.blocking)
+    for b, room in clash.moves or []:
+        old = b.room
+        b.room = room
+        save_stay(b, action="move", summary=f"Room changed {old} → {room} to make way for {stay.guest.name} "
+                                            f"({stay.dates_label})")
+    return clash.moves or []
+
+
 def plan_extension(stay: Stay, new_check_out: date) -> ExtensionPlan:
     if stay.is_open_ended:
         raise ValueError("Monthly stays have no check-out to extend — use “Add month’s rent”, or set a check-out date.")
@@ -153,7 +190,7 @@ def plan_extension(stay: Stay, new_check_out: date) -> ExtensionPlan:
     if blocking:
         plan.full_nights = type_full_nights(stay, stay.check_out, new_check_out)
         if not plan.full_nights:
-            plan.moves = _reassign_blocking(stay, blocking)
+            plan.moves = _reassign_blocking(stay.room, blocking)
     if not plan.can_extend_in_place:
         plan.split_rooms = list(
             free_rooms(stay.check_out, new_check_out, room_type=stay.room.room_type, exclude_room=stay.room)

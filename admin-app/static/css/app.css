@@ -401,3 +401,18 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .month-items > summary { cursor: pointer; padding: 6px 0; }
 .settled-line { justify-content: space-between; align-items: center; }
 .month-nav b { min-width: 9em; text-align: center; }
+
+/* Room clash popup on the stay form (bottom drawer on phones) */
+.clash-dialog { border: 0; border-radius: var(--radius); padding: 18px; width: min(520px, calc(100vw - 32px)); max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 50px rgba(0,0,0,.3); }
+.clash-dialog:not([open]) { display: none; }
+.clash-dialog:not(:modal) { position: static; margin: 16px 0; width: auto; }  /* without JS: shown in the page */
+.clash-dialog::backdrop { background: rgba(20, 24, 28, .55); }
+.clash-dialog h2 { margin: 0 0 8px; font-size: 1.1rem; }
+.clash-option { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+.clash-option p { margin: 0; }
+.clash-moves { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.clash-rooms { display: flex; flex-wrap: wrap; gap: 8px; }
+.clash-dialog > .btn-ghost { margin-top: 12px; width: 100%; }
+@media (max-width: 767px) {
+  .clash-dialog[open] { margin: auto 0 0; width: 100%; max-width: 100%; border-radius: 16px 16px 0 0; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+}

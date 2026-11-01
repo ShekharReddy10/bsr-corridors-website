@@ -39,6 +39,16 @@
     summary();
   }
 
+  // Room clash on the stay form: show the choices as a popup (CSS makes it a bottom drawer on phones).
+  const clash = $("#clash");
+  if (clash && clash.showModal) {
+    clash.close();
+    clash.showModal();
+    clash.addEventListener("click", (e) => {
+      if (e.target === clash || e.target.closest("[data-close-dialog]")) clash.close();  // tap outside / Close
+    });
+  }
+
   const form = $(".stay-form");
   if (!form) return;
 

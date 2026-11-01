@@ -88,21 +88,31 @@ def stay_form(request, pk=None):
     # Checking in (or already in-house): the guest's phone and address are required.
     checking_in = (request.GET.get("checkin") or request.POST.get("checkin")) == "1"
     require_contact = checking_in or (stay is not None and stay.status == Stay.Status.CHECKED_IN)
+    clash = None
     if request.method == "POST":
+        # Room clash popup: "move" = move the stays in the way to other rooms; "room:<pk>" = use that room instead.
+        resolve = request.POST.get("resolve", "")
+        data = request.POST
+        if resolve.startswith("room:") and resolve[5:].isdigit():
+            data = request.POST.copy()
+            data["s-room"] = resolve[5:]
         guest = _guest_instance(request, stay)
-        gform = GuestForm(request.POST, instance=guest, prefix="g", require_contact=require_contact)
-        sform = StayForm(request.POST, instance=stay or Stay(), prefix="s")
-        others = other_guests_formset(sform.instance, request.POST)
+        gform = GuestForm(data, instance=guest, prefix="g", require_contact=require_contact)
+        sform = StayForm(data, instance=stay or Stay(), prefix="s")
+        others = other_guests_formset(sform.instance, data)
         # Only rows for guests 2…N count; rows beyond the number of guests are ignored.
         n = request.POST.get("s-num_guests", "1")
         wanted = max(0, int(n) - 1) if n.isdigit() else 0
         others_ok = wanted == 0 or (others.management_form.is_valid() and all(f.is_valid() for f in others.forms[:wanted]))
         if gform.is_valid() and sform.is_valid() and others_ok:
+            new_guest, moved = gform.instance.pk is None, []
             try:
                 with transaction.atomic():
                     guest = gform.save()
                     new = sform.save(commit=False)
                     new.guest = guest
+                    if resolve == "move":
+                        moved = services.move_blocking(new)
                     services.save_stay(new, action="update" if stay else "create",
                                        summary=f"{'Updated' if stay else 'Created'} stay: {new.room}, "
                                                f"{new.dates_label}, ₹{new.amount_paid:,.0f} paid")
@@ -110,11 +120,17 @@ def stay_form(request, pk=None):
                     if checking_in and new.status == Stay.Status.UPCOMING:
                         services.check_in(new)
                 messages.success(request, f"{guest.name} checked in to {new.room}." if checking_in else f"Stay for {guest.name} saved.")
+                for b, room in moved:
+                    messages.info(request, f"{b.guest.name} ({b.dates_label}) moved to {room}.")
                 if checking_in:
                     return redirect(f"/stays/{new.pk}/?welcome=1")
                 return redirect("stay_detail", pk=new.pk)
             except services.StayConflict as exc:
+                c = sform.cleaned_data
+                clash = services.plan_clash(c["room"], c["check_in"], c.get("check_out"), stay.pk if stay else None)
                 sform.add_error("room", str(exc))
+                if new_guest:  # its save was rolled back
+                    gform.instance.pk = None
     else:
         initial = {}
         if not stay:
@@ -129,7 +145,7 @@ def stay_form(request, pk=None):
         others = other_guests_formset(stay or Stay())
     return render(request, "core/stay_form.html",
                   {"stay": stay, "gform": gform, "sform": sform, "others": others, "checking_in": checking_in,
-                   "today": services.today()})
+                   "today": services.today(), "clash": clash})
 
 
 def upcoming(request):

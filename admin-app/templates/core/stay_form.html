@@ -85,6 +85,41 @@
     {% endfor %}
   </section>
 
+  {% if clash %}
+  {# Room clash: opened as a popup (bottom drawer on phones) by app.js; shown in the page without JS. #}
+  <dialog class="clash-dialog" id="clash" open aria-labelledby="clash-title">
+    <h2 id="clash-title">Room {{ clash.room.number }} is already booked</h2>
+    {% for b in clash.blocking %}
+    <div class="stay-line"><span class="stay-line-main"><span class="room-badge">{{ clash.room.number }}</span>
+      <span><b>{{ b.guest.name }}</b><small>{{ b.dates_label }} · {{ b.get_status_display|lower }}</small></span></span></div>
+    {% endfor %}
+
+    {% if clash.moves %}
+    <div class="clash-option">
+      <p><b>Move {% if clash.blocking|length == 1 %}that booking{% else %}those bookings{% endif %}</b> and keep this stay in Room {{ clash.room.number }}:</p>
+      <ul class="clash-moves">
+        {% for b, room in clash.moves %}<li>{{ b.guest.name }} → <b>Room {{ room.number }}</b> <small class="muted">({{ room.room_type.name }})</small>{% if b.status == "checked_in" %} <span class="warn small">checked in — they’re in Room {{ clash.room.number }} now</span>{% endif %}</li>{% endfor %}
+      </ul>
+      <button class="btn btn-primary" name="resolve" value="move">Move &amp; save in Room {{ clash.room.number }}</button>
+    </div>
+    {% endif %}
+
+    {% if clash.rooms %}
+    <div class="clash-option">
+      <p>{% if clash.moves %}Or put{% else %}Put{% endif %} <b>this stay</b> in another {{ clash.room.room_type.name }} room:</p>
+      <div class="clash-rooms">
+        {% for room in clash.rooms %}<button class="btn btn-outline" name="resolve" value="room:{{ room.pk }}">Room {{ room.number }}</button>{% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if not clash.moves and not clash.rooms %}
+    <p class="alert">No other {{ clash.room.room_type.name }} room is free for these dates. Change the dates or pick a different room type.</p>
+    {% endif %}
+    <button class="btn btn-ghost" type="button" data-close-dialog>Close &amp; edit</button>
+  </dialog>
+  {% endif %}
+
   <div class="form-actions">
     <button class="btn btn-primary" type="submit">{% if checking_in %}Save &amp; check in{% else %}Save stay{% endif %}</button>
     <a class="btn btn-ghost" href="{% if stay %}{% url 'stay_detail' stay.pk %}{% else %}{% url 'dashboard' %}{% endif %}">Cancel</a>
