@@ -12,8 +12,8 @@ left over on the day they leave. Until then it is "held" (paid by guests
 staying now). Bookings not checked in yet are "yet to receive" in full (advances included).
 Received + held + balance pending + yet to receive = the full amount of all bookings.
 Each month's received money is fixed once the month is over, and the next month starts from zero.
-Profit = received − expenses. Cancelled and transferred bookings count only what was paid on them, on the day
-they were cancelled / transferred (a refund is entered as an expense).
+Profit = received − expenses. Cancelled and transferred stays are left out: whatever was paid on them is treated
+as refunded.
 
 Settlements are per month: each month's profit (received − expenses in that month) is shared out, in one go or
 in parts, and the page shows what is still left to settle for every month.
@@ -25,7 +25,6 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db.models import Q
-from django.utils import timezone
 
 from .models import Expense, Room, Settlement, Stay
 from .services import today
@@ -134,18 +133,6 @@ def received_on(stay: Stay, t: date) -> list[Received]:
     return out
 
 
-def void_received(stay: Stay) -> Received | None:
-    """A cancelled or transferred booking keeps what was paid (e.g. a non-refunded advance): it counts as received
-    on the day it was cancelled / transferred. A refund is entered as an expense ("Refund to guest")."""
-    paid = stay.amount_paid or ZERO
-    if not stay.is_void or paid <= 0:
-        return None
-    log = stay.logs.filter(action__in=["cancel", "transfer"]).order_by("-at").first()
-    day = timezone.localtime(log.at if log else stay.updated_at).date()
-    what = "Cancelled — paid amount kept" if stay.status == Stay.Status.CANCELLED else "Transferred — paid amount kept"
-    return Received(day, stay, paid, what, stay.check_in, stay.check_out or stay.check_in)
-
-
 def months_started(stay: Stay, t: date) -> int:
     """How many of a monthly guest's months have begun by today (joined 1 Oct → 1 in Oct, 2 from 1 Nov)."""
     n = 0
@@ -239,6 +226,36 @@ class Report:
     def booked_value(self) -> Decimal:
         return self.collected + self.held_in_house + self.balance_pending + self.to_receive
 
+    # ── Overall page (all months together) ──
+
+    @property
+    def paid_total(self) -> Decimal:
+        """Every rupee guests have paid on live bookings: received + held + advances for upcoming stays."""
+        return self.collected + self.held_in_house + self.advance_upcoming
+
+    @property
+    def upcoming_to_pay(self) -> Decimal:
+        """Upcoming bookings: the part not paid as advance."""
+        return self.due_upcoming - self.advance_upcoming
+
+    @property
+    def still_to_receive(self) -> Decimal:
+        return self.balance_pending + self.upcoming_to_pay
+
+    @property
+    def cash_in_hand(self) -> Decimal:
+        """Everything guests paid, minus expenses and what was shared out (advances and held money included)."""
+        return self.paid_total - self.expenses_all_time - self.settled_total
+
+    @property
+    def paid_pct(self) -> int:
+        return round(self.paid_total / self.booked_value * 100) if self.booked_value > 0 else 0
+
+    @property
+    def unsettled_profit(self) -> Decimal:
+        """All-time profit (received − expenses) not shared out yet."""
+        return self.net_cash - self.settled_total
+
     @property
     def collected_pct(self) -> int:
         return round(self.collected / self.booked_value * 100) if self.booked_value > 0 else 0
@@ -329,12 +346,6 @@ def build(period_key: str = "month", month: date | None = None) -> Report:
             r.unpaid.append(s)
 
     r.unpaid.sort(key=lambda s: (s.status != Stay.Status.CHECKED_OUT, -s.balance))
-
-    for s in Stay.objects.filter(status__in=Stay.VOID_STATUSES, amount_paid__gt=0).select_related("guest", "room"):
-        x = void_received(s)
-        add_received(x.day, x.amount)
-        r.ledger[x.day.replace(day=1)].items.append(x)
-        r.collected += x.amount
 
     for d, amount in Expense.objects.values_list("date", "amount"):
         r.expenses_all_time += amount

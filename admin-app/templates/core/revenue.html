@@ -2,7 +2,7 @@
 {% block title %}Revenue · {{ month|date:"F Y" }}{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Revenue</h1><p class="muted">Money counts as received when the guest checks out; monthly rent on the last day of each of their months. A cancelled booking counts only what was paid (on the day it was cancelled).</p></div>
+  <div><h1>Revenue</h1><p class="muted">Money counts as received when the guest checks out; monthly rent on the last day of each of their months. Cancelled and transferred stays are left out (treated as refunded).</p></div>
   <form method="post" action="{% url 'revenue_lock' %}">{% csrf_token %}<button class="btn btn-outline">Lock</button></form>
 </div>
 
@@ -140,38 +140,7 @@
   {% else %}<p class="muted">No earlier months yet.</p>{% endif %}
 </section>
 
-<details class="card">
-  <summary><b>All-time totals</b> <span class="muted small">— every booking so far</span></summary>
-  <div class="money-grid">
-    <div class="money-hero">
-      <span class="money-label">Received <small class="muted">(guests checked out + completed months)</small></span>
-      <b class="money-big">{{ r.collected|inr }}</b>
-      <div class="meter" role="img" aria-label="{{ r.collected_pct }}% of all bookings received"><div style="width: {{ r.collected_pct }}%"></div></div>
-      <span class="muted small">{{ r.collected_pct }}% of {{ r.booked_value|inr }} in all bookings</span>
-      <ul class="money-split">
-        {% if r.held_in_house %}<li><span>Held <small class="muted">(paid by guests staying now — counts at check-out / month end)</small></span><b>{{ r.held_in_house|inr }}</b></li>{% endif %}
-        <li><span>Expenses <small class="muted">(all time)</small></span><b>− {{ r.expenses_all_time|inr }}</b></li>
-        <li><span><b>Profit</b> <small class="muted">(received − expenses)</small></span><b class="{% if r.net_cash < 0 %}warn{% else %}good{% endif %}">{{ r.net_cash|inr }}</b></li>
-      </ul>
-    </div>
-    <div class="money-hero">
-      <span class="money-label">Balance pending <small class="muted">(checked-in guests still owe)</small></span>
-      <b class="money-big{% if r.balance_pending > 0 %} warn{% endif %}">{{ r.balance_pending|inr }}</b>
-      <ul class="money-split">
-        <li><span>Guests staying now</span><b>{{ r.balance_in_house|inr }}</b></li>
-        <li class="{% if r.due_checked_out > 0 %}warn{% endif %}"><span>Checked out without paying in full</span><b>{{ r.due_checked_out|inr }}</b></li>
-      </ul>
-      <span class="muted small">Bill minus what each guest has paid. <a href="#unpaid">Who owes money</a></span>
-    </div>
-    <div class="money-hero">
-      <span class="money-label">Yet to receive <small class="muted">(not checked in yet)</small></span>
-      <b class="money-big">{{ r.to_receive|inr }}</b>
-      <span class="muted small">Full amount of upcoming bookings{% if r.advance_upcoming %}, including {{ r.advance_upcoming|inr }} already paid as advance — it counts as received at check-out{% endif %}.</span>
-    </div>
-  </div>
-  <p class="money-check">Received {{ r.collected|inr }}{% if r.held_in_house %} + held {{ r.held_in_house|inr }}{% endif %} + balance pending {{ r.balance_pending|inr }} + yet to receive {{ r.to_receive|inr }} = <b>{{ r.booked_value|inr }}</b> from all bookings</p>
-  {% if r.deposits_held %}<p class="muted small">Also holding {{ r.deposits_held|inr }} in refundable deposits (not counted).</p>{% endif %}
-</details>
+<a class="card overall-link" href="{% url 'revenue_overall' %}"><b>Overall totals</b> <span class="muted small">— all months together: paid, expenses, profit, settled and yet to receive</span> →</a>
 
 <h2 class="section-title">Room sales <span class="muted small">— {{ month|date:"F Y" }}: every night stayed or booked in the month, paid or not</span></h2>
 <div class="stats rev-stats">

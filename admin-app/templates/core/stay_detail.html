@@ -146,11 +146,11 @@
     <label>{% if stay.check_out %}Leaving early on{% else %}Leaving on{% endif %} <input type="date" name="new_check_out" value="{{ today|date:'Y-m-d' }}"></label>
     <button class="btn btn-outline btn-sm">{% if stay.check_out %}Shorten stay{% else %}Set leaving date{% endif %}</button>
   </form>
-  <form method="post" action="{% url 'stay_action' stay.pk 'cancel' %}" class="inline-form" data-confirm="Cancel this stay? The room becomes free.{% if stay.amount_paid %} The ₹{{ stay.amount_paid|floatformat:0 }} paid stays counted as received — if you refund it, add a “Refund to guest” expense.{% endif %}">{% csrf_token %}<button class="btn btn-outline btn-sm">Cancel stay</button></form>
+  <form method="post" action="{% url 'stay_action' stay.pk 'cancel' %}" class="inline-form" data-confirm="Cancel this stay? The room becomes free.{% if stay.amount_paid %} The ₹{{ stay.amount_paid|floatformat:0 }} paid is treated as refunded and leaves revenue.{% endif %}">{% csrf_token %}<button class="btn btn-outline btn-sm">Cancel stay</button></form>
   {% elif stay.is_void %}
   <form method="post" action="{% url 'stay_action' stay.pk 'undo-cancel' %}" class="inline-form">{% csrf_token %}<button class="btn btn-outline btn-sm">Restore stay</button></form>
   {% endif %}
-  <form method="post" action="{% url 'stay_action' stay.pk 'delete' %}" class="inline-form" data-confirm="Delete this stay permanently? This cannot be undone.{% if stay.amount_paid %} The ₹{{ stay.amount_paid|floatformat:0 }} paid will disappear from revenue — to keep it, cancel the stay instead.{% endif %}">{% csrf_token %}<button class="btn btn-danger btn-sm">Delete stay</button></form>
+  <form method="post" action="{% url 'stay_action' stay.pk 'delete' %}" class="inline-form" data-confirm="Delete this stay permanently? This cannot be undone.{% if stay.amount_paid %} The ₹{{ stay.amount_paid|floatformat:0 }} paid will disappear from revenue.{% endif %}">{% csrf_token %}<button class="btn btn-danger btn-sm">Delete stay</button></form>
 </details>
 {% endwith %}
 {% endblock %}

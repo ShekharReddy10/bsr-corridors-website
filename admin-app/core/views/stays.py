@@ -219,8 +219,8 @@ def stay_action(request, pk, action):
             services.cancel(stay)
             messages.success(request, "Stay cancelled. The room is free again.")
             if stay.amount_paid:
-                messages.info(request, f"₹{stay.amount_paid:,.0f} was paid on this booking — it stays counted as received "
-                                       f"(today). If you give it back, add it as an expense: “Refund to guest”.")
+                messages.info(request, f"₹{stay.amount_paid:,.0f} was paid on this booking — it is treated as refunded "
+                                       f"and no longer counts in revenue.")
         elif action == "undo-check-out":
             services.undo_check_out(stay, parse_date(request.POST.get("check_out") or ""))
             messages.success(request, f"Check-out undone. {stay.guest.name} is checked in to {stay.room} again.")

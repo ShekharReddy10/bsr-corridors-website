@@ -1,0 +1,66 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}Revenue · Overall{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Revenue · Overall</h1><p class="muted">All months together, from every payment and expense recorded so far. Cancelled and transferred stays are left out (treated as refunded).</p></div>
+  <form method="post" action="{% url 'revenue_lock' %}">{% csrf_token %}<button class="btn btn-outline">Lock</button></form>
+</div>
+
+{% include "partials/month_tabs.html" with links=month_links %}
+
+<section class="card">
+  <h2>Money in &amp; out <span class="muted small">— till today</span></h2>
+  <div class="money-grid">
+    <div class="money-hero">
+      <span class="money-label">Paid by guests <small class="muted">(every payment recorded)</small></span>
+      <b class="money-big">{{ r.paid_total|inr }}</b>
+      <ul class="money-split">
+        <li><span>Received <small class="muted">(checked out + completed months)</small></span><b>{{ r.collected|inr }}</b></li>
+        <li><span>Held <small class="muted">(guests staying now)</small></span><b>{{ r.held_in_house|inr }}</b></li>
+        <li><span>Advances <small class="muted">(upcoming bookings)</small></span><b>{{ r.advance_upcoming|inr }}</b></li>
+      </ul>
+    </div>
+    <div class="money-hero">
+      <span class="money-label">Expenses <small class="muted">(all spent)</small></span>
+      <b class="money-big">{{ r.expenses_all_time|inr }}</b>
+      <ul class="money-split">
+        {% for c in by_category|slice:":6" %}<li><span>{{ c.label }}</span><b>{{ c.total|inr }}</b></li>{% empty %}<li><span class="muted">No expenses yet.</span></li>{% endfor %}
+      </ul>
+      <a class="muted small" href="{% url 'expense_list' %}?period=all">All expenses →</a>
+    </div>
+    <div class="money-hero">
+      <span class="money-label">Profit <small class="muted">(received − expenses)</small></span>
+      <b class="money-big {% if r.net_cash < 0 %}warn{% else %}good{% endif %}">{{ r.net_cash|inr }}</b>
+      <ul class="money-split">
+        <li><span>Settled <small class="muted">(shared out)</small></span><b>{{ r.settled_total|inr }}</b></li>
+        <li class="{% if r.unsettled_profit > 0 %}warn{% endif %}"><span>Left to settle</span><b>{{ r.unsettled_profit|inr }}</b></li>
+        <li><span>Cash after expenses <small class="muted">(all paid − expenses − settled)</small></span><b>{{ r.cash_in_hand|inr }}</b></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Yet to receive <span class="muted small">— not paid yet</span></h2>
+  <div class="money-grid">
+    <div class="money-hero">
+      <span class="money-label">Total still to come</span>
+      <b class="money-big">{{ r.still_to_receive|inr }}</b>
+      <ul class="money-split">
+        <li><span>Guests staying now still owe</span><b>{{ r.balance_in_house|inr }}</b></li>
+        <li class="{% if r.due_checked_out > 0 %}warn{% endif %}"><span>Checked out without paying in full</span><b>{{ r.due_checked_out|inr }}</b></li>
+        <li><span>Upcoming bookings <small class="muted">(after advances)</small></span><b>{{ r.upcoming_to_pay|inr }}</b></li>
+      </ul>
+      <a class="muted small" href="{% url 'revenue' %}#unpaid">Who owes money →</a>
+    </div>
+    <div class="money-hero">
+      <span class="money-label">All bookings <small class="muted">(paid + still to come)</small></span>
+      <b class="money-big">{{ r.booked_value|inr }}</b>
+      <div class="meter" role="img" aria-label="{{ r.paid_pct }}% paid"><div style="width: {{ r.paid_pct }}%"></div></div>
+      <span class="muted small">{{ r.paid_pct }}% paid so far</span>
+      {% if r.deposits_held %}<span class="muted small">Also holding {{ r.deposits_held|inr }} in refundable deposits (not counted).</span>{% endif %}
+    </div>
+  </div>
+  <p class="money-check">Paid {{ r.paid_total|inr }} + still to come {{ r.still_to_receive|inr }} = <b>{{ r.booked_value|inr }}</b> from all bookings</p>
+</section>
+{% endblock %}

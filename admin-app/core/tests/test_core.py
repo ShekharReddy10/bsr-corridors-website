@@ -683,14 +683,13 @@ class RevenueTests(TestCase):
             ("Month 1 rent", date(2026, 10, 14), date(2026, 11, 13)),
             ("Final payment", date(2026, 11, 14), date(2026, 12, 1))])
 
-    def test_cancelled_booking_keeps_paid_amount(self):
+    def test_cancelled_booking_treated_as_refunded(self):
         from core import revenue
         s = stay(make_guest(), self.rooms["101"], 5, 2, amount_paid=Decimal(1500))
         self.assertEqual(revenue.build("all").advance_upcoming, Decimal(1500))
         services.cancel(s)
         r = revenue.build("all")
-        self.assertEqual((r.collected, r.advance_upcoming, r.in_period.received), (Decimal(1500), 0, Decimal(1500)))
-        self.assertEqual([x.what for x in r.ledger[T.replace(day=1)].items], ["Cancelled — paid amount kept"])
+        self.assertEqual((r.collected, r.advance_upcoming, r.in_period.received, r.booked_value), (0, 0, 0, 0))
 
     def test_reminders_rent_not_added_and_never_checked_in(self):
         from core import revenue
@@ -705,6 +704,23 @@ class RevenueTests(TestCase):
         self.client.post(f"/stays/{s.pk}/add-rent/", {"next": "/"})
         self.assertEqual(revenue.rent_not_added(T), [])
         self.assertEqual(missed.status, Stay.Status.UPCOMING)
+
+    def test_overall_page(self):
+        from core import revenue
+        stay(make_guest(), self.rooms["101"], -3, 2, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(3000))
+        stay(make_guest("B", "+91 90000 00001"), self.rooms["102"], -1, 2, status=Stay.Status.CHECKED_IN,
+             amount_paid=Decimal(1000))  # ₹3,000 bill
+        stay(make_guest("C", "+91 90000 00002"), self.rooms["201"], 3, 2, amount_paid=Decimal(500))  # ₹3,000 bill
+        Expense.objects.create(reason="Soap", category="supplies", amount=Decimal(400))
+        r = revenue.build("all")
+        self.assertEqual((r.paid_total, r.still_to_receive, r.booked_value), (Decimal(4500), Decimal(4500), Decimal(9000)))
+        self.assertEqual((r.net_cash, r.cash_in_hand), (Decimal(2600), Decimal(4100)))
+        self.assertEqual(self.client.get("/revenue/overall/").status_code, 302)  # needs the revenue password
+        self._unlock()
+        page = self.client.get("/revenue/overall/")
+        self.assertContains(page, "₹4,500")
+        self.assertContains(page, "Housekeeping &amp; guest supplies")
+        self.assertContains(self.client.get("/revenue/"), 'href="/revenue/overall/"')
 
     def test_monthly_guest_in_house_held_until_month_completes(self):
         from core import revenue
@@ -770,7 +786,7 @@ class ExpenseTests(TestCase):
         self.assertEqual(rep.in_period.expenses, Decimal(6500))
         self.assertEqual(rep.in_period.profit, Decimal(3000) - Decimal(6500))
         self.assertEqual(rep.net_cash, Decimal(3000) - Decimal(6500))
-        self.assertContains(self.client.get("/revenue/?period=all"), "(received − expenses)")
+        self.assertContains(self.client.get("/revenue/overall/"), "(received − expenses)")
 
         e = Expense.objects.get(reason="AC repair")
         self.client.post(f"/expenses/{e.pk}/delete/")

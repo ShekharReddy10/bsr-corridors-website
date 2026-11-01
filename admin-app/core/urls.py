@@ -44,6 +44,7 @@ urlpatterns = [
     path("rooms/<str:kind>/<int:pk>/delete/", rooms.delete, name="room_delete"),
     path("revenue/", revenue.revenue_page, name="revenue"),
     path("revenue/<int:year>-<mm:month_no>/", revenue.revenue_page, name="revenue_month"),
+    path("revenue/overall/", revenue.revenue_overall, name="revenue_overall"),
     path("revenue/lock/", revenue.revenue_lock, name="revenue_lock"),
     path("revenue/settle/", revenue.settle, name="settle"),
     path("revenue/settle/<int:pk>/delete/", revenue.settlement_delete, name="settlement_delete"),

@@ -16,6 +16,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.cache import cache
+from django.db.models import Sum
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -24,7 +25,7 @@ from django.views.decorators.http import require_POST
 
 from .. import revenue
 from ..forms import SettlementForm
-from ..models import AppSetting, AuditLog, Settlement
+from ..models import AppSetting, AuditLog, Expense, Settlement
 from ..services import host_names, today
 from .auth import _client_ip
 
@@ -126,13 +127,33 @@ def revenue_page(request, year=None, month_no=None):
         "rent_due": revenue.rent_not_added(r.t),
         "settle": {"amount": round(left), "share": left / len(hosts) if hosts else left},
         "hosts": hosts,
-        "month_links": [(f"{m:%b %Y}", _month_url(m), m == month) for m, _ in months],
+        "month_links": _month_links(r, month),
         "monthly": revenue.monthly_chart(r),
         "weekly": revenue.weekly_chart(r),
         "types": revenue.bar_rows(r.by_type),
         "sources": revenue.bar_rows(r.by_source),
         "env_password": bool(os.environ.get("REVENUE_PASSWORD")),
     })
+
+
+@revenue_unlocked
+def revenue_overall(request):
+    """All months together: everything paid, spent, settled and still to come."""
+    r = revenue.build("all")
+    labels = dict(Expense.Category.choices)
+    by_category = [{"label": labels.get(row["category"], row["category"]), "total": row["total"]}
+                   for row in Expense.objects.values("category").annotate(total=Sum("amount")).order_by("-total")]
+    return render(request, "core/revenue_overall.html", {
+        "r": r,
+        "by_category": by_category,
+        "month_links": _month_links(r, None),
+    })
+
+
+def _month_links(r, month) -> list:
+    """Tabs at the top of the revenue pages: Overall, then each month (newest first)."""
+    return [("Overall", reverse("revenue_overall"), month is None)] + [
+        (f"{m:%b %Y}", _month_url(m), m == month) for m, _ in r.months()]
 
 
 def _month_url(month) -> str:
