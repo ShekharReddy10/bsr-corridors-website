@@ -16,14 +16,22 @@ from .revenue import revenue_unlocked
 
 @revenue_unlocked
 def expense_list(request):
-    t = today()
-    periods = revenue.periods(t)
-    period = next((p for p in periods if p.key == request.GET.get("period", "month")), periods[1])
-    try:  # ?month=2026-10 (from the revenue page's month table)
-        start = datetime.strptime(request.GET.get("month", ""), "%Y-%m").date()
-        period = revenue.Period("", start.strftime("%B %Y"), start, revenue._add_months(start, 1))
-    except ValueError:
-        pass
+    # One month at a time (?month=2026-10, default this month), or ?period=all / week / year.
+    this_month = today().replace(day=1)
+    periods = {p.key: p for p in revenue.periods(today())}
+    period = periods.get(request.GET.get("period", ""))
+    if period is None:
+        try:
+            period = revenue.month_period(datetime.strptime(request.GET.get("month", ""), "%Y-%m").date())
+        except ValueError:
+            period = revenue.month_period(this_month)
+    first = Expense.objects.order_by("date").values_list("date", flat=True).first()
+    first = min(first.replace(day=1) if first else this_month, period.start or this_month)
+    months, m = [], this_month
+    while m >= first:
+        months.append((f"{m:%b %Y}", f"?month={m:%Y-%m}", m == period.start and period.end == revenue._add_months(m, 1)))
+        m = revenue._add_months(m, -1)
+    months.append(("All time", "?period=all", period.key == "all"))
     expenses = Expense.objects.select_related("room")
     if period.start:
         expenses = expenses.filter(date__gte=period.start, date__lt=period.end)
@@ -47,9 +55,8 @@ def expense_list(request):
     page = Paginator(expenses.order_by("-date", "-pk"), 50).get_page(request.GET.get("page"))
     return render(request, "core/expense_list.html", {
         "page": page, "total": total, "by_category": by_category, "by_mode": by_mode,
-        "periods": periods, "period": period, "category": category, "q": q,
+        "month_links": months, "period": period, "category": category, "q": q,
         "categories": Expense.Category.choices,
-        "prev_month": revenue._add_months(period.start, -1) if period.start else None,
     })
 
 

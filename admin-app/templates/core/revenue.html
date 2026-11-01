@@ -6,12 +6,7 @@
   <form method="post" action="{% url 'revenue_lock' %}">{% csrf_token %}<button class="btn btn-outline">Lock</button></form>
 </div>
 
-<nav class="month-nav" aria-label="Month">
-  {% if prev_month %}<a class="btn btn-ghost btn-sm" href="{% url 'revenue_month' prev_month.year prev_month.month %}">‹ {{ prev_month|date:"M Y" }}</a>{% else %}<span></span>{% endif %}
-  <b>{{ month|date:"F Y" }}</b>
-  {% if next_month %}<a class="btn btn-ghost btn-sm" href="{% url 'revenue_month' next_month.year next_month.month %}">{{ next_month|date:"M Y" }} ›</a>{% else %}<span></span>{% endif %}
-</nav>
-{% if not is_current %}<p class="center"><a href="{% url 'revenue' %}">Back to this month</a></p>{% endif %}
+{% include "partials/month_tabs.html" with links=month_links %}
 
 <section class="card profit-card" id="month">
   <div class="card-head">
@@ -167,11 +162,7 @@
   {% if r.deposits_held %}<p class="muted small">Also holding {{ r.deposits_held|inr }} in refundable deposits (not counted).</p>{% endif %}
 </details>
 
-<nav class="period-tabs" aria-label="Period">
-  {% for p in periods %}<a href="?period={{ p.key }}" {% if p.key == r.period.key %}aria-current="page"{% endif %}>{{ p.label }}</a>{% endfor %}
-</nav>
-
-<h2 class="section-title">Room sales <span class="muted small">— {{ r.period.label|lower }}, counted per night</span></h2>
+<h2 class="section-title">Room sales <span class="muted small">— {{ month|date:"F Y" }}: every night stayed or booked in the month, paid or not</span></h2>
 <div class="stats rev-stats">
   <div class="stat"><b>{{ r.in_period.total|inr }}</b><span>Room sales</span></div>
   <div class="stat"><b>{{ r.in_period.earned|inr }}</b><span>Nights already stayed</span></div>
@@ -183,12 +174,12 @@
 
 <div class="grid-2">
   <section class="card">
-    <h2>By room type <span class="muted small">— {{ r.period.label|lower }}</span></h2>
-    {% include "partials/bar_rows.html" with rows=types empty="No stays in this period." %}
+    <h2>By room type <span class="muted small">— {{ month|date:"F Y" }}</span></h2>
+    {% include "partials/bar_rows.html" with rows=types empty="No stays in this month." %}
   </section>
   <section class="card">
-    <h2>By booking source <span class="muted small">— {{ r.period.label|lower }}</span></h2>
-    {% include "partials/bar_rows.html" with rows=sources empty="No stays in this period." %}
+    <h2>By booking source <span class="muted small">— {{ month|date:"F Y" }}</span></h2>
+    {% include "partials/bar_rows.html" with rows=sources empty="No stays in this month." %}
   </section>
 </div>
 

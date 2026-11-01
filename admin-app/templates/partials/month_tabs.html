@@ -1,0 +1,4 @@
+{# Month switcher: links = [(label, href, is_current), …], newest first. #}
+<nav class="period-tabs month-tabs" aria-label="Month">
+  {% for label, href, current in links %}<a href="{{ href }}"{% if current %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+</nav>

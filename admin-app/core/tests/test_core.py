@@ -679,8 +679,16 @@ class RevenueTests(TestCase):
         stay(make_guest(), self.rooms["101"], -40, 3, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(1000))
         stay(make_guest("B", "+91 90000 00001"), self.rooms["201"], 1, 2)
         self._unlock()
-        for key in ("week", "month", "last_month", "year", "all", "junk"):
-            self.assertContains(self.client.get(f"/revenue/?period={key}"), "Room sales by month")
+        month = T.replace(day=1)
+        last_month = (month - timedelta(days=1)).replace(day=1)
+        page = self.client.get("/revenue/")
+        self.assertContains(page, "Room sales by month")
+        self.assertContains(page, f'href="/revenue/{month:%Y-%m}/" aria-current="page"')  # month tabs
+        # Room sales follow the chosen month.
+        from core import revenue
+        old = revenue.build(month=last_month).in_period
+        self.assertEqual(old, revenue.build("last_month").in_period)
+        self.assertContains(self.client.get(f"/revenue/{last_month:%Y-%m}/"), f"Room sales <span class=\"muted small\">— {last_month:%B %Y}")
 
 
 class ExpenseTests(TestCase):
@@ -710,10 +718,11 @@ class ExpenseTests(TestCase):
         self.assertContains(self.client.post("/expenses/new/", {"date": T.isoformat(), "category": "other",
                                                                 "reason": "x", "amount": "0", "payment_mode": "cash"}),
                             "more than zero")
-        page = self.client.get("/expenses/?period=month")
+        page = self.client.get("/expenses/")  # this month by default
         self.assertContains(page, "AC repair")
         self.assertContains(page, "₹6,500")
-        self.assertContains(self.client.get("/expenses/?period=month&category=repairs"), "₹2,500")
+        self.assertContains(self.client.get(f"/expenses/?month={T:%Y-%m}&category=repairs"), "₹2,500")
+        self.assertContains(self.client.get("/expenses/?period=all"), "AC repair")
 
         stay(make_guest(), self.rooms["102"], -2, 2, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(3000))
         rep = revenue.build("all")

@@ -2,23 +2,14 @@
 {% block title %}Expenses{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Expenses</h1><p class="muted"><a href="{% url 'revenue' %}?period={{ period.key }}">See revenue &amp; profit</a></p></div>
+  <div><h1>Expenses</h1><p class="muted"><a href="{% if period.start %}{% url 'revenue_month' period.start.year period.start.month %}{% else %}{% url 'revenue' %}{% endif %}">See revenue &amp; profit{% if period.start %} for {{ period.label }}{% endif %}</a></p></div>
   <a class="btn btn-primary" href="{% url 'expense_new' %}">+ Add expense</a>
 </div>
 
-<nav class="period-tabs" aria-label="Period">
-  {% for p in periods %}<a href="?period={{ p.key }}{% if category %}&category={{ category }}{% endif %}" {% if p.key == period.key %}aria-current="page"{% endif %}>{{ p.label }}</a>{% endfor %}
-</nav>
-{% if not period.key %}
-<nav class="month-nav" aria-label="Month">
-  <a class="btn btn-ghost btn-sm" href="?month={{ prev_month|date:'Y-m' }}">‹ {{ prev_month|date:"M" }}</a>
-  <b>{{ period.label }}</b>
-  <a class="btn btn-ghost btn-sm" href="?month={{ period.end|date:'Y-m' }}">{{ period.end|date:"M" }} ›</a>
-</nav>
-{% endif %}
+{% include "partials/month_tabs.html" with links=month_links %}
 
 <form class="filters" method="get">
-  {% if period.key %}<input type="hidden" name="period" value="{{ period.key }}">{% else %}<input type="hidden" name="month" value="{{ period.start|date:'Y-m' }}">{% endif %}
+  {% if period.key == "all" %}<input type="hidden" name="period" value="all">{% elif period.start %}<input type="hidden" name="month" value="{{ period.start|date:'Y-m' }}">{% endif %}
   <input type="search" name="q" value="{{ q }}" placeholder="Search reason, paid to, bill no." aria-label="Search expenses" autocomplete="off">
   <select name="category" aria-label="Category" onchange="this.form.submit()">
     <option value="">All categories</option>
@@ -29,7 +20,7 @@
 
 <div class="grid-2">
   <section class="card money-hero">
-    <span class="money-label">Total spent · {{ period.label|lower }}</span>
+    <span class="money-label">Total spent · {{ period.label }}</span>
     <b class="money-big">{{ total|inr }}</b>
     <span class="muted small">{{ page.paginator.count }} expense{{ page.paginator.count|pluralize }}</span>
     {% if by_mode %}
@@ -44,7 +35,7 @@
         <div class="hbar-track"><div class="vseg vseg-spend" style="width: {{ row.pct|stringformat:'.2f' }}%"></div></div>
         <small class="muted">{{ row.n }} expense{{ row.n|pluralize }}</small>
       </div>
-    {% empty %}<p class="muted">No expenses in this period.</p>{% endfor %}
+    {% empty %}<p class="muted">No expenses in {{ period.label }}.</p>{% endfor %}
   </section>
 </div>
 

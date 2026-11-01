@@ -25,7 +25,7 @@ from django.views.decorators.http import require_POST
 from .. import revenue
 from ..forms import SettlementForm
 from ..models import AppSetting, AuditLog, Settlement
-from ..services import host_names
+from ..services import host_names, today
 from .auth import _client_ip
 
 HASH_KEY = "revenue_password_hash"
@@ -102,8 +102,7 @@ def revenue_page(request, year=None, month_no=None):
     if not _unlocked(request):
         return render(request, "core/revenue_lock.html", {"has_password": has_password, "min_length": MIN_LENGTH})
 
-    r = revenue.build(request.GET.get("period", "month"))
-    this_month = r.t.replace(day=1)
+    this_month = today().replace(day=1)
     month = this_month
     if year:
         try:
@@ -112,8 +111,8 @@ def revenue_page(request, year=None, month_no=None):
             raise Http404
         if month > this_month:
             return redirect("revenue")
+    r = revenue.build(month=month)
     months = r.months()
-    first = months[-1][0]
     b = r.ledger[month]
     left = max(b.left, revenue.ZERO)
     hosts = host_names()
@@ -122,13 +121,11 @@ def revenue_page(request, year=None, month_no=None):
         "month": month,
         "mb": b,
         "is_current": month == this_month,
-        "prev_month": revenue._add_months(month, -1) if month > first else None,
-        "next_month": revenue._add_months(month, 1) if month < this_month else None,
         "past_months": months[1:],
         "rooms": revenue.rooms_for_month(r, month),
         "settle": {"amount": round(left), "share": left / len(hosts) if hosts else left},
         "hosts": hosts,
-        "periods": revenue.periods(r.t),
+        "month_links": [(f"{m:%b %Y}", _month_url(m), m == month) for m, _ in months],
         "monthly": revenue.monthly_chart(r),
         "weekly": revenue.weekly_chart(r),
         "types": revenue.bar_rows(r.by_type),

@@ -79,6 +79,10 @@ def periods(t: date) -> list[Period]:
     ]
 
 
+def month_period(month: date) -> Period:
+    return Period(f"{month:%Y-%m}", month.strftime("%B %Y"), month, _add_months(month, 1))
+
+
 def _add_months(d: date, n: int) -> date:
     m = d.month - 1 + n
     return d.replace(year=d.year + m // 12, month=m % 12 + 1, day=1)
@@ -207,9 +211,10 @@ class Report:
         return round(self.in_period.nights / (days * self.room_count) * 100)
 
 
-def build(period_key: str = "month") -> Report:
+def build(period_key: str = "month", month: date | None = None) -> Report:
+    """Totals for one period: a named one ("month", "all", …) or, with `month`, that calendar month."""
     t = today()
-    period = next((p for p in periods(t) if p.key == period_key), periods(t)[1])
+    period = month_period(month) if month else next((p for p in periods(t) if p.key == period_key), periods(t)[1])
     r = Report(t=t, period=period, room_count=Room.objects.filter(is_active=True, status=Room.Status.ACTIVE).count())
     # Charts: the last 12 months / weeks plus the next 2 (booked ahead).
     month0, month_end = _add_months(t.replace(day=1), -11), _add_months(t.replace(day=1), 3)

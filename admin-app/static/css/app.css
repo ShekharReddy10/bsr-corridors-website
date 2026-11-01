@@ -394,13 +394,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .settle-form { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line); }
 .settle-form h3 { margin: 0 0 10px; font-size: 1rem; }
 .settle-form .btn { margin-top: 10px; }
-.month-nav { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 0 0 12px; }
-.center { text-align: center; margin: -4px 0 12px; }
 .month-settle { margin-top: 12px; }
 .month-items { margin-top: 14px; }
 .month-items > summary { cursor: pointer; padding: 6px 0; }
 .settled-line { justify-content: space-between; align-items: center; }
-.month-nav b { min-width: 9em; text-align: center; }
 
 /* Room clash popup on the stay form (bottom drawer on phones) */
 .clash-dialog { border: 0; border-radius: var(--radius); padding: 18px; width: min(520px, calc(100vw - 32px)); max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 50px rgba(0,0,0,.3); }
