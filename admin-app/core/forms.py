@@ -339,5 +339,5 @@ class SettlementForm(forms.ModelForm):
 class MessageTemplateForm(forms.ModelForm):
     class Meta:
         model = MessageTemplate
-        fields = ["name", "body", "on_check_in", "on_check_out", "on_departing", "sort_order"]
+        fields = ["name", "body", "on_check_in", "on_check_out", "shortcut", "sort_order"]
         widgets = {"body": forms.Textarea(attrs={"rows": 10})}

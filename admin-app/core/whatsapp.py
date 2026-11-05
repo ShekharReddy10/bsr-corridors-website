@@ -26,6 +26,7 @@ HOTEL_INFO = {
                  "1-60/11/5/5, Lakshmi Naga Nilayam, Banjara Nagar, Gachibowli, Hyderabad 500032\n"
                  "https://maps.app.goo.gl/Ynf988EGZqbhA1pe7"),
     "contact": ("Contact name & number", "+91 70136 84602 / +91 87908 23320"),
+    "review_link": ("Google review link", ""),
 }
 
 # Placeholders filled from the stay. key → description (shown on the WhatsApp page).

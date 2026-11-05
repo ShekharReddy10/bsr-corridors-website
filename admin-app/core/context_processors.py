@@ -16,9 +16,9 @@ def app(request):
         return MessageTemplate.objects.filter(on_check_out=True).exists()
 
     @cache
-    def wa_departing():
-        """The message with a one-tap button on "Departing today" (e.g. Check-out details), or None."""
-        return MessageTemplate.objects.filter(on_departing=True).first()
+    def wa_buttons():
+        """Messages shown as one-tap buttons in the Today page lists: {"departing": template, "balance": …}."""
+        return {t.shortcut: t for t in MessageTemplate.objects.exclude(shortcut="")}
 
     return {"HOTEL_NAME": settings.HOTEL_NAME, "wa_welcome": wa_welcome, "wa_departure": wa_departure,
-            "wa_departing": wa_departing}
+            "wa_buttons": wa_buttons}

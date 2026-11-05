@@ -49,8 +49,8 @@ def template_edit(request, pk=None):
                 MessageTemplate.objects.exclude(pk=saved.pk).update(on_check_in=False)
             if saved.on_check_out:
                 MessageTemplate.objects.exclude(pk=saved.pk).update(on_check_out=False)
-            if saved.on_departing:
-                MessageTemplate.objects.exclude(pk=saved.pk).update(on_departing=False)
+            if saved.shortcut:  # one message per Today-page list
+                MessageTemplate.objects.exclude(pk=saved.pk).filter(shortcut=saved.shortcut).update(shortcut="")
         AuditLog.record("whatsapp", f"{'Updated' if obj else 'Added'} WhatsApp message: {saved}")
         messages.success(request, f"Message “{saved}” saved.")
         return redirect("whatsapp")

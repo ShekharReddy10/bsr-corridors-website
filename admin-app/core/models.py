@@ -350,9 +350,15 @@ class MessageTemplate(models.Model):
                                       help_text="Opens automatically when you tap Check in (only one message can)")
     on_check_out = models.BooleanField("Send when checking out", default=False,
                                        help_text="Opens automatically when you tap Check out (only one message can)")
-    on_departing = models.BooleanField("Button on “Departing today”", default=False,
-                                       help_text="Shows as a one-tap button next to Check out on the Today page "
-                                                 "(only one message can)")
+    class Shortcut(models.TextChoices):
+        DEPARTING = "departing", "Departing today (next to Check out)"
+        TOMORROW = "tomorrow", "Departing tomorrow"
+        BALANCE = "balance", "Balance due"
+        CHECKED_OUT = "checked_out", "Checked out today"
+
+    shortcut = models.CharField("One-tap button on the Today page", max_length=20, choices=Shortcut.choices,
+                                blank=True, help_text="Shows this message as a button next to each guest in that list "
+                                                      "(one message per list)")
     sort_order = models.PositiveIntegerField(default=0)
 
     class Meta:

@@ -41,6 +41,9 @@ def dashboard(request):
         "departures": departures,
         "overdue_departures": overdue_departures,
         "departing_count": len(departures) + len(overdue_departures),
+        "checked_out_today": list(Stay.objects.filter(status=Stay.Status.CHECKED_OUT)
+                                  .filter(Q(check_out=t) | Q(checked_out_at__date=t))
+                                  .select_related("guest", "room").order_by("room__number")),
         "vacant": [r for r in rooms if r.pk not in occupied and r.status == Room.Status.ACTIVE],
         "tomorrow": tomorrow,
         "day_after": day_after,

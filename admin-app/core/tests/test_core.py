@@ -928,7 +928,7 @@ class HostSettlementWhatsAppTests(TestCase):
 
     def test_departing_today_button_and_message_all_in_house(self):
         details = MessageTemplate.objects.get(name="Check-out details")
-        self.assertTrue(details.on_departing)  # set by the migration
+        self.assertEqual(details.shortcut, "departing")  # set by the migrations
         leaving = stay(make_guest(), self.rooms["101"], -2, 2, status=Stay.Status.CHECKED_IN)  # checks out today
         staying = stay(make_guest("Asha", "+91 90000 00002"), self.rooms["102"], -1, 3, status=Stay.Status.CHECKED_IN)
         stay(make_guest("No Phone", ""), self.rooms["103"], -1, 3, status=Stay.Status.CHECKED_IN)
@@ -944,6 +944,24 @@ class HostSettlementWhatsAppTests(TestCase):
         self.assertEqual(page.count("data-wa-send"), 2)
         page = self.client.get("/whatsapp/in-house/", {"t": details.pk}).content.decode()
         self.assertIn(f"/stays/{leaving.pk}/whatsapp/?t={details.pk}", page)
+
+    def test_today_page_reminder_buttons(self):
+        reminder = MessageTemplate.objects.get(shortcut="balance")
+        tomorrow = MessageTemplate.objects.get(shortcut="tomorrow")
+        review = MessageTemplate.objects.get(shortcut="checked_out")
+        owes = stay(make_guest(), self.rooms["101"], -1, 2, status=Stay.Status.CHECKED_IN)  # leaves tomorrow, unpaid
+        left = stay(make_guest("Gone", "+91 90000 00007"), self.rooms["102"], -2, 2, status=Stay.Status.CHECKED_IN)
+        services.check_out(left)
+        page = self.client.get("/").content.decode()
+        self.assertIn(f"/stays/{owes.pk}/whatsapp/?t={reminder.pk}", page)
+        self.assertIn(f"/stays/{owes.pk}/whatsapp/?t={tomorrow.pk}", page)
+        self.assertIn("Checked out today", page)
+        self.assertIn(f"/stays/{left.pk}/whatsapp/?t={review.pk}", page)
+        # One message per list: giving the shortcut to another message takes it away from the first.
+        self.client.post("/whatsapp/messages/new/", {"name": "Pay soon", "body": "Pay {balance}", "shortcut": "balance",
+                                                      "sort_order": 9})
+        reminder.refresh_from_db()
+        self.assertEqual(reminder.shortcut, "")
 
     def test_check_in_opens_welcome_and_only_one_check_in_message(self):
         s = stay(make_guest(), self.rooms["101"], 0, 2)

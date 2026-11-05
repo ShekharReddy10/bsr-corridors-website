@@ -439,3 +439,4 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .collected { margin-top: 14px; }
 .collected > summary { cursor: pointer; padding: 6px 0; }
 .collected-grid { margin: 8px 0 0; }
+.sub-title { margin: 14px 0 4px; font-size: .95rem; }
