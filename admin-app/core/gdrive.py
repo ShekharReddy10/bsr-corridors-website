@@ -136,3 +136,34 @@ def export_to_drive(start: date, end: date, full_ids: bool) -> BackupRun:
     run.finished_at = timezone.now()
     run.save()
     return run
+
+
+# ── Photos (receipts, ID cards) ──
+
+PHOTO_FOLDERS = {"receipts": "Expense receipts", "ids": "Guest ID photos"}
+
+
+def upload_photo(data: bytes, name: str, kind: str) -> str:
+    """Save a JPEG in the app's Drive folder for `kind` ("receipts" / "ids"); returns the Drive file ID."""
+    svc = _service()
+    root, _, _ = _folders(svc)
+    folder = _folder(svc, f"gdrive_{kind}", PHOTO_FOLDERS[kind], root)
+    return _upload(svc, data, name, "image/jpeg", folder)["id"]
+
+
+def fetch(file_id: str) -> bytes:
+    from googleapiclient.http import MediaIoBaseDownload
+
+    buf = io.BytesIO()
+    downloader = MediaIoBaseDownload(buf, _service().files().get_media(fileId=file_id))
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+    return buf.getvalue()
+
+
+def delete_file(file_id: str) -> None:
+    try:
+        _service().files().delete(fileId=file_id).execute()
+    except Exception:  # already gone, or Drive unreachable: the link is removed either way
+        log.warning("Could not delete Drive file %s", file_id)

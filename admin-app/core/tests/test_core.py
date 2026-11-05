@@ -1132,3 +1132,59 @@ class RecurringExpenseTests(TestCase):
         self.assertContains(self.client.post("/expenses/monthly/new/", {"reason": "X", "category": "other",
                                                                         "amount": "10", "day": "31", "payment_mode": "cash"}),
                             "1 to 28")
+
+
+class PhotoTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        _, _, self.rooms = make_rooms()
+        self.client.force_login(get_user_model().objects.create_user("photo-admin", password="test-pass-123456"))
+
+    def _jpeg(self, size=(3000, 2000)):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.new("RGB", size, "white").save(buf, "PNG")
+        return SimpleUploadedFile("id.png", buf.getvalue(), content_type="image/png")
+
+    def test_id_photo_upload_view_remove(self):
+        from unittest import mock
+        from PIL import Image
+        s = stay(make_guest(), self.rooms["101"], 0, 2)
+        g = s.guest
+        with mock.patch("core.gdrive.upload_photo", return_value="drive-123") as up, \
+             mock.patch("core.gdrive.fetch", return_value=b"jpeg-bytes"), mock.patch("core.gdrive.delete_file") as rm:
+            self.client.post(f"/guests/{g.pk}/id-photo/upload/", {"photo": self._jpeg(), "next": f"/stays/{s.pk}/"})
+            g.refresh_from_db()
+            self.assertEqual(g.id_photo_id, "drive-123")
+            sent = Image.open(io.BytesIO(up.call_args[0][0]))
+            self.assertEqual((sent.format, max(sent.size)), ("JPEG", 1600))  # shrunk, re-encoded
+            self.assertContains(self.client.get(f"/stays/{s.pk}/"), "View photo")
+            r = self.client.get(f"/guests/{g.pk}/id-photo/")
+            self.assertEqual((r.content, r["Content-Type"]), (b"jpeg-bytes", "image/jpeg"))
+            self.assertTrue(AuditLog.objects.filter(action="reveal_id", summary__contains="ID photo").exists())
+            self.client.post(f"/guests/{g.pk}/id-photo/delete/")
+            rm.assert_called_once_with("drive-123")
+        g.refresh_from_db()
+        self.assertEqual(g.id_photo_id, "")
+        # Not a photo → refused, nothing saved.
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        with mock.patch("core.gdrive.upload_photo") as up:
+            r = self.client.post(f"/guests/{g.pk}/id-photo/upload/", {"photo": SimpleUploadedFile("x.pdf", b"%PDF")}, follow=True)
+            up.assert_not_called()
+        self.assertContains(r, "isn’t a photo")
+
+    def test_receipt_on_expense(self):
+        from unittest import mock
+        self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
+        with mock.patch("core.gdrive.upload_photo", return_value="drive-r1"):
+            self.client.post("/expenses/new/", {"date": T.isoformat(), "category": "repairs", "reason": "AC repair",
+                                                "amount": "2500", "payment_mode": "upi", "receipt": self._jpeg()})
+        e = Expense.objects.get()
+        self.assertEqual(e.receipt_id, "drive-r1")
+        self.assertContains(self.client.get("/expenses/"), f"/expenses/{e.pk}/receipt/")
+        # Drive not connected: the expense is still saved, with a message.
+        r = self.client.post("/expenses/new/", {"date": T.isoformat(), "category": "repairs", "reason": "Fan",
+                                                "amount": "500", "payment_mode": "cash", "receipt": self._jpeg()}, follow=True)
+        self.assertContains(r, "isn’t connected yet")
+        self.assertEqual(Expense.objects.get(reason="Fan").receipt_id, "")

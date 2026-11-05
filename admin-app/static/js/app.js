@@ -49,6 +49,14 @@
     });
   }
 
+  // Photo pickers that upload as soon as a photo is chosen (ID photo on the stay / guest page).
+  document.querySelectorAll("input[type=file][data-autosubmit]").forEach((input) => input.addEventListener("change", () => {
+    if (!input.files.length) return;
+    const text = input.closest("label").querySelector("span");
+    if (text) text.textContent = "Uploading…";
+    input.form.submit();
+  }));
+
   // Message all in-house guests: "Send to next guest" opens the next chat; each opened chat is ticked off.
   const bulk = $("#wa-bulk");
   if (bulk) {

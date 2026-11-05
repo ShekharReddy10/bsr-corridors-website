@@ -1,0 +1,9 @@
+{# ID photo of guest g: view / replace / remove (kept in Google Drive). #}
+<div class="photo-row">
+  {% if g.id_photo_id %}<a class="btn btn-outline btn-sm" href="{% url 'guest_id_photo' g.pk %}" target="_blank" rel="noopener">View photo</a>{% endif %}
+  <form method="post" action="{% url 'guest_id_photo_upload' g.pk %}" enctype="multipart/form-data" class="inline-form photo-upload">{% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+    <label class="btn btn-ghost btn-sm"><span>{% if g.id_photo_id %}Replace{% else %}Add photo{% endif %}</span><input type="file" name="photo" accept="image/*" hidden data-autosubmit></label>
+  </form>
+  {% if g.id_photo_id %}<form method="post" action="{% url 'guest_id_photo_delete' g.pk %}" class="inline-form" data-confirm="Remove the ID photo?">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn btn-ghost btn-sm">Remove</button></form>{% endif %}
+</div>

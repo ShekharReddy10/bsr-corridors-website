@@ -49,7 +49,7 @@
     <tr>
       <td data-label="Date">{{ e.date|date:"d-m-Y" }}</td>
       <td data-label="Category">{{ e.get_category_display }}{% if e.room %} <span class="tag">Room {{ e.room.number }}</span>{% endif %}</td>
-      <td data-label="Reason"><a href="{% url 'expense_edit' e.pk %}"><b>{{ e.reason }}</b></a>{% if e.notes %}<br><small class="muted">{{ e.notes|truncatechars:80 }}</small>{% endif %}</td>
+      <td data-label="Reason"><a href="{% url 'expense_edit' e.pk %}"><b>{{ e.reason }}</b></a>{% if e.receipt_id %} <a href="{% url 'expense_receipt' e.pk %}" target="_blank" rel="noopener" title="Receipt photo">📎</a>{% endif %}{% if e.notes %}<br><small class="muted">{{ e.notes|truncatechars:80 }}</small>{% endif %}</td>
       <td data-label="Paid to">{{ e.paid_to|default:"—" }}</td>
       <td data-label="Mode">{{ e.get_payment_mode_display }}</td>
       <td data-label="Bill / ref">{{ e.reference|default:"—" }}</td>

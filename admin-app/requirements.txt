@@ -8,3 +8,4 @@ openpyxl>=3.1
 google-api-python-client>=2.150
 google-auth>=2.36
 google-auth-oauthlib>=1.2
+Pillow>=11.0

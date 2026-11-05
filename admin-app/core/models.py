@@ -65,6 +65,7 @@ class Guest(models.Model):
     visa_number = models.CharField(max_length=40, blank=True)
     visa_type = models.CharField(max_length=40, blank=True)
     arrival_in_india = models.DateField("Arrival in India", null=True, blank=True)
+    id_photo_id = models.CharField("ID photo (Google Drive file)", max_length=100, blank=True, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -311,6 +312,7 @@ class Expense(models.Model):
     notes = models.TextField(blank=True)
     recurring = models.ForeignKey("RecurringExpense", null=True, blank=True, on_delete=models.SET_NULL,
                                   related_name="expenses", editable=False)
+    receipt_id = models.CharField("Receipt photo (Google Drive file)", max_length=100, blank=True, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

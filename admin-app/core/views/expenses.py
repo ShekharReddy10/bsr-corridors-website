@@ -7,10 +7,11 @@ from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from .. import checks, revenue, services
+from .. import checks, gdrive, revenue, services
 from ..forms import ExpenseForm, RecurringExpenseForm
 from ..models import AuditLog, Expense, RecurringExpense
 from ..services import today
+from . import photos
 from .revenue import revenue_unlocked
 
 
@@ -70,6 +71,12 @@ def expense_form(request, pk=None):
     form = ExpenseForm(request.POST or None, instance=obj)
     if request.method == "POST" and form.is_valid():
         saved = form.save()
+        if upload := request.FILES.get("receipt"):
+            if file_id := photos.store(request, upload, "receipts", f"{saved.date:%Y-%m-%d} {saved.reason[:60]} — {saved.pk}.jpg"):
+                if saved.receipt_id:
+                    gdrive.delete_file(saved.receipt_id)
+                saved.receipt_id = file_id
+                saved.save(update_fields=["receipt_id"])
         AuditLog.record("expense", f"{'Updated' if obj else 'Added'} expense: {saved} — {saved.reason}")
         messages.success(request, f"Expense of ₹{saved.amount:,.0f} saved.")
         for reason in checks.check_expense(saved):
@@ -85,6 +92,8 @@ def expense_form(request, pk=None):
 def expense_delete(request, pk):
     obj = get_object_or_404(Expense, pk=pk)
     AuditLog.record("expense", f"Deleted expense: {obj} — {obj.reason}")
+    if obj.receipt_id:
+        gdrive.delete_file(obj.receipt_id)
     obj.delete()
     messages.success(request, "Expense deleted.")
     return redirect("expense_list")

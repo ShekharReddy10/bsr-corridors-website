@@ -2,7 +2,7 @@
 {% block title %}{% if expense %}Edit expense{% else %}Add expense{% endif %}{% endblock %}
 {% block content %}
 <div class="page-head"><h1>{% if expense %}Edit expense{% else %}Add expense{% endif %}</h1><a class="btn btn-ghost" href="{% url 'expense_list' %}">Back</a></div>
-<form method="post" class="card" novalidate>{% csrf_token %}
+<form method="post" class="card" enctype="multipart/form-data" novalidate>{% csrf_token %}
   {% if form.non_field_errors %}<div class="msg msg-error">{{ form.non_field_errors }}</div>{% endif %}
   <div class="form-grid">
     {% field form.date %}
@@ -14,6 +14,9 @@
     {% field form.reference %}
     {% field form.room %}
     {% field form.notes "span-2" %}
+    <div class="field span-2"><label for="receipt">Receipt / bill photo <span class="muted small">(optional — kept in Google Drive)</span></label>
+      <input id="receipt" type="file" name="receipt" accept="image/*">
+      {% if expense.receipt_id %}<small><a href="{% url 'expense_receipt' expense.pk %}" target="_blank" rel="noopener">View current receipt</a> — choosing a new photo replaces it</small>{% endif %}</div>
   </div>
   <div class="form-actions">
     <button class="btn btn-primary">Save</button>
@@ -21,6 +24,9 @@
     <a class="btn btn-ghost" href="{% url 'expense_list' %}">Cancel</a>
   </div>
 </form>
+{% if expense.receipt_id %}
+<form method="post" action="{% url 'expense_receipt_delete' expense.pk %}" class="inline-form" data-confirm="Remove the receipt photo?">{% csrf_token %}<button class="btn btn-ghost btn-sm">Remove receipt photo</button></form>
+{% endif %}
 {% if expense %}
 <form method="post" action="{% url 'expense_delete' expense.pk %}" class="card danger-zone" data-confirm="Delete this expense? This cannot be undone.">{% csrf_token %}
   <button class="btn btn-danger btn-sm">Delete expense</button> <span class="muted small">Added {{ expense.created_at|date:"d-m-Y H:i" }}</span>
