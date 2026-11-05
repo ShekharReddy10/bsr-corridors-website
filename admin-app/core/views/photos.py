@@ -10,7 +10,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .. import gdrive, photos
-from ..models import AuditLog, Expense, Guest
+from ..models import AuditLog, Expense, IdPhoto, Stay
 from .revenue import revenue_unlocked
 
 log = logging.getLogger(__name__)
@@ -62,37 +62,66 @@ def receipt_delete(request, pk):
     return redirect("expense_edit", pk=pk)
 
 
+MAX_PHOTOS = 10  # per upload
+
+
+def people(stay) -> list[str]:
+    """Whose ID photos a stay can have: the main guest, then guest 2, 3, …"""
+    return [stay.guest.name] + [o.name or f"Guest {o.position}" for o in stay.other_guests.all()]
+
+
+def photo_rows(stay) -> list[tuple[str, list]]:
+    """(person, their photos) for each person on the stay, plus anyone whose name has since changed."""
+    by_person = {}
+    for p in stay.id_photos.all():
+        by_person.setdefault(p.person, []).append(p)
+    names = people(stay)
+    return [(n, by_person.get(n, [])) for n in names] + [(n, ps) for n, ps in by_person.items() if n not in names]
+
+
+def photo_name(stay, person: str, n: int) -> str:
+    """Name_stayID_check-in date.jpg, with _2, _3, … for a person's further photos."""
+    clean = " ".join(person.replace("/", " ").replace("_", " ").split()) or "Guest"
+    return f"{clean}_{stay.pk}_{stay.check_in:%d-%m-%Y}{f'_{n}' if n > 1 else ''}.jpg"
+
+
 def id_photo(request, pk):
-    g = get_object_or_404(Guest, pk=pk)
-    if not g.id_photo_id:
-        return redirect("guest_detail", pk=pk)
-    AuditLog.record("reveal_id", f"Viewed ID photo of {g.name}")
-    return _image(g.id_photo_id)
+    p = get_object_or_404(IdPhoto.objects.select_related("stay"), pk=pk)
+    AuditLog.record("reveal_id", f"Viewed ID photo {p.name}", stay=p.stay)
+    return _image(p.file_id)
 
 
 @require_POST
-def id_photo_upload(request, pk):
-    g = get_object_or_404(Guest, pk=pk)
-    upload = request.FILES.get("photo")
-    if not upload:
+def id_photos_upload(request, pk):
+    stay = get_object_or_404(Stay.objects.select_related("guest"), pk=pk)
+    person = request.POST.get("person", "")
+    uploads = request.FILES.getlist("photo")
+    if person not in people(stay):
+        messages.error(request, "Choose whose ID this is.")
+    elif not uploads:
         messages.error(request, "Choose a photo first.")
-    elif file_id := store(request, upload, "ids", f"{g.name} — guest {g.pk}.jpg"):
-        if g.id_photo_id:
-            gdrive.delete_file(g.id_photo_id)
-        g.id_photo_id = file_id
-        g.save(update_fields=["id_photo_id"])
-        AuditLog.record("guest", f"ID photo saved for {g.name}")
-        messages.success(request, "ID photo saved.")
-    return _back(request, f"/guests/{pk}/")
+    elif len(uploads) > MAX_PHOTOS:
+        messages.error(request, f"Up to {MAX_PHOTOS} photos at a time, please.")
+    else:
+        n = stay.id_photos.filter(person=person).count()
+        saved = 0
+        for upload in uploads:
+            name = photo_name(stay, person, n + saved + 1)
+            if not (file_id := store(request, upload, "ids", name)):
+                break
+            IdPhoto.objects.create(stay=stay, person=person, file_id=file_id, name=name)
+            saved += 1
+        if saved:
+            AuditLog.record("stay", f"{saved} ID photo{'s' if saved > 1 else ''} saved for {person}", stay=stay)
+            messages.success(request, f"{saved} ID photo{'s' if saved > 1 else ''} saved for {person}.")
+    return _back(request, f"/stays/{pk}/")
 
 
 @require_POST
 def id_photo_delete(request, pk):
-    g = get_object_or_404(Guest, pk=pk)
-    if g.id_photo_id:
-        gdrive.delete_file(g.id_photo_id)
-        g.id_photo_id = ""
-        g.save(update_fields=["id_photo_id"])
-        AuditLog.record("guest", f"ID photo removed for {g.name}")
-        messages.success(request, "ID photo removed.")
-    return _back(request, f"/guests/{pk}/")
+    p = get_object_or_404(IdPhoto.objects.select_related("stay"), pk=pk)
+    gdrive.delete_file(p.file_id)
+    p.delete()
+    AuditLog.record("stay", f"Removed ID photo {p.name}", stay=p.stay)
+    messages.success(request, "ID photo removed.")
+    return _back(request, f"/stays/{p.stay_id}/")

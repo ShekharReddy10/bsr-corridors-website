@@ -1,0 +1,13 @@
+{# ID photos of a stay, one row per person: view / add several at once / remove (kept in Google Drive). #}
+{% for person, photos in id_photo_rows %}
+<div class="photo-row">
+  <span class="photo-person">{{ person }}</span>
+  {% for p in photos %}
+    <span class="photo-chip"><a href="{% url 'id_photo' p.pk %}" target="_blank" rel="noopener" title="{{ p.name }}">Photo {{ forloop.counter }}</a><form method="post" action="{% url 'id_photo_delete' p.pk %}" class="inline-form" data-confirm="Remove {{ p.name }}?">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="photo-x" aria-label="Remove photo {{ forloop.counter }}">×</button></form></span>
+  {% endfor %}
+  <form method="post" action="{% url 'id_photos_upload' stay.pk %}" enctype="multipart/form-data" class="inline-form photo-upload">{% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}"><input type="hidden" name="person" value="{{ person }}">
+    <label class="btn btn-ghost btn-sm"><span>{% if photos %}+ More{% else %}Add photos{% endif %}</span><input type="file" name="photo" accept="image/*" multiple hidden data-autosubmit></label>
+  </form>
+</div>
+{% endfor %}

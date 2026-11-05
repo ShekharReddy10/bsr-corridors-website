@@ -15,6 +15,7 @@ from .. import checks, services
 from ..fields import mask
 from ..forms import ExtendForm, GuestForm, PaymentForm, ShortenForm, StayForm, other_guests_formset
 from ..models import AuditLog, Guest, MessageTemplate, Payment, Room, Stay
+from .photos import photo_rows
 
 
 def stay_list(request):
@@ -189,6 +190,7 @@ def stay_detail(request, pk):
         "logs": AuditLog.objects.filter(stay__in=chain).order_by("-at")[:50],
         "payment_form": PaymentForm(),
         "payments": list(stay.payments.all()),
+        "id_photo_rows": photo_rows(stay),
         "hosts": services.host_names(),
         "collector": request.user.first_name if request.user.first_name in services.host_names() else stay.host,
         "shorten_form": ShortenForm(initial={"new_check_out": services.today()}),

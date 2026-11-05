@@ -65,7 +65,6 @@ class Guest(models.Model):
     visa_number = models.CharField(max_length=40, blank=True)
     visa_type = models.CharField(max_length=40, blank=True)
     arrival_in_india = models.DateField("Arrival in India", null=True, blank=True)
-    id_photo_id = models.CharField("ID photo (Google Drive file)", max_length=100, blank=True, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -278,6 +277,24 @@ class StayGuest(models.Model):
     @property
     def phone_digits(self) -> str:
         return "".join(c for c in self.phone if c.isdigit())
+
+
+class IdPhoto(models.Model):
+    """A photo of a guest's ID, kept in Google Drive (only the file ID is stored here). A stay can have any number:
+    front and back, and one set for each guest on the stay."""
+
+    stay = models.ForeignKey(Stay, on_delete=models.CASCADE, related_name="id_photos")
+    person = models.CharField(max_length=120, help_text="Whose ID this is (the main guest, guest 2, …)")
+    file_id = models.CharField("Google Drive file", max_length=100)
+    name = models.CharField("File name in Drive", max_length=200)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "id_photos"
+        ordering = ["created_at", "pk"]
+
+    def __str__(self):
+        return self.name
 
 
 class Expense(models.Model):

@@ -1147,30 +1147,46 @@ class PhotoTests(TestCase):
         Image.new("RGB", size, "white").save(buf, "PNG")
         return SimpleUploadedFile("id.png", buf.getvalue(), content_type="image/png")
 
-    def test_id_photo_upload_view_remove(self):
+    def test_id_photos_several_per_person(self):
         from unittest import mock
         from PIL import Image
-        s = stay(make_guest(), self.rooms["101"], 0, 2)
-        g = s.guest
-        with mock.patch("core.gdrive.upload_photo", return_value="drive-123") as up, \
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        s = stay(make_guest(name="Ravi Kumar"), self.rooms["101"], 0, 2)
+        StayGuest.objects.create(stay=s, position=2, name="Sita")
+        ids = iter(f"drive-{i}" for i in range(1, 10))
+        with mock.patch("core.gdrive.upload_photo", side_effect=lambda *a: next(ids)) as up, \
              mock.patch("core.gdrive.fetch", return_value=b"jpeg-bytes"), mock.patch("core.gdrive.delete_file") as rm:
-            self.client.post(f"/guests/{g.pk}/id-photo/upload/", {"photo": self._jpeg(), "next": f"/stays/{s.pk}/"})
-            g.refresh_from_db()
-            self.assertEqual(g.id_photo_id, "drive-123")
+            self.client.post(f"/stays/{s.pk}/id-photos/upload/",
+                             {"person": "Ravi Kumar", "photo": [self._jpeg(), self._jpeg()], "next": f"/stays/{s.pk}/"})
+            self.client.post(f"/stays/{s.pk}/id-photos/upload/", {"person": "Sita", "photo": [self._jpeg()]})
+            self.client.post(f"/stays/{s.pk}/id-photos/upload/", {"person": "Ravi Kumar", "photo": [self._jpeg()]})
+            day = f"{s.check_in:%d-%m-%Y}"
+            self.assertEqual([(p.person, p.name, p.file_id) for p in s.id_photos.all()], [
+                ("Ravi Kumar", f"Ravi Kumar_{s.pk}_{day}.jpg", "drive-1"),
+                ("Ravi Kumar", f"Ravi Kumar_{s.pk}_{day}_2.jpg", "drive-2"),
+                ("Sita", f"Sita_{s.pk}_{day}.jpg", "drive-3"),
+                ("Ravi Kumar", f"Ravi Kumar_{s.pk}_{day}_3.jpg", "drive-4"),
+            ])
+            self.assertEqual(up.call_args_list[0][0][1:], (f"Ravi Kumar_{s.pk}_{day}.jpg", "ids"))
             sent = Image.open(io.BytesIO(up.call_args[0][0]))
             self.assertEqual((sent.format, max(sent.size)), ("JPEG", 1600))  # shrunk, re-encoded
-            self.assertContains(self.client.get(f"/stays/{s.pk}/"), "View photo")
-            r = self.client.get(f"/guests/{g.pk}/id-photo/")
+            page = self.client.get(f"/stays/{s.pk}/")
+            self.assertContains(page, "Photo 3")
+            self.assertContains(self.client.get(f"/guests/{s.guest.pk}/"), f"Ravi Kumar_{s.pk}_{day}_2.jpg")
+            first = s.id_photos.first()
+            r = self.client.get(f"/id-photos/{first.pk}/")
             self.assertEqual((r.content, r["Content-Type"]), (b"jpeg-bytes", "image/jpeg"))
             self.assertTrue(AuditLog.objects.filter(action="reveal_id", summary__contains="ID photo").exists())
-            self.client.post(f"/guests/{g.pk}/id-photo/delete/")
-            rm.assert_called_once_with("drive-123")
-        g.refresh_from_db()
-        self.assertEqual(g.id_photo_id, "")
+            self.client.post(f"/id-photos/{first.pk}/delete/")
+            rm.assert_called_once_with("drive-1")
+            self.assertEqual(s.id_photos.count(), 3)
+            # Someone not on the stay → refused.
+            self.client.post(f"/stays/{s.pk}/id-photos/upload/", {"person": "Stranger", "photo": [self._jpeg()]})
+            self.assertEqual(s.id_photos.count(), 3)
         # Not a photo → refused, nothing saved.
-        from django.core.files.uploadedfile import SimpleUploadedFile
         with mock.patch("core.gdrive.upload_photo") as up:
-            r = self.client.post(f"/guests/{g.pk}/id-photo/upload/", {"photo": SimpleUploadedFile("x.pdf", b"%PDF")}, follow=True)
+            r = self.client.post(f"/stays/{s.pk}/id-photos/upload/",
+                                 {"person": "Sita", "photo": SimpleUploadedFile("x.pdf", b"%PDF")}, follow=True)
             up.assert_not_called()
         self.assertContains(r, "isn’t a photo")
 

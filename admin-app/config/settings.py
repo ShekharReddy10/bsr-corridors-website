@@ -6,6 +6,7 @@ See .env.example for the full list.
 """
 
 import os
+import sys
 from pathlib import Path
 
 import dj_database_url
@@ -161,6 +162,8 @@ GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET")
 GOOGLE_REFRESH_TOKEN = env("GOOGLE_REFRESH_TOKEN")
 GDRIVE_ROOT_FOLDER = env("GDRIVE_ROOT_FOLDER", "BSR Corridors Admin")
+if sys.argv[1:2] == ["test"]:  # tests never touch the real Drive, even with the keys in .env
+    GOOGLE_CLIENT_ID = GOOGLE_CLIENT_SECRET = GOOGLE_REFRESH_TOKEN = ""
 # The Gmail account whose Drive holds backups/exports (pre-selected when connecting).
 GOOGLE_ACCOUNT_EMAIL = env("GOOGLE_ACCOUNT_EMAIL", "bsrcorridors@gmail.com")
 
