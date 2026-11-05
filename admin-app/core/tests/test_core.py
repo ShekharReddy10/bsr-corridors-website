@@ -705,6 +705,22 @@ class RevenueTests(TestCase):
         self.assertEqual(revenue.rent_not_added(T), [])
         self.assertEqual(missed.status, Stay.Status.UPCOMING)
 
+    def test_by_room_shows_due_until_check_out(self):
+        from core import revenue
+        # Checked in a few days ago, checks out later this month: not received yet, shown as due in its check-out month.
+        s = stay(make_guest(), self.rooms["101"], -1, 3, status=Stay.Status.CHECKED_IN, amount_paid=Decimal(2000))
+        month = s.check_out.replace(day=1)
+        rows = {x["room"].number: x for x in revenue.rooms_for_month(revenue.build(), month)}
+        self.assertEqual((rows["101"]["received"], rows["101"]["due_total"]), (0, Decimal(4500)))
+        self.assertEqual(rows["101"]["due"][0]["day"], s.check_out)
+        self._unlock()
+        page = self.client.get(f"/revenue/{month:%Y-%m}/").content.decode()
+        self.assertIn("Received ₹0 + still due ₹4,500", page)  # expected in the month
+        services.check_out(s)
+        s.refresh_from_db()
+        rows = {x["room"].number: x for x in revenue.rooms_for_month(revenue.build(), s.check_out.replace(day=1))}
+        self.assertEqual((rows["101"]["received"], rows["101"]["due"]), (Decimal(2000), []))
+
     def test_overall_page(self):
         from core import revenue
         stay(make_guest(), self.rooms["101"], -3, 2, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(3000))

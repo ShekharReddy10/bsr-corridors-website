@@ -415,13 +415,15 @@ def bar_rows(groups: dict) -> list[dict]:
 
 
 def rooms_for_month(r: Report, month: date) -> list[dict]:
-    """Per room for one month: money received in it (check-outs, completed monthly rent), and — just for
-    information — stays that checked in this month but check out in a later month (counted then)."""
+    """Per room for one month: money received in it (check-outs, completed monthly rent); money due in it that
+    isn't received yet (guests checking out this month who haven't yet, monthly rent months ending this month);
+    and — just for information — stays that checked in this month but check out in a later month."""
     next_month = _add_months(month, 1)
     rows = {}
 
     def row(room):
-        return rows.setdefault(room.pk, {"room": room, "received": ZERO, "items": [], "later": [], "later_total": ZERO})
+        return rows.setdefault(room.pk, {"room": room, "received": ZERO, "items": [], "due": [], "due_total": ZERO,
+                                         "later": [], "later_total": ZERO})
 
     for room in Room.objects.filter(is_active=True):
         row(room)
@@ -429,10 +431,31 @@ def rooms_for_month(r: Report, month: date) -> list[dict]:
         x = row(item.stay.room)
         x["received"] += item.amount
         x["items"].append(item)
+
+    def add_due(s, day, amount, what):
+        x = row(s.room)
+        x["due"].append({"stay": s, "day": day, "amount": amount, "what": what})
+        x["due_total"] += amount
+
+    # Not checked out yet, but their check-out (when the money counts) falls in this month.
+    for s in (Stay.objects.filter(status__in=[Stay.Status.UPCOMING, Stay.Status.CHECKED_IN],
+                                  check_out__gte=month, check_out__lt=next_month).select_related("guest", "room")):
+        add_due(s, s.check_out, s.total, "checks out")
+    # Monthly guests staying on: the month of rent that ends in this month, if it hasn't ended yet.
+    for s in (Stay.objects.filter(status=Stay.Status.CHECKED_IN, kind=Stay.Kind.MONTHLY, check_out__isnull=True,
+                                  monthly_rent__gt=0).select_related("guest", "room")):
+        k = 1
+        while (end := _same_day_months_later(s.check_in, k) - timedelta(days=1)) < month:
+            k += 1
+        if end < next_month and end > r.t:
+            add_due(s, end, s.monthly_rent, f"month {k} rent ends")
+
     later = (Stay.objects.live().filter(check_in__gte=month, check_in__lt=next_month)
              .filter(Q(check_out__gte=next_month) | Q(check_out__isnull=True)).select_related("guest", "room"))
     for s in later:
         x = row(s.room)
         x["later"].append(s)
         x["later_total"] += s.total
+    for x in rows.values():
+        x["due"].sort(key=lambda d: d["day"])
     return sorted(rows.values(), key=lambda x: (x["room"].sort_order, x["room"].floor, x["room"].number))

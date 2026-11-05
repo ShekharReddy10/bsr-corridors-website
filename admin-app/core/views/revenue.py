@@ -117,13 +117,17 @@ def revenue_page(request, year=None, month_no=None):
     b = r.ledger[month]
     left = max(b.left, revenue.ZERO)
     partners = partner_names()
+    rooms = revenue.rooms_for_month(r, month)
+    rooms_due = sum((x["due_total"] for x in rooms), revenue.ZERO)
     return render(request, "core/revenue.html", {
         "r": r,
         "month": month,
         "mb": b,
         "is_current": month == this_month,
         "past_months": months[1:],
-        "rooms": revenue.rooms_for_month(r, month),
+        "rooms": rooms,
+        "rooms_due": rooms_due,
+        "expected": b.received + rooms_due,
         "rent_due": revenue.rent_not_added(r.t),
         "settle": {"amount": round(left), "share": left / len(partners) if partners else left},
         "partners": partners,

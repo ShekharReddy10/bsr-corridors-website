@@ -20,6 +20,11 @@
     <span class="op" aria-hidden="true">=</span>
     <div><span class="muted small">Profit</span><b class="{% if mb.profit < 0 %}warn{% else %}good{% endif %}">{{ mb.profit|inr }}</b></div>
   </div>
+  <div class="expected">
+    <span>Expected in {{ month|date:"F" }} <small class="muted">(from check-outs and monthly rent ending this month)</small></span>
+    <b>{{ expected|inr }}</b>
+    <small class="muted">Received {{ mb.received|inr }} + still due {{ rooms_due|inr }}{% if rooms_due %} — <a href="#rooms">see who</a>{% endif %}</small>
+  </div>
   <ul class="money-split month-settle">
     <li><span>Settled</span><b>{{ mb.settled|inr }}</b></li>
     <li class="{% if mb.left > 0 and not is_current %}warn{% endif %}"><span>Left to settle</span><b>{% if mb.left == 0 and mb.settled %}✓ Done{% else %}{{ mb.left|inr }}{% endif %}</b></li>
@@ -56,21 +61,22 @@
 </section>
 
 <section class="card" id="rooms">
-  <h2>By room <span class="muted small">— {{ month|date:"F Y" }} · {{ mb.received|inr }} received</span></h2>
+  <h2>By room <span class="muted small">— {{ month|date:"F Y" }} · {{ mb.received|inr }} received{% if rooms_due %} · {{ rooms_due|inr }} still due{% endif %}</span></h2>
   <div class="table-wrap"><table class="table table-cards room-month-table">
-    <thead><tr><th>Room</th><th class="num">Received in {{ month|date:"M" }}</th><th>Checked in {{ month|date:"M" }}, checks out later <small class="muted">(info only)</small></th></tr></thead>
+    <thead><tr><th>Room</th><th class="num">Received in {{ month|date:"M" }}</th><th>Due in {{ month|date:"M" }} <small class="muted">(not checked out yet)</small></th><th>Checked in {{ month|date:"M" }}, checks out later <small class="muted">(info only)</small></th></tr></thead>
     <tbody>
       {% for x in rooms %}
       <tr>
         <td data-label="Room"><span class="room-badge">{{ x.room.number }}</span></td>
         <td data-label="Received" class="num"><div><b>{{ x.received|inr }}</b>
           {% for i in x.items %}<br><small class="muted"><a href="{% url 'stay_detail' i.stay.pk %}">{{ i.stay.guest.name }}</a> · {{ i.start|date:"d-m" }} → {{ i.end|date:"d-m" }} · {{ i.what|lower }} · {{ i.amount|inr }}</small>{% endfor %}</div></td>
+        <td data-label="Due"><div>{% for d in x.due %}<a href="{% url 'stay_detail' d.stay.pk %}">{{ d.stay.guest.name }}</a> <small class="muted">{{ d.stay.check_in|date:"d-m" }} → {% if d.stay.check_out %}{{ d.stay.check_out|date:"d-m" }}{% else %}open{% endif %} · {{ d.what }} {{ d.day|date:"d-m" }}</small> <b>{{ d.amount|inr }}</b>{% if d.stay.amount_paid %} <small class="muted">(paid {{ d.stay.amount_paid|inr }})</small>{% endif %}{% if not forloop.last %}<br>{% endif %}{% empty %}<span class="muted">—</span>{% endfor %}</div></td>
         <td data-label="Checks out later"><div>{% for s in x.later %}<a href="{% url 'stay_detail' s.pk %}">{{ s.guest.name }}</a> <small class="muted">{{ s.check_in|date:"d-m" }} → {% if s.check_out %}{{ s.check_out|date:"d-m-Y" }}{% else %}open (monthly){% endif %} · {{ s.get_status_display|lower }}</small> <b>{{ s.total|inr }}</b>{% if s.amount_paid %} <small class="muted">(paid {{ s.amount_paid|inr }})</small>{% endif %}{% if not forloop.last %}<br>{% endif %}{% empty %}<span class="muted">—</span>{% endfor %}</div></td>
       </tr>
       {% endfor %}
     </tbody>
   </table></div>
-  <p class="muted small">Stays that check out in a later month are counted as received in that month — shown here only so you can see what’s coming.</p>
+  <p class="muted small">Money counts as received on the check-out day (monthly rent: the last day of the guest’s month). “Due” shows what will count in {{ month|date:"F" }} once those guests check out; stays checking out in a later month count then.</p>
 </section>
 
 {% if is_current %}
