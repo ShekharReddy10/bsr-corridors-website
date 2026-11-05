@@ -2,10 +2,12 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.db.models import Q
-from django.shortcuts import render
+from django.shortcuts import redirect, render
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.http import require_POST
 
-from .. import revenue
-from ..models import BackupRun, Room, Stay
+from .. import checks, revenue
+from ..models import AuditLog, BackupRun, Room, Stay
 from ..services import today
 
 
@@ -58,7 +60,21 @@ def dashboard(request):
         # Money that could slip through: monthly rent not added to the bill, and bookings whose dates have passed
         # without a check-in (their advance sits in "yet to receive" until they're checked in or cancelled).
         "rent_due": revenue.rent_not_added(t),
+        "flags": checks.stay_flags(t),
         "missed": list(upcoming.filter(check_out__lte=t).order_by("check_in")),
         "last_backup": BackupRun.objects.filter(kind=BackupRun.Kind.BACKUP).first(),
     }
     return render(request, "core/dashboard.html", context)
+
+
+@require_POST
+def confirm_check(request):
+    """ "Looks right" on a double-check warning: don't ask again unless the figures change."""
+    key = request.POST.get("key", "")
+    if key:
+        checks.confirm(key)
+        AuditLog.record("check", f"Marked as correct: {request.POST.get('title', key)}")
+    nxt = request.POST.get("next", "")
+    if nxt and url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        return redirect(nxt)
+    return redirect("dashboard")

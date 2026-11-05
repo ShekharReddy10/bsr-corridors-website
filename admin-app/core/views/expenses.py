@@ -7,7 +7,7 @@ from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from .. import revenue
+from .. import checks, revenue
 from ..forms import ExpenseForm
 from ..models import AuditLog, Expense
 from ..services import today
@@ -56,6 +56,7 @@ def expense_list(request):
     return render(request, "core/expense_list.html", {
         "page": page, "total": total, "by_category": by_category, "by_mode": by_mode,
         "month_links": months, "period": period, "category": category, "q": q,
+        "flags": checks.expense_flags(today()),
         "categories": Expense.Category.choices,
     })
 
@@ -68,6 +69,8 @@ def expense_form(request, pk=None):
         saved = form.save()
         AuditLog.record("expense", f"{'Updated' if obj else 'Added'} expense: {saved} — {saved.reason}")
         messages.success(request, f"Expense of ₹{saved.amount:,.0f} saved.")
+        for reason in checks.check_expense(saved):
+            messages.warning(request, f"Please double-check: {reason}")
         if "add_another" in request.POST:
             return redirect("expense_new")
         return redirect("expense_list")

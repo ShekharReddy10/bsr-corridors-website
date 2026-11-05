@@ -986,3 +986,58 @@ class HostSettlementWhatsAppTests(TestCase):
         self.assertTrue(text.startswith("Thank you for staying at BSR Corridors, Ravi Kumar! 🙏\n\n"))
         self.assertIn("Thank you for staying", text)
         self.assertIn("Room 101", text)
+
+
+class TypoCheckTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        _, _, self.rooms = make_rooms()
+        self.client.force_login(get_user_model().objects.create_user("chk-admin", password="test-pass-123456"))
+        # Usual price: ₹1,500 a night (the stay() helper), five past stays.
+        for i in range(5):
+            stay(make_guest(f"P{i}", f"+91 90000 1000{i}"), self.rooms["103"], -40 - i * 3, 2,
+                 status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(3000))
+
+    def test_wrong_amounts_flagged_until_fixed_or_confirmed(self):
+        from core import checks
+        extra_zero = stay(make_guest("Zero", "+91 90000 00001"), self.rooms["101"], 1, 2)
+        extra_zero.total_amount = Decimal(30000)  # ₹15,000 a night
+        extra_zero.save()
+        too_many = stay(make_guest("Nights", "+91 90000 00002"), self.rooms["102"], 1, 10)
+        too_many.total_amount = Decimal(3000)  # ₹300 a night
+        too_many.save()
+        overpaid = stay(make_guest("Over", "+91 90000 00003"), self.rooms["201"], 1, 2, amount_paid=Decimal(30000))
+        fine = stay(make_guest("Fine", "+91 90000 00004"), self.rooms["103"], 1, 2)
+        reasons = {f.key.split("-")[0]: f.reason for f in checks.stay_flags(T)}
+        self.assertIn("Extra zero", reasons[f"s{extra_zero.pk}"])
+        self.assertIn("Wrong number of nights", reasons[f"s{too_many.pk}"])
+        self.assertIn("more than the bill", reasons[f"s{overpaid.pk}"])
+        self.assertNotIn(f"s{fine.pk}", reasons)
+
+        page = self.client.get("/").content.decode()
+        self.assertIn("Please double-check", page)
+        self.assertIn(f"/stays/{extra_zero.pk}/edit/", page)
+        # "Looks right" hides it — until the figures change.
+        key = next(f.key for f in checks.stay_flags(T) if f.key.startswith(f"s{extra_zero.pk}-"))
+        self.client.post("/checks/ok/", {"key": key, "next": "/"})
+        self.assertNotIn(key, [f.key for f in checks.stay_flags(T)])
+        extra_zero.total_amount = Decimal(40000)
+        extra_zero.save()
+        self.assertTrue(any(f.key.startswith(f"s{extra_zero.pk}-") for f in checks.stay_flags(T)))
+
+    def test_warning_right_after_saving(self):
+        r = self.client.post("/stays/new/", {
+            "g-phone": "+91 90000 00009", "g-name": "Typo", "g-nationality": "Indian", "g-id_type": "aadhaar",
+            "s-room": self.rooms["101"].pk, "s-check_in": T.isoformat(), "s-check_out": (T + timedelta(days=2)).isoformat(),
+            "s-num_guests": 1, "s-total_amount": "30000", "s-amount_paid": "0", "s-source": "walk_in", "s-kind": "daily",
+            "o-TOTAL_FORMS": "0", "o-INITIAL_FORMS": "0", "o-MIN_NUM_FORMS": "0", "o-MAX_NUM_FORMS": "9"}, follow=True)
+        self.assertContains(r, "Please double-check: ₹15,000 a night")
+
+    def test_expense_extra_zero(self):
+        from core import checks
+        for i in range(5):
+            Expense.objects.create(date=T - timedelta(days=60 + i), category="laundry", reason="Laundry", amount=Decimal(800))
+        big = Expense.objects.create(date=T, category="laundry", reason="Laundry", amount=Decimal(8000))
+        Expense.objects.create(date=T, category="laundry", reason="Laundry", amount=Decimal(900))
+        self.assertEqual([f.key for f in checks.expense_flags(T)], [f"e{big.pk}-8000.00-laundry"])
+        self.assertEqual(checks.check_expense(big)[0][:7], "₹8,000 ")

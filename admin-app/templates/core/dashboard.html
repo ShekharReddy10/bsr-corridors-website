@@ -23,6 +23,7 @@
   <a class="stat {% if unpaid_total > 0 %}stat-warn{% endif %}" href="#unpaid"><b>{{ unpaid_total|inr }}</b><span>Unpaid</span></a>
 </div>
 
+{% include "partials/check_flags.html" %}
 {% if form_c_due %}
   <div class="alert">
     <b>Form C due:</b> file with the FRRO within 24 hours of check-in for

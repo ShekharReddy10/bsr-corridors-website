@@ -422,3 +422,11 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .expected small:last-child { grid-column: 1 / -1; }
 .wa-next { width: 100%; margin: 8px 0 10px; }
 .btn.is-sent { opacity: .6; }
+
+/* Double-check warnings (possible typos) */
+.check-flags { border-color: #f1d7a6; background: #fffaf0; }
+.check-flag { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 12px; padding: 10px 0; border-top: 1px solid #f1d7a6; }
+.check-flag > div:first-child { flex: 1 1 16em; min-width: 0; }
+.check-flag p { margin: 2px 0 0; color: #7a4b00; font-size: .9rem; }
+.check-actions { display: flex; align-items: center; gap: 4px; }
+.check-actions .inline-form { margin: 0; }

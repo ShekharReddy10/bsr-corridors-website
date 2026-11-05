@@ -6,6 +6,7 @@
   <a class="btn btn-primary" href="{% url 'expense_new' %}">+ Add expense</a>
 </div>
 
+{% include "partials/check_flags.html" with expenses=True %}
 {% include "partials/month_tabs.html" with links=month_links %}
 
 <form class="filters" method="get">

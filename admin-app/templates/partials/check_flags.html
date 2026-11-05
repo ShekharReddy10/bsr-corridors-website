@@ -1,0 +1,18 @@
+{% if flags %}
+<section class="card check-flags" id="double-check">
+  <h2>Please double-check <span class="count">{{ flags|length }}</span></h2>
+  <p class="muted small">These look unusual compared with your other {% if expenses %}expenses{% else %}stays{% endif %} — maybe a typo. Fix it, or tap “Looks right” if it’s correct.</p>
+  {% for f in flags %}
+  <div class="check-flag">
+    <div><b>{{ f.title }}</b><p>{{ f.reason }}</p></div>
+    <div class="check-actions">
+      <a class="btn btn-primary btn-sm" href="{{ f.url }}">Edit</a>
+      <form method="post" action="{% url 'confirm_check' %}" class="inline-form">{% csrf_token %}
+        <input type="hidden" name="key" value="{{ f.key }}"><input type="hidden" name="title" value="{{ f.title }}">
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button class="btn btn-ghost btn-sm">Looks right</button></form>
+    </div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}

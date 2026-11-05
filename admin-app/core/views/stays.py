@@ -11,7 +11,7 @@ from django.utils.html import escape
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
-from .. import services
+from .. import checks, services
 from ..fields import mask
 from ..forms import ExtendForm, GuestForm, PaymentForm, ShortenForm, StayForm, other_guests_formset
 from ..models import AuditLog, Guest, MessageTemplate, Room, Stay
@@ -123,6 +123,8 @@ def stay_form(request, pk=None):
                 messages.success(request, f"{guest.name} checked in to {new.room}." if checking_in else f"Stay for {guest.name} saved.")
                 for b, room in moved:
                     messages.info(request, f"{b.guest.name} ({b.dates_label}) moved to {room}.")
+                for reason in checks.check_stay(new):
+                    messages.warning(request, f"Please double-check: {reason}")
                 if checking_in:
                     return redirect(f"/stays/{new.pk}/?welcome=1")
                 return redirect("stay_detail", pk=new.pk)

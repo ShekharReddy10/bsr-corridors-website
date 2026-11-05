@@ -22,6 +22,7 @@ urlpatterns = [
     path("logout/", LogoutView.as_view(), name="logout"),
     path("healthz/", auth.healthz, name="healthz"),
     path("", dashboard.dashboard, name="dashboard"),
+    path("checks/ok/", dashboard.confirm_check, name="confirm_check"),
     path("calendar/", calendar.tape_chart, name="calendar"),
     path("calendar/room/<int:pk>/", calendar.room_month, name="room_month"),
     path("stays/", stays.stay_list, name="stay_list"),
