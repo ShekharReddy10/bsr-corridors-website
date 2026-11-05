@@ -1,6 +1,7 @@
 """WhatsApp messages: ready-made texts, hotel info (Wi-Fi, rules, timings) and click-to-send links."""
 
 import re
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.db import transaction
@@ -48,6 +49,8 @@ def template_edit(request, pk=None):
                 MessageTemplate.objects.exclude(pk=saved.pk).update(on_check_in=False)
             if saved.on_check_out:
                 MessageTemplate.objects.exclude(pk=saved.pk).update(on_check_out=False)
+            if saved.on_departing:
+                MessageTemplate.objects.exclude(pk=saved.pk).update(on_departing=False)
         AuditLog.record("whatsapp", f"{'Updated' if obj else 'Added'} WhatsApp message: {saved}")
         messages.success(request, f"Message “{saved}” saved.")
         return redirect("whatsapp")
@@ -66,6 +69,24 @@ def template_delete(request, pk):
     obj.delete()
     messages.success(request, "Message deleted.")
     return redirect("whatsapp")
+
+
+def in_house(request):
+    """One message to every guest staying now: pick a ready-made message (or type one), then send it guest by
+    guest — each tap opens the next guest's chat with the text filled in for them (WhatsApp needs one Send each)."""
+    stays = list(Stay.objects.filter(status=Stay.Status.CHECKED_IN).select_related("guest", "room")
+                 .order_by("room__sort_order", "room__number"))
+    templates = MessageTemplate.objects.all()
+    t, text = request.GET.get("t", ""), request.GET.get("text", "").strip()
+    template = templates.filter(pk=int(t)).first() if t.isdigit() else None
+    body = template.body if template else text
+    query = urlencode({"t": template.pk} if template else {"text": text}) if body else ""
+    with_phone = [s for s in stays if s.guest.phone]
+    return render(request, "core/whatsapp_in_house.html", {
+        "templates": templates, "template": template, "text": text, "query": query,
+        "with_phone": with_phone, "no_phone": [s for s in stays if not s.guest.phone],
+        "preview": whatsapp.render(body, whatsapp.context(with_phone[0])) if body and with_phone else "",
+    })
 
 
 def send(request, pk):
@@ -90,7 +111,7 @@ def send(request, pk):
             return redirect("stay_detail", pk=pk)
         name, text = template.name, whatsapp.render(template.body, whatsapp.context(stay))
     else:
-        text = request.GET.get("text", "").strip()
+        text = whatsapp.render(request.GET.get("text", ""), whatsapp.context(stay))  # {guest}, {room}, … allowed
         name = "custom message" if text else "chat"
     AuditLog.record("whatsapp", f"WhatsApp {name} opened for {stay.guest.name}", stay)
     mobile = bool(MOBILE.search(request.headers.get("User-Agent", "")))

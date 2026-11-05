@@ -921,10 +921,29 @@ class HostSettlementWhatsAppTests(TestCase):
 
         self.assertIn("🙏", text)
         custom = self.client.get(f"/stays/{s.pk}/whatsapp/", {"text": "Hello {guest}"})
-        self.assertIn("text=Hello%20%7Bguest%7D", custom["Location"])  # custom text is sent as typed
+        self.assertIn("text=Hello%20Ravi%20Kumar", custom["Location"])  # {guest} etc. filled in typed text too
         # Phone: straight into the WhatsApp app. No text: just open the chat.
         phone = self.client.get(f"/stays/{s.pk}/whatsapp/", HTTP_USER_AGENT="Mozilla/5.0 (Linux; Android 14) Mobile")
         self.assertEqual(phone["Location"], "whatsapp://send?phone=919876543210")
+
+    def test_departing_today_button_and_message_all_in_house(self):
+        details = MessageTemplate.objects.get(name="Check-out details")
+        self.assertTrue(details.on_departing)  # set by the migration
+        leaving = stay(make_guest(), self.rooms["101"], -2, 2, status=Stay.Status.CHECKED_IN)  # checks out today
+        staying = stay(make_guest("Asha", "+91 90000 00002"), self.rooms["102"], -1, 3, status=Stay.Status.CHECKED_IN)
+        stay(make_guest("No Phone", ""), self.rooms["103"], -1, 3, status=Stay.Status.CHECKED_IN)
+        page = self.client.get("/").content.decode()
+        self.assertIn(f'href="/stays/{leaving.pk}/whatsapp/?t={details.pk}" target="whatsapp"', page)
+        self.assertNotIn(f'/stays/{staying.pk}/whatsapp/?t={details.pk}', page)  # only on Departing today
+        self.assertIn('href="/whatsapp/in-house/"', page)
+
+        page = self.client.get("/whatsapp/in-house/", {"text": "Hi {guest}, water is off 2–4 PM."}).content.decode()
+        self.assertIn("Hi Ravi Kumar, water is off 2–4 PM.", page)  # preview for the first guest
+        self.assertIn(f'/stays/{staying.pk}/whatsapp/?text=Hi+%7Bguest%7D', page)
+        self.assertIn("No phone number (skipped): No Phone", page)
+        self.assertEqual(page.count("data-wa-send"), 2)
+        page = self.client.get("/whatsapp/in-house/", {"t": details.pk}).content.decode()
+        self.assertIn(f"/stays/{leaving.pk}/whatsapp/?t={details.pk}", page)
 
     def test_check_in_opens_welcome_and_only_one_check_in_message(self):
         s = stay(make_guest(), self.rooms["101"], 0, 2)

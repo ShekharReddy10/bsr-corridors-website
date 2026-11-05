@@ -64,7 +64,7 @@
   </section>
 
   <section class="card" id="in-house">
-    <h2>In-house <span class="count">{{ in_house|length }}</span></h2>
+    <div class="card-head"><h2>In-house <span class="count">{{ in_house|length }}</span></h2>{% if in_house %}<a class="btn btn-outline btn-sm" href="{% url 'wa_in_house' %}">WhatsApp all</a>{% endif %}</div>
     {% for s in in_house %}{% include "partials/stay_line.html" with s=s note="Until" d1=s.check_out %}{% empty %}<p class="muted">No guests checked in.</p>{% endfor %}
   </section>
 

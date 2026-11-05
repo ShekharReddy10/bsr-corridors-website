@@ -330,6 +330,9 @@ class MessageTemplate(models.Model):
                                       help_text="Opens automatically when you tap Check in (only one message can)")
     on_check_out = models.BooleanField("Send when checking out", default=False,
                                        help_text="Opens automatically when you tap Check out (only one message can)")
+    on_departing = models.BooleanField("Button on “Departing today”", default=False,
+                                       help_text="Shows as a one-tap button next to Check out on the Today page "
+                                                 "(only one message can)")
     sort_order = models.PositiveIntegerField(default=0)
 
     class Meta:

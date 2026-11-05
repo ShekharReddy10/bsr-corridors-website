@@ -49,6 +49,28 @@
     });
   }
 
+  // Message all in-house guests: "Send to next guest" opens the next chat; each opened chat is ticked off.
+  const bulk = $("#wa-bulk");
+  if (bulk) {
+    const links = Array.from(bulk.querySelectorAll("[data-wa-send]"));
+    const next = $("#wa-next");
+    const refresh = () => {
+      const left = links.filter((a) => !a.classList.contains("is-sent"));
+      if (!next) return;
+      next.disabled = !left.length;
+      next.textContent = left.length
+        ? `Send to ${left[0].dataset.name} (${links.length - left.length + 1} of ${links.length})`
+        : `All ${links.length} sent ✓`;
+    };
+    links.forEach((a) => a.addEventListener("click", () => {
+      a.classList.add("is-sent");
+      a.textContent = "Opened ✓";
+      setTimeout(refresh);
+    }));
+    if (next) next.addEventListener("click", () => { const a = links.find((x) => !x.classList.contains("is-sent")); if (a) a.click(); });
+    refresh();
+  }
+
   const form = $(".stay-form");
   if (!form) return;
 

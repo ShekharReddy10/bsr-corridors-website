@@ -54,6 +54,7 @@ urlpatterns = [
     path("expenses/<int:pk>/", expenses.expense_form, name="expense_edit"),
     path("expenses/<int:pk>/delete/", expenses.expense_delete, name="expense_delete"),
     path("whatsapp/", whatsapp.whatsapp_page, name="whatsapp"),
+    path("whatsapp/in-house/", whatsapp.in_house, name="wa_in_house"),
     path("whatsapp/messages/new/", whatsapp.template_edit, name="wa_template_new"),
     path("whatsapp/messages/<int:pk>/", whatsapp.template_edit, name="wa_template_edit"),
     path("whatsapp/messages/<int:pk>/delete/", whatsapp.template_delete, name="wa_template_delete"),

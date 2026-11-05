@@ -15,4 +15,10 @@ def app(request):
     def wa_departure():
         return MessageTemplate.objects.filter(on_check_out=True).exists()
 
-    return {"HOTEL_NAME": settings.HOTEL_NAME, "wa_welcome": wa_welcome, "wa_departure": wa_departure}
+    @cache
+    def wa_departing():
+        """The message with a one-tap button on "Departing today" (e.g. Check-out details), or None."""
+        return MessageTemplate.objects.filter(on_departing=True).first()
+
+    return {"HOTEL_NAME": settings.HOTEL_NAME, "wa_welcome": wa_welcome, "wa_departure": wa_departure,
+            "wa_departing": wa_departing}

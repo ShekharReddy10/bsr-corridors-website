@@ -418,3 +418,5 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .expected { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; margin-top: 14px; padding: 10px 12px; background: #f3f7fd; border-radius: 10px; }
 .expected b { font-size: 1.2rem; }
 .expected small:last-child { grid-column: 1 / -1; }
+.wa-next { width: 100%; margin: 8px 0 10px; }
+.btn.is-sent { opacity: .6; }

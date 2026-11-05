@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Message all guests{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Message all guests staying now</h1>
+    <p class="muted">Pick a message, then tap <b>Send to next guest</b>: each tap opens the next guest’s WhatsApp chat with the message filled in for them — tap Send in WhatsApp, come back, tap again. (WhatsApp needs one Send per chat.)</p></div>
+  <a class="btn btn-ghost" href="{% url 'dashboard' %}#in-house">Back</a>
+</div>
+
+<form method="get" class="card">
+  <h2>1. Message</h2>
+  <div class="form-grid">
+    <div class="field"><label for="wa-t">Ready-made message</label>
+      <select id="wa-t" name="t" onchange="this.form.submit()">
+        <option value="">— Type my own below —</option>
+        {% for x in templates %}<option value="{{ x.pk }}"{% if template and x.pk == template.pk %} selected{% endif %}>{{ x.name }}</option>{% endfor %}
+      </select></div>
+    <div class="field span-2"{% if template %} hidden{% endif %}><label for="wa-text">Or type your own</label>
+      <textarea id="wa-text" name="text" rows="4" placeholder="e.g. Hi {guest}, water supply will be off today from 2 to 4 PM. Sorry for the trouble!">{{ text }}</textarea>
+      <small class="muted">{guest}, {room}, {check_out} and the others from the WhatsApp page are filled in for each guest.</small></div>
+  </div>
+  {% if not template %}<div class="form-actions"><button class="btn btn-outline btn-sm">Use this message</button></div>{% endif %}
+</form>
+
+{% if query %}
+<section class="card" id="wa-bulk">
+  <h2>2. Send <span class="count">{{ with_phone|length }}</span></h2>
+  {% if preview %}<p class="muted small">How it looks for {{ with_phone.0.guest.name }}:</p><p class="wa-body">{{ preview }}</p>{% endif %}
+  {% if with_phone %}
+  <button type="button" class="btn btn-primary wa-next" id="wa-next">Send to next guest</button>
+  {% for s in with_phone %}
+  <div class="stay-line"><span class="stay-line-main"><span class="room-badge">{{ s.room.number }}</span>
+    <span><b>{{ s.guest.name }}</b><small>{{ s.guest.phone }}</small></span></span>
+    <a class="btn btn-outline btn-sm" href="{% url 'stay_whatsapp' s.pk %}?{{ query }}" target="whatsapp" rel="noopener" data-wa-send data-name="{{ s.guest.name }}">Send</a>
+  </div>
+  {% endfor %}
+  {% else %}<p class="muted">No guests staying now have a phone number.</p>{% endif %}
+  {% if no_phone %}<p class="muted small">No phone number (skipped): {% for s in no_phone %}{{ s.guest.name }} ({{ s.room.number }}){% if not forloop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

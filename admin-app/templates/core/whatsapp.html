@@ -4,7 +4,8 @@
 <div class="page-head">
   <div><h1>WhatsApp messages</h1>
     <p class="muted">Messages open in WhatsApp with the text already typed, from the number logged in on this phone or computer (7013684602). Check it and tap Send.</p></div>
-  <a class="btn btn-primary" href="{% url 'wa_template_new' %}">+ Add message</a>
+  <div class="inline-form"><a class="btn btn-outline" href="{% url 'wa_in_house' %}">Message all guests staying now</a>
+  <a class="btn btn-primary" href="{% url 'wa_template_new' %}">+ Add message</a></div>
 </div>
 
 <section class="card">
@@ -12,7 +13,7 @@
   <p class="muted small">Each one is a button on the stay page. The one marked <b>at check-in</b> opens by itself when you tap Check in, and the one marked <b>at check-out</b> when you tap Check out.</p>
   {% for t in templates %}
     <div class="wa-template">
-      <div class="card-head"><h3>{{ t.name }}{% if t.on_check_in %} <span class="status status-checked_in">at check-in</span>{% endif %}{% if t.on_check_out %} <span class="status status-checked_out">at check-out</span>{% endif %}</h3>
+      <div class="card-head"><h3>{{ t.name }}{% if t.on_check_in %} <span class="status status-checked_in">at check-in</span>{% endif %}{% if t.on_check_out %} <span class="status status-checked_out">at check-out</span>{% endif %}{% if t.on_departing %} <span class="status status-upcoming">button on Departing today</span>{% endif %}</h3>
         <a class="btn btn-outline btn-sm" href="{% url 'wa_template_edit' t.pk %}">Edit</a></div>
       <p class="wa-body">{{ t.body }}</p>
     </div>
