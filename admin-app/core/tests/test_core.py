@@ -593,6 +593,34 @@ class SecurityTests(TestCase):
         self.assertIn("not connected", r.json()["message"])
 
 
+class BackupRetentionTests(TestCase):
+    def test_keeps_newest_of_each_day_week_and_month(self):
+        from datetime import datetime, timedelta, timezone as tz
+        from core.gdrive import backups_to_keep
+        start = datetime(2026, 11, 5, 21, 0, tzinfo=tz.utc)  # 02:30 IST on 6 Nov
+        created = [start - timedelta(days=d) for d in range(400)] + [start - timedelta(days=1, hours=1)]
+        created.sort(reverse=True)
+        kept = sorted(created[i] for i in backups_to_keep(created))
+        days = {c.date() for c in kept}
+        self.assertTrue({(start - timedelta(days=d)).date() for d in range(7)} <= days)  # last 7 days
+        self.assertEqual(len(kept), len(set(kept)))
+        self.assertLessEqual(len(kept), 7 + 4 + 12)
+        self.assertGreater(start - kept[0], timedelta(days=300))  # reaches back about a year
+        self.assertEqual(len({(c.year, c.month) for c in kept}), 12)
+
+    def test_restore_reads_compressed_backup(self):
+        import gzip, tempfile, os
+        from django.core.management import call_command
+        g = make_guest()
+        data = gzip.compress(backup_json())
+        g.delete()
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "backup_06-11-2026_02-00AM.json.gz")
+            open(path, "wb").write(data)
+            call_command("restore_backup", path, yes=True, stdout=io.StringIO())
+        self.assertEqual(Guest.objects.get().id_number, "123412341234")
+
+
 def got(s, t):
     from core import revenue
     return [(x.day, x.amount) for x in revenue.received_on(s, t)]

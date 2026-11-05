@@ -4,9 +4,10 @@ Uses OAuth credentials for the owner's own Gmail account (a refresh token obtain
 `python manage.py google_auth`). Scope `drive.file` means the app can only see files it created itself.
 """
 
+import gzip
 import io
 import logging
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from django.conf import settings
 from django.utils import timezone
@@ -84,17 +85,45 @@ def _folders(svc) -> tuple[str, str, str]:
     return root, backups, exports
 
 
-def _prune(svc, folder: str, keep: int) -> int:
-    files = (
-        svc.files()
-        .list(q=f"'{folder}' in parents and trashed=false and name contains 'backup-'", orderBy="createdTime desc",
-              fields="files(id,name)", pageSize=1000)
-        .execute()
-        .get("files", [])
-    )
-    for f in files[keep:]:
+KEEP_DAILY, KEEP_WEEKLY, KEEP_MONTHLY = 7, 4, 12
+EXPORT_KEEP_DAYS = 30
+
+
+def backups_to_keep(created: list[datetime]) -> set[int]:
+    """Which backups to keep (indexes into `created`, newest first): the newest of each of the last 7 days,
+    4 weeks and 12 months. Each backup holds everything, so the newest alone is a complete copy; the older ones
+    are there to go back to how things were."""
+    keep, seen = set(), {"d": [], "w": [], "m": []}
+    for i, at in enumerate(created):
+        local = timezone.localtime(at)
+        for tier, key, limit in (("d", local.date(), KEEP_DAILY), ("w", local.isocalendar()[:2], KEEP_WEEKLY),
+                                 ("m", (local.year, local.month), KEEP_MONTHLY)):
+            if key not in seen[tier] and len(seen[tier]) < limit:
+                seen[tier].append(key)
+                keep.add(i)
+    return keep
+
+
+def _list(svc, q: str) -> list[dict]:
+    return (svc.files().list(q=q, orderBy="createdTime desc", fields="files(id,name,createdTime)", pageSize=1000)
+            .execute().get("files", []))
+
+
+def _prune(svc, folder: str) -> int:
+    files = _list(svc, f"'{folder}' in parents and trashed=false and name contains 'backup'")
+    keep = backups_to_keep([datetime.fromisoformat(f["createdTime"].replace("Z", "+00:00")) for f in files])
+    old = [f for i, f in enumerate(files) if i not in keep]
+    for f in old:
         svc.files().delete(fileId=f["id"]).execute()
-    return max(0, len(files) - keep)
+    return len(old)
+
+
+def _prune_exports(svc, folder: str) -> int:
+    cutoff = (timezone.now() - timedelta(days=EXPORT_KEEP_DAYS)).strftime("%Y-%m-%dT%H:%M:%S")
+    old = _list(svc, f"'{folder}' in parents and trashed=false and createdTime < '{cutoff}'")
+    for f in old:
+        svc.files().delete(fileId=f["id"]).execute()
+    return len(old)
 
 
 def run_backup() -> BackupRun:
@@ -102,10 +131,10 @@ def run_backup() -> BackupRun:
     run = BackupRun.objects.create(kind=BackupRun.Kind.BACKUP)
     try:
         svc = _service()
-        root, backups, _ = _folders(svc)
-        stamp = timezone.localtime().strftime("%Y-%m-%d_%H%M")
-        _upload(svc, backup_json(), f"backup-{stamp}.json", "application/json", backups)
-        pruned = _prune(svc, backups, settings.BACKUP_KEEP_DAYS)
+        root, backups, exports = _folders(svc)
+        stamp = timezone.localtime().strftime("%d-%m-%Y_%I-%M%p")
+        _upload(svc, gzip.compress(backup_json()), f"backup_{stamp}.json.gz", "application/gzip", backups)
+        pruned = _prune(svc, backups) + _prune_exports(svc, exports)
 
         sheet_id = AppSetting.get("gdrive_register_sheet")
         sheet = _upload(svc, build_workbook(), f"{settings.HOTEL_NAME} — Guest register", XLSX, root,
@@ -113,7 +142,7 @@ def run_backup() -> BackupRun:
         AppSetting.put("gdrive_register_sheet", sheet["id"])
 
         run.ok, run.link = True, sheet.get("webViewLink", "")
-        run.message = f"Backup saved; register sheet updated{f'; removed {pruned} old backup(s)' if pruned else ''}."
+        run.message = f"Backup saved; register sheet updated{f'; removed {pruned} old file(s)' if pruned else ''}."
     except Exception as exc:  # recorded and shown on the dashboard
         log.exception("Backup failed")
         run.message = str(exc)[:1000]

@@ -155,7 +155,6 @@ FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY")
 
 # Shared secret for the scheduled backup endpoint (GitHub Actions sends it in X-Backup-Token).
 BACKUP_TOKEN = env("BACKUP_TOKEN")
-BACKUP_KEEP_DAYS = int(env("BACKUP_KEEP_DAYS", "30"))
 
 # Google Drive (OAuth for the owner's Gmail account — see README "Google Drive setup").
 GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID")

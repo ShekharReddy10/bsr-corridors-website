@@ -1,6 +1,6 @@
-"""Restore a JSON backup downloaded from Google Drive.
+"""Restore a backup downloaded from Google Drive (.json.gz, or an older .json).
 
-    python manage.py restore_backup backup-2026-10-06_0200.json --yes
+    python manage.py restore_backup backup_06-10-2026_02-00AM.json.gz --yes
 
 Needs the same FIELD_ENCRYPTION_KEY that was used when the backup was made.
 Existing rows with the same IDs are overwritten; nothing else is deleted.

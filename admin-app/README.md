@@ -73,8 +73,9 @@ This also keeps the Supabase database active.
 ## 5. Google Drive backups
 
 Backups go to the Drive of **bsrcorridors@gmail.com** in a folder called *BSR Corridors Admin*:
-`Backups/backup-….json` (last 30 kept, ID numbers encrypted), a **Guest register** Google Sheet
-(updated nightly, ID numbers show last 4 digits) and `Exports/` (from the Export page).
+`Backups/backup_….json.gz` (compressed; one kept for each of the last 7 days, 4 weeks and 12 months; ID numbers
+encrypted), a **Guest register** Google Sheet
+(updated nightly, ID numbers show last 4 digits) and `Exports/` (from the Export page, deleted after 30 days).
 
 **One-time setup (≈10 minutes):**
 
@@ -113,11 +114,11 @@ Test it: GitHub → **Actions → Admin nightly backup → Run workflow**.
 
 ## 6. Restore from a backup
 
-1. Download a `backup-….json` from Drive.
+1. Download a `backup_….json.gz` from Drive (no need to unzip it).
 2. With `DATABASE_URL` and the **same** `FIELD_ENCRYPTION_KEY` in `.env`:
    ```bash
    .venv/bin/python manage.py migrate
-   .venv/bin/python manage.py restore_backup backup-2026-10-06_0200.json --yes
+   .venv/bin/python manage.py restore_backup backup_06-10-2026_02-00AM.json.gz --yes
    ```
 
 ---

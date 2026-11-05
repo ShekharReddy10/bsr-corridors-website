@@ -46,7 +46,8 @@ def backups(request):
     return render(request, "core/backups.html", {
         "runs": BackupRun.objects.filter(kind=BackupRun.Kind.BACKUP)[:30],
         "drive_ready": gdrive.is_configured(),
-        "keep": settings.BACKUP_KEEP_DAYS,
+        "keep": {"daily": gdrive.KEEP_DAILY, "weekly": gdrive.KEEP_WEEKLY, "monthly": gdrive.KEEP_MONTHLY,
+                 "exports": gdrive.EXPORT_KEEP_DAYS},
     })
 
 

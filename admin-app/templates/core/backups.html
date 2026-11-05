@@ -7,8 +7,10 @@
 <section class="card">
   <p>Every night all rooms, guests and stays are saved to your Google Drive folder:</p>
   <ul>
-    <li><b>Backups/backup-YYYY-MM-DD.json</b> — full backup, last {{ keep }} kept (ID numbers stay encrypted).</li>
+    <li><b>Backups/backup_DD-MM-YYYY_HH-MMAM.json.gz</b> — a full copy of everything, compressed (ID numbers stay encrypted).
+      Kept: one for each of the last {{ keep.daily }} days, {{ keep.weekly }} weeks and {{ keep.monthly }} months; older ones are deleted automatically.</li>
     <li><b>Guest register</b> — a Google Sheet that always has the latest data (ID numbers show last 4 digits).</li>
+    <li><b>Exports</b> — sheets from the Export page are deleted after {{ keep.exports }} days. Monthly reports are kept.</li>
   </ul>
   {% if not drive_ready %}<p class="alert">Google Drive isn’t connected yet. See README → “Google Drive setup”, then set the GOOGLE_* environment variables.</p>{% endif %}
 </section>
