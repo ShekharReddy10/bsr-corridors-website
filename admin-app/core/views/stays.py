@@ -190,6 +190,7 @@ def stay_detail(request, pk):
         "payment_form": PaymentForm(),
         "payments": list(stay.payments.all()),
         "hosts": services.host_names(),
+        "collector": request.user.first_name if request.user.first_name in services.host_names() else stay.host,
         "shorten_form": ShortenForm(initial={"new_check_out": services.today()}),
         "today": services.today(),
         "wa_templates": MessageTemplate.objects.all(),

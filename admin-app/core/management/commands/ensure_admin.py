@@ -1,4 +1,4 @@
-"""Create or update the single admin account from ADMIN_USERNAME / ADMIN_PASSWORD.
+"""Create or update the main admin account from ADMIN_USERNAME / ADMIN_PASSWORD.
 
 Runs on every deploy (build.sh), so changing the password in Render's environment settings
 and redeploying changes the login. Render's free plan has no shell, so this replaces createsuperuser.
@@ -26,6 +26,5 @@ class Command(BaseCommand):
         if created or not user.check_password(password):
             user.set_password(password)
         user.save()
-        # Only one admin: deactivate any other accounts.
-        User.objects.exclude(pk=user.pk).update(is_active=False)
+        # Other people's logins (Settings → Users) are left as they are.
         self.stdout.write(self.style.SUCCESS(f"Admin '{username}' {'created' if created else 'up to date'}."))

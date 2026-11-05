@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Users & logins{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Users &amp; logins</h1><p class="muted">One login per person, so the activity log shows who did what. Money pages still ask for the revenue password.</p></div><a class="btn btn-ghost" href="{% url 'settings' %}">Back</a></div>
+
+<section class="card">
+  <h2>Logins</h2>
+  {% for u in users %}
+  <div class="user-row{% if not u.is_active %} is-inactive{% endif %}">
+    <div><b>{{ u.get_full_name|default:u.username }}</b> <small class="muted">{{ u.username }}{% if u.is_superuser %} · main admin{% endif %}{% if not u.is_active %} · switched off{% endif %}{% if u.last_login %} · last signed in {{ u.last_login|date:"d-m-Y H:i" }}{% endif %}</small></div>
+    {% if u != request.user and not u.is_superuser %}
+    <details class="user-actions"><summary class="btn btn-ghost btn-sm">Manage</summary>
+      <form method="post" class="inline-form">{% csrf_token %}<input type="hidden" name="action" value="reset"><input type="hidden" name="user" value="{{ u.pk }}">
+        <input type="password" name="password" placeholder="New password" minlength="{{ min_length }}" autocomplete="new-password" aria-label="New password">
+        <input type="password" name="confirm" placeholder="Repeat" minlength="{{ min_length }}" autocomplete="new-password" aria-label="Repeat new password">
+        <button class="btn btn-outline btn-sm">Set password</button></form>
+      <form method="post" class="inline-form" data-confirm="{% if u.is_active %}Switch off this login? They can’t sign in until it’s switched on again.{% else %}Switch this login back on?{% endif %}">{% csrf_token %}<input type="hidden" name="action" value="toggle"><input type="hidden" name="user" value="{{ u.pk }}">
+        <button class="btn btn-ghost btn-sm">{% if u.is_active %}Switch off{% else %}Switch on{% endif %}</button></form>
+    </details>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+
+<form method="post" class="card">{% csrf_token %}<input type="hidden" name="action" value="add">
+  <h2>Add a login</h2>
+  <div class="form-grid">
+    <div class="field"><label for="u-name">Name</label><input id="u-name" name="name" placeholder="e.g. Satish" required></div>
+    <div class="field"><label for="u-username">Username</label><input id="u-username" name="username" placeholder="e.g. satish" autocapitalize="none" autocomplete="off" required></div>
+    <div class="field"><label for="u-pass">Password <small class="muted">(at least {{ min_length }} characters)</small></label><input id="u-pass" type="password" name="password" minlength="{{ min_length }}" autocomplete="new-password" required></div>
+    <div class="field"><label for="u-confirm">Repeat password</label><input id="u-confirm" type="password" name="confirm" minlength="{{ min_length }}" autocomplete="new-password" required></div>
+  </div>
+  <p class="muted small">Use the same name as in the Hosts list (e.g. Satish) — payments they record are then marked as collected by them.</p>
+  <div class="form-actions"><button class="btn btn-primary">Create login</button></div>
+</form>
+{% endblock %}

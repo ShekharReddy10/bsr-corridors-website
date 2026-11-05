@@ -32,7 +32,7 @@
       <a href="{% url 'backups' %}" {% if url == 'backups' %}aria-current="page"{% endif %}>Backups</a>
       <a href="{% url 'settings' %}" {% if url == 'settings' %}aria-current="page"{% endif %}>Settings &amp; log</a>
     </nav>
-    <form method="post" action="{% url 'logout' %}" class="sidebar-logout">{% csrf_token %}<button class="btn btn-ghost">Sign out</button></form>
+    <form method="post" action="{% url 'logout' %}" class="sidebar-logout">{% csrf_token %}<small class="muted">{{ user.get_full_name|default:user.username }}</small><button class="btn btn-ghost">Sign out</button></form>
   </aside>
 
   <main class="main">

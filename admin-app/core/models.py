@@ -429,6 +429,7 @@ class AuditLog(models.Model):
     action = models.CharField(max_length=40)
     summary = models.TextField()
     stay = models.ForeignKey(Stay, null=True, blank=True, on_delete=models.SET_NULL, related_name="logs")
+    by = models.CharField("Done by", max_length=60, blank=True, help_text="Who was signed in")
 
     class Meta:
         db_table = "audit_log"
@@ -439,7 +440,9 @@ class AuditLog(models.Model):
 
     @classmethod
     def record(cls, action: str, summary: str, stay: Stay | None = None) -> "AuditLog":
-        return cls.objects.create(action=action, summary=summary, stay=stay)
+        from .middleware import current_user_name
+
+        return cls.objects.create(action=action, summary=summary, stay=stay, by=current_user_name())
 
 
 class BackupRun(models.Model):

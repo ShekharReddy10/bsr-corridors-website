@@ -1248,3 +1248,45 @@ class MaintenanceTests(TestCase):
         page = self.client.get("/").content.decode()
         self.assertNotIn("Room upkeep", page)
         self.assertContains(self.client.get(f"/rooms/room/{room.pk}/log/"), "Geyser not heating")
+
+
+class LoginTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.admin = get_user_model().objects.create_superuser("shekhar", password="admin-pass-12345", first_name="Shekhar")
+        self.client.force_login(self.admin)
+
+    def test_admin_adds_login_and_log_shows_who(self):
+        from django.core.management import call_command
+        r = self.client.post("/settings/users/", {"action": "add", "name": "Satish", "username": "Satish",
+                                                   "password": "satish-pass-1", "confirm": "satish-pass-1"}, follow=True)
+        self.assertContains(r, "Login created for Satish")
+        satish = get_user_model().objects.get(username="satish")
+        self.assertEqual(self.client.post("/settings/users/", {"action": "add", "name": "X", "username": "x",
+                                                               "password": "short", "confirm": "short"}).status_code, 302)
+        self.assertFalse(get_user_model().objects.filter(username="x").exists())
+
+        other = self.client_class()
+        self.assertTrue(other.login(username="satish", password="satish-pass-1"))
+        other.post("/settings/", {"action": "hosts", "hosts": "Shekhar, Mounika, Satish"})
+        self.assertEqual(AuditLog.objects.filter(action="settings").latest("at").by, "Satish")
+        self.assertContains(other.get("/settings/"), "<b>Satish:</b>")
+        # Only the main admin manages logins.
+        self.assertRedirects(other.get("/settings/users/"), "/settings/", fetch_redirect_response=False)
+        # Own password change keeps you signed in.
+        other.post("/settings/password/", {"current": "satish-pass-1", "password": "satish-pass-2", "confirm": "satish-pass-2"})
+        self.assertEqual(other.get("/").status_code, 200)
+        satish.refresh_from_db()
+        self.assertTrue(satish.check_password("satish-pass-2"))
+        # Switch off; deploys no longer switch other logins off.
+        self.client.post("/settings/users/", {"action": "toggle", "user": satish.pk})
+        satish.refresh_from_db()
+        self.assertFalse(satish.is_active)
+        self.client.post("/settings/users/", {"action": "toggle", "user": satish.pk})
+        with override_settings():
+            import os
+            from unittest import mock
+            with mock.patch.dict(os.environ, {"ADMIN_USERNAME": "shekhar", "ADMIN_PASSWORD": "admin-pass-12345"}):
+                call_command("ensure_admin", stdout=io.StringIO())
+        satish.refresh_from_db()
+        self.assertTrue(satish.is_active)

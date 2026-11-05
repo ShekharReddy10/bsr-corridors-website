@@ -10,6 +10,12 @@
     <dt>Nightly backup token</dt><dd>{% if backup_hook_set %}Set ✓{% else %}<span class="warn">Not set</span> — nightly backups won’t run{% endif %}</dd>
   </dl>
 </section>
+<section class="card">
+  <h2>Logins</h2>
+  <p class="muted small">Signed in as <b>{{ user.get_full_name|default:user.username }}</b>.</p>
+  <div class="inline-form">{% if user.is_superuser %}<a class="btn btn-outline btn-sm" href="{% url 'users' %}">Users &amp; logins</a>{% endif %}
+    <a class="btn btn-ghost btn-sm" href="{% url 'my_password' %}">Change my password</a></div>
+</section>
 <form method="post" class="card">{% csrf_token %}
   <input type="hidden" name="action" value="hosts">
   <h2>Hosts</h2>
@@ -38,6 +44,6 @@
   </div>
 </form>
 <section class="card"><h2>Activity log</h2>
-  <ul class="log">{% for l in logs %}<li><time>{{ l.at|date:"d-m-Y H:i" }}</time> {% if l.stay %}<a href="{% url 'stay_detail' l.stay_id %}">{{ l.summary }}</a>{% else %}{{ l.summary }}{% endif %}</li>{% empty %}<li class="muted">Nothing yet.</li>{% endfor %}</ul>
+  <ul class="log">{% for l in logs %}<li><time>{{ l.at|date:"d-m-Y H:i" }}</time> {% if l.by %}<b>{{ l.by }}:</b> {% endif %}{% if l.stay %}<a href="{% url 'stay_detail' l.stay_id %}">{{ l.summary }}</a>{% else %}{{ l.summary }}{% endif %}</li>{% empty %}<li class="muted">Nothing yet.</li>{% endfor %}</ul>
 </section>
 {% endblock %}

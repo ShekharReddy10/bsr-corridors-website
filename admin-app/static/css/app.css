@@ -443,3 +443,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .photo-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .photo-row .inline-form { margin: 0; }
 .photo-upload label { cursor: pointer; }
+.user-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.user-row > div { min-width: 0; }
+.user-actions[open] { flex-basis: 100%; }
+.sidebar-logout { display: grid; gap: 4px; text-align: center; }
+.sidebar-logout small { color: #9aa6ab; }

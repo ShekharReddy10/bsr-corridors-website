@@ -1,3 +1,4 @@
+from contextvars import ContextVar
 from urllib.parse import quote
 
 from django.shortcuts import redirect
@@ -28,3 +29,29 @@ class NoIndexMiddleware:
         response = self.get_response(request)
         response["X-Robots-Tag"] = "noindex, nofollow"
         return response
+
+
+_user_name: ContextVar[str] = ContextVar("user_name", default="")
+
+
+def user_name(user) -> str:
+    return (user.get_full_name() or user.username) if user and user.is_authenticated else ""
+
+
+def current_user_name() -> str:
+    """Who is signed in for the request being handled ("" in commands and the nightly job)."""
+    return _user_name.get()
+
+
+class CurrentUserMiddleware:
+    """Remember who is signed in, so the activity log can say who did what."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        token = _user_name.set(user_name(request.user))
+        try:
+            return self.get_response(request)
+        finally:
+            _user_name.reset(token)
