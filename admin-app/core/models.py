@@ -233,6 +233,26 @@ class Stay(models.Model):
         return self.guest.is_foreign and not self.form_c_filed and self.status == self.Status.CHECKED_IN
 
 
+class Payment(models.Model):
+    """One payment by a guest (or a correction, which can be negative). Stay.amount_paid is kept equal to the sum:
+    services.save_stay records any change to it as a payment, so every way of entering money leaves a dated entry."""
+
+    stay = models.ForeignKey(Stay, on_delete=models.CASCADE, related_name="payments")
+    date = models.DateField(default=timezone.localdate, db_index=True)
+    amount = models.DecimalField("Amount (₹)", max_digits=10, decimal_places=2)
+    mode = models.CharField(max_length=20, choices=Stay.PaymentMode.choices, blank=True)
+    collected_by = models.CharField("Collected by", max_length=40, blank=True)
+    note = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "payments"
+        ordering = ["date", "pk"]
+
+    def __str__(self):
+        return f"{self.date:%d-%m-%Y} · ₹{self.amount:,.0f}"
+
+
 class StayGuest(models.Model):
     """Guest 2, 3, … on a stay (the main guest is Stay.guest). All fields optional."""
 

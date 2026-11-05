@@ -254,6 +254,15 @@ class ShortenForm(forms.Form):
 class PaymentForm(forms.Form):
     amount = forms.DecimalField(min_value=1, max_digits=10, decimal_places=2, widget=forms.NumberInput(attrs={"inputmode": "decimal"}))
     mode = forms.ChoiceField(choices=[("", "—")] + list(Stay.PaymentMode.choices), required=False)
+    collected_by = forms.CharField(max_length=40, required=False)
+    date = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}))
+    note = forms.CharField(max_length=200, required=False)
+
+    def clean_date(self):
+        d = self.cleaned_data["date"]
+        if d and d > today():
+            raise forms.ValidationError("A payment can’t be in the future.")
+        return d
 
 
 class RoomTypeForm(forms.ModelForm):

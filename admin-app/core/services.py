@@ -6,9 +6,10 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
+from django.db.models import Sum
 from django.utils import timezone
 
-from .models import AppSetting, AuditLog, Room, Stay
+from .models import AppSetting, AuditLog, Payment, Room, Stay
 
 HOSTS_KEY = "hosts"
 DEFAULT_HOSTS = "Shekhar, Mounika, Satish"
@@ -83,8 +84,23 @@ def save_stay(stay: Stay, *, action: str, summary: str) -> Stay:
                 stay.save()
         except IntegrityError as exc:  # Postgres exclusion constraint caught a race
             raise StayConflict([]) from exc
+        _record_paid_change(stay, action)
         AuditLog.record(action, summary, stay)
     return stay
+
+
+def _record_paid_change(stay: Stay, action: str) -> None:
+    """Keep the payment history in step with stay.amount_paid: a change becomes a dated payment entry.
+    add_payment passes the details (date, mode, who collected it) through stay._payment."""
+    recorded = stay.payments.aggregate(s=Sum("amount"))["s"] or Decimal(0)
+    diff = (stay.amount_paid or Decimal(0)) - recorded
+    info = getattr(stay, "_payment", None) or {}
+    stay._payment = None
+    if diff:
+        default_note = {"create": "", "payment": "", "update": "Changed on the stay form"}.get(action, action.replace("_", " "))
+        Payment.objects.create(stay=stay, amount=diff, date=info.get("date") or today(),
+                               mode=info.get("mode", stay.payment_mode), collected_by=info.get("collected_by", stay.host),
+                               note=info.get("note", default_note))
 
 
 # ── Extension ────────────────────────────────────────────────
@@ -396,14 +412,27 @@ def add_month_rent(stay: Stay) -> Stay:
     return save_stay(stay, action="rent", summary=f"Added a month’s rent ₹{stay.monthly_rent:,.0f} to the total")
 
 
-def add_payment(stay: Stay, amount: Decimal, mode: str) -> Stay:
+def add_payment(stay: Stay, amount: Decimal, mode: str, collected_by: str = "", day: date | None = None,
+                note: str = "") -> Stay:
     if amount <= 0:
         raise ValueError("Payment must be more than zero.")
     stay.amount_paid = (stay.amount_paid or Decimal(0)) + amount
     if mode:
         stay.payment_mode = mode
+    stay._payment = {"mode": mode, "collected_by": collected_by, "date": day or today(), "note": note}
     label = dict(Stay.PaymentMode.choices).get(mode, "")
-    return save_stay(stay, action="payment", summary=f"Payment received ₹{amount:,.2f}{f' ({label})' if label else ''}")
+    by = f", collected by {collected_by}" if collected_by else ""
+    return save_stay(stay, action="payment", summary=f"Payment received ₹{amount:,.2f}{f' ({label})' if label else ''}{by}")
+
+
+def delete_payment(payment: Payment) -> Stay:
+    """Remove a payment entered by mistake; the stay's paid amount goes down with it."""
+    stay = payment.stay
+    with transaction.atomic():
+        payment.delete()
+        stay.amount_paid = stay.payments.aggregate(s=Sum("amount"))["s"] or Decimal(0)
+        return save_stay(stay, action="payment",
+                         summary=f"Deleted payment of ₹{payment.amount:,.0f} from {payment.date:%d-%m-%Y}")
 
 
 def cancel(stay: Stay) -> Stay:

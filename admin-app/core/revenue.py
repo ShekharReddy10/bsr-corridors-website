@@ -26,7 +26,7 @@ from decimal import Decimal
 
 from django.db.models import Q
 
-from .models import Expense, Room, Settlement, Stay
+from .models import Expense, Payment, Room, Settlement, Stay
 from .services import today
 
 ZERO = Decimal(0)
@@ -459,3 +459,21 @@ def rooms_for_month(r: Report, month: date) -> list[dict]:
     for x in rows.values():
         x["due"].sort(key=lambda d: d["day"])
     return sorted(rows.values(), key=lambda x: (x["room"].sort_order, x["room"].floor, x["room"].number))
+
+
+def collected(start: date | None = None, end: date | None = None) -> dict:
+    """Money actually collected, by payment date (cash flow — not the "received" rule above): total, per mode and per
+    person who collected it. Payments on cancelled / transferred stays are left out (treated as refunded)."""
+    pays = Payment.objects.exclude(stay__status__in=Stay.VOID_STATUSES)
+    if start:
+        pays = pays.filter(date__gte=start)
+    if end:
+        pays = pays.filter(date__lt=end)
+    modes = dict(Stay.PaymentMode.choices)
+    by_mode, by_person, total = defaultdict(Decimal), defaultdict(Decimal), ZERO
+    for mode, person, amount in pays.values_list("mode", "collected_by", "amount"):
+        by_mode[modes.get(mode, "Not given")] += amount
+        by_person[person or "Not given"] += amount
+        total += amount
+    order = lambda d: sorted(d.items(), key=lambda kv: -kv[1])  # noqa: E731
+    return {"total": total, "by_mode": order(by_mode), "by_person": order(by_person)}

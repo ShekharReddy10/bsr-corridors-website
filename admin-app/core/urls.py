@@ -33,6 +33,7 @@ urlpatterns = [
     path("stays/<int:pk>/extend/", stays.extend, name="stay_extend"),
     path("stays/<int:pk>/reveal-id/", stays.reveal_id, name="stay_reveal_id"),
     path("stays/<int:pk>/whatsapp/", whatsapp.send, name="stay_whatsapp"),
+    path("stays/<int:pk>/payments/<int:payment_pk>/delete/", stays.payment_delete, name="payment_delete"),
     path("stays/<int:pk>/<slug:action>/", stays.stay_action, name="stay_action"),
     path("guests/", guests.guest_list, name="guest_list"),
     path("guests/<int:pk>/", guests.guest_detail, name="guest_detail"),

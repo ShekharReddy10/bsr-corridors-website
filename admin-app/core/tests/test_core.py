@@ -252,7 +252,7 @@ class ExportTests(TestCase):
         values = [c.value for row in wb["Stays"].iter_rows() for c in row]
         self.assertIn("••••1234", values)
         self.assertNotIn("123412341234", values)
-        self.assertEqual(wb.sheetnames, ["Stays", "Guests", "Rooms", "Expenses", "Monthly summary"])
+        self.assertEqual(wb.sheetnames, ["Stays", "Guests", "Rooms", "Expenses", "Payments", "Monthly summary"])
 
 
 class ViewTests(TestCase):
@@ -1041,3 +1041,44 @@ class TypoCheckTests(TestCase):
         Expense.objects.create(date=T, category="laundry", reason="Laundry", amount=Decimal(900))
         self.assertEqual([f.key for f in checks.expense_flags(T)], [f"e{big.pk}-8000.00-laundry"])
         self.assertEqual(checks.check_expense(big)[0][:7], "₹8,000 ")
+
+
+class PaymentHistoryTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        _, _, self.rooms = make_rooms()
+        self.client.force_login(get_user_model().objects.create_user("pay-admin", password="test-pass-123456"))
+
+    def test_every_way_of_paying_leaves_a_dated_entry(self):
+        from core import revenue
+        from core.models import Payment
+        s = stay(make_guest(), self.rooms["101"], 0, 2, amount_paid=Decimal(1000), payment_mode="upi", host="Satish")
+        self.assertEqual([(p.amount, p.mode, p.collected_by) for p in s.payments.all()], [(Decimal(1000), "upi", "Satish")])
+        # Record payment (with who collected it and the day it was paid).
+        self.client.post(f"/stays/{s.pk}/payment/", {"amount": "1500", "mode": "cash", "collected_by": "Shekhar",
+                                                      "date": (T - timedelta(days=1)).isoformat()})
+        # Extension with money paid; stay form edit lowering the paid amount (a correction).
+        services.extend_in_place(Stay.objects.get(pk=s.pk), T + timedelta(days=3), Decimal(1500), Decimal(500), "upi")
+        s = Stay.objects.get(pk=s.pk)
+        s.amount_paid = Decimal(2800)
+        services.save_stay(s, action="update", summary="test")
+        rows = [(p.amount, p.date, p.collected_by, p.note) for p in Payment.objects.filter(stay=s)]
+        self.assertEqual(rows[0], (Decimal(1500), T - timedelta(days=1), "Shekhar", ""))
+        self.assertEqual([r[0] for r in rows], [Decimal(1500), Decimal(1000), Decimal(500), Decimal(-200)])
+        self.assertEqual(sum(r[0] for r in rows), Decimal(2800))
+        self.assertEqual(rows[-1][3], "Changed on the stay form")
+
+        c = revenue.collected()
+        self.assertEqual(c["total"], Decimal(2800))
+        self.assertEqual(dict(c["by_person"])["Shekhar"], Decimal(1500))
+        self.assertEqual(dict(c["by_mode"])["Cash"], Decimal(1500))
+
+        # Delete a payment entered by mistake: the paid amount follows.
+        p = Payment.objects.get(stay=s, amount=1500)
+        self.client.post(f"/stays/{s.pk}/payments/{p.pk}/delete/")
+        s.refresh_from_db()
+        self.assertEqual(s.amount_paid, Decimal(1300))
+        self.assertContains(self.client.get(f"/stays/{s.pk}/"), "Payments")
+        # Cancelled stays' payments don't count as collected (treated as refunded).
+        services.cancel(s)
+        self.assertEqual(revenue.collected()["total"], 0)

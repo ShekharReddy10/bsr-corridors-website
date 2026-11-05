@@ -1,0 +1,10 @@
+{% load bsr %}<details class="collected"{% if open %} open{% endif %}>
+  <summary><b>Money collected{% if month %} in {{ month|date:"F" }}{% endif %}</b> <span class="muted small">— by payment date: {{ collected.total|inr }}</span></summary>
+  {% if collected.total %}
+  <div class="grid-2 collected-grid">
+    <ul class="money-split">{% for name, amount in collected.by_mode %}<li><span>{{ name }}</span><b>{{ amount|inr }}</b></li>{% endfor %}</ul>
+    <ul class="money-split">{% for name, amount in collected.by_person %}<li><span>Collected by {{ name }}</span><b>{{ amount|inr }}</b></li>{% endfor %}</ul>
+  </div>
+  <p class="muted small">Every payment entered, on the day it was paid (advances included) — use it to match cash in hand and your UPI / bank statement.</p>
+  {% else %}<p class="muted">No payments entered{% if month %} in {{ month|date:"F" }}{% endif %}.</p>{% endif %}
+</details>

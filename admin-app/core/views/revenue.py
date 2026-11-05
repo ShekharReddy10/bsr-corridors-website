@@ -126,6 +126,7 @@ def revenue_page(request, year=None, month_no=None):
         "is_current": month == this_month,
         "past_months": months[1:],
         "rooms": rooms,
+        "collected": revenue.collected(month, revenue._add_months(month, 1)),
         "rooms_due": rooms_due,
         "expected": b.received + rooms_due,
         "rent_due": revenue.rent_not_added(r.t),
@@ -150,6 +151,7 @@ def revenue_overall(request):
     return render(request, "core/revenue_overall.html", {
         "r": r,
         "by_category": by_category,
+        "collected": revenue.collected(),
         "month_links": _month_links(r, None),
     })
 

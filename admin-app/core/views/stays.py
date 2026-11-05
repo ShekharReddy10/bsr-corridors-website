@@ -14,7 +14,7 @@ from django.views.decorators.http import require_POST
 from .. import checks, services
 from ..fields import mask
 from ..forms import ExtendForm, GuestForm, PaymentForm, ShortenForm, StayForm, other_guests_formset
-from ..models import AuditLog, Guest, MessageTemplate, Room, Stay
+from ..models import AuditLog, Guest, MessageTemplate, Payment, Room, Stay
 
 
 def stay_list(request):
@@ -188,6 +188,8 @@ def stay_detail(request, pk):
         "chain_balance": sum(s.balance for s in chain),
         "logs": AuditLog.objects.filter(stay__in=chain).order_by("-at")[:50],
         "payment_form": PaymentForm(),
+        "payments": list(stay.payments.all()),
+        "hosts": services.host_names(),
         "shorten_form": ShortenForm(initial={"new_check_out": services.today()}),
         "today": services.today(),
         "wa_templates": MessageTemplate.objects.all(),
@@ -247,8 +249,9 @@ def stay_action(request, pk, action):
             if not form.is_valid():
                 messages.error(request, "Enter a valid payment amount.")
             else:
-                services.add_payment(stay, form.cleaned_data["amount"], form.cleaned_data["mode"])
-                messages.success(request, f"Payment of ₹{form.cleaned_data['amount']:,.0f} recorded.")
+                c = form.cleaned_data
+                services.add_payment(stay, c["amount"], c["mode"], c["collected_by"], c["date"], c["note"])
+                messages.success(request, f"Payment of ₹{c['amount']:,.0f} recorded.")
         elif action == "shorten":
             form = ShortenForm(request.POST)
             if form.is_valid():
@@ -333,3 +336,11 @@ def extend(request, pk):
         form = ExtendForm(stay=stay)
     quick = [(n, stay.check_out + timedelta(days=n)) for n in (1, 2, 7)]
     return render(request, "core/extend.html", {"stay": stay, "form": form, "plan": plan, "quick": quick})
+
+
+@require_POST
+def payment_delete(request, pk, payment_pk):
+    payment = get_object_or_404(Payment.objects.select_related("stay"), pk=payment_pk, stay_id=pk)
+    services.delete_payment(payment)
+    messages.success(request, f"Payment of ₹{payment.amount:,.0f} from {payment.date:%d-%m-%Y} deleted.")
+    return redirect("stay_detail", pk=pk)

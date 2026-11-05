@@ -30,6 +30,7 @@
     <li class="{% if mb.left > 0 and not is_current %}warn{% endif %}"><span>Left to settle</span><b>{% if mb.left == 0 and mb.settled %}✓ Done{% else %}{{ mb.left|inr }}{% endif %}</b></li>
   </ul>
 
+  {% include "partials/collected.html" %}
   <details class="month-items"{% if mb.items|length <= 8 %} open{% endif %}>
     <summary><b>Received in {{ month|date:"F" }}</b> <span class="muted small">({{ mb.items|length }} payment{{ mb.items|length|pluralize }})</span></summary>
     {% for x in mb.items %}

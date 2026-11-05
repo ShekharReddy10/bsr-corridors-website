@@ -95,8 +95,21 @@
       <input name="amount" type="number" min="1" step="1" inputmode="decimal" placeholder="Amount ₹" required aria-label="Payment amount"
              {% if stay.balance > 0 %}value="{{ stay.balance|floatformat:0 }}"{% endif %}>
       <select name="mode" aria-label="Payment mode">{% for v, l in payment_form.fields.mode.choices %}<option value="{{ v }}" {% if v == stay.payment_mode %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      <select name="collected_by" aria-label="Collected by"><option value="">Collected by —</option>{% for h in hosts %}<option value="{{ h }}"{% if h == stay.host %} selected{% endif %}>{{ h }}</option>{% endfor %}</select>
+      <input name="date" type="date" value="{{ today|date:'Y-m-d' }}" max="{{ today|date:'Y-m-d' }}" aria-label="Payment date">
       <button class="btn btn-primary btn-sm">Record payment</button>
     </form>
+    {% endif %}
+    {% if payments %}
+    <details class="payments"{% if payments|length <= 5 %} open{% endif %}>
+      <summary><b>Payments</b> <span class="muted small">({{ payments|length }})</span></summary>
+      {% for p in payments %}
+      <div class="payment-line">
+        <span><b>{{ p.amount|inr }}</b> <small class="muted">{{ p.date|date:"d-m-Y" }}{% if p.mode %} · {{ p.get_mode_display }}{% endif %}{% if p.collected_by %} · by {{ p.collected_by }}{% endif %}{% if p.note %} · {{ p.note }}{% endif %}</small></span>
+        <form method="post" action="{% url 'payment_delete' stay.pk p.pk %}" class="inline-form" data-confirm="Delete this payment of {{ p.amount|inr }}? The paid amount goes down with it.">{% csrf_token %}<button class="btn btn-ghost btn-sm">Delete</button></form>
+      </div>
+      {% endfor %}
+    </details>
     {% endif %}
   </section>
 </div>
