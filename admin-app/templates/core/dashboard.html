@@ -47,6 +47,16 @@
     {% for s in missed %}<a href="{% url 'stay_detail' s.pk %}">{{ s.guest.name }} ({{ s.room.number }}, {{ s.check_in|date:"d-m" }} → {{ s.check_out|date:"d-m" }}{% if s.amount_paid %}, paid {{ s.amount_paid|inr }}{% endif %})</a>{% if not forloop.last %}, {% endif %}{% endfor %}
   </div>
 {% endif %}
+{% if upkeep %}
+  <div class="alert">
+    <b>Room upkeep:</b>
+    {% for e in upkeep %}
+    <div class="payment-line"><span><a href="{% url 'room_log' e.room_id %}">Room {{ e.room.number }}</a> · {{ e.what }}
+      <small class="muted">{% if e.kind == "problem" %}problem reported {{ e.date|date:"d-m" }}{% else %}service due {{ e.next_due|date:"d-m-Y" }}{% if e.next_due < today %} — <span class="warn">overdue</span>{% endif %}{% endif %}</small></span>
+      <form method="post" action="{% url 'maintenance_done' e.pk %}" class="inline-form">{% csrf_token %}<input type="hidden" name="next" value="/"><button class="btn btn-outline btn-sm">{% if e.kind == "problem" %}Mark fixed{% else %}Done{% endif %}</button></form></div>
+    {% endfor %}
+  </div>
+{% endif %}
 {% if last_backup and not last_backup.ok %}
   <div class="alert alert-error"><b>Last backup failed</b> ({{ last_backup.started_at|date:"d-m H:i" }}): {{ last_backup.message|truncatechars:160 }} — <a href="{% url 'backups' %}">see backups</a></div>
 {% endif %}

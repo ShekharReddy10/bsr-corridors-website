@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from django import forms
 
-from .models import Expense, Guest, MessageTemplate, RecurringExpense, Room, RoomType, Settlement, Stay, StayGuest
+from .models import Expense, Guest, MaintenanceLog, MessageTemplate, RecurringExpense, Room, RoomType, Settlement, Stay, StayGuest
 from .services import host_names, today
 
 DATE = forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")
@@ -316,6 +316,16 @@ class ExpenseForm(forms.ModelForm):
         if amount <= 0:
             raise forms.ValidationError("Amount must be more than zero.")
         return amount
+
+
+class MaintenanceLogForm(forms.ModelForm):
+    add_expense = forms.BooleanField(label="Also add the cost to Expenses", required=False, initial=True)
+
+    class Meta:
+        model = MaintenanceLog
+        fields = ["kind", "date", "what", "cost", "next_due", "notes"]
+        widgets = {"date": DATE, "next_due": DATE, "notes": forms.Textarea(attrs={"rows": 2}),
+                   "cost": forms.NumberInput(attrs={"inputmode": "decimal", "min": "0", "step": "1"})}
 
 
 class RecurringExpenseForm(forms.ModelForm):

@@ -325,6 +325,32 @@ class Expense(models.Model):
         return f"{self.date:%d-%m-%Y} · {self.get_category_display()} · ₹{self.amount:,.0f}"
 
 
+class MaintenanceLog(models.Model):
+    """Room upkeep: services (e.g. AC service, with the next one due), repairs, and problems reported until fixed."""
+
+    class Kind(models.TextChoices):
+        SERVICE = "service", "Service / check"
+        REPAIR = "repair", "Repair"
+        PROBLEM = "problem", "Problem reported"
+
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="maintenance")
+    date = models.DateField(default=timezone.localdate, db_index=True)
+    kind = models.CharField(max_length=20, choices=Kind.choices, default=Kind.SERVICE)
+    what = models.CharField("What", max_length=200, help_text="e.g. AC service, geyser not heating, tap leaking")
+    cost = models.DecimalField("Cost (₹)", max_digits=10, decimal_places=2, null=True, blank=True)
+    next_due = models.DateField("Next service due", null=True, blank=True, help_text="A reminder shows on the Today page")
+    done = models.BooleanField("Fixed / reminder done", default=False)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "maintenance_log"
+        ordering = ["-date", "-pk"]
+
+    def __str__(self):
+        return f"{self.room} · {self.date:%d-%m-%Y} · {self.what}"
+
+
 class RecurringExpense(models.Model):
     """A fixed monthly cost (building rent, salary, internet …): added to Expenses automatically each month on its day."""
 

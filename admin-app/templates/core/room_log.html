@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}Room {{ room.number }} · upkeep{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Room {{ room.number }} · upkeep</h1><p class="muted">{{ room.room_type.name }}</p></div><a class="btn btn-ghost" href="{% url 'rooms' %}">Back</a></div>
+
+<form method="post" class="card" novalidate>{% csrf_token %}
+  <h2>Add to the log</h2>
+  <div class="form-grid">
+    {% field form.kind %}
+    {% field form.date %}
+    {% field form.what "span-2" %}
+    {% field form.cost %}
+    {% field form.next_due %}
+    {% field form.add_expense %}
+    {% field form.notes "span-2" %}
+  </div>
+  <p class="muted small">Service: set “Next service due” (e.g. AC every 3 months) to get a reminder on the Today page. Problem: stays on the Today page until marked fixed.</p>
+  <div class="form-actions"><button class="btn btn-primary">Save</button></div>
+</form>
+
+<section class="card">
+  <h2>History <span class="count">{{ entries|length }}</span></h2>
+  {% for e in entries %}
+  <div class="payment-line">
+    <span><b>{{ e.what }}</b> <small class="muted">{{ e.date|date:"d-m-Y" }} · {{ e.get_kind_display }}{% if e.cost %} · {{ e.cost|inr }}{% endif %}{% if e.next_due %} · next due {{ e.next_due|date:"d-m-Y" }}{% endif %}{% if e.kind == "problem" and not e.done %} · <span class="warn">open</span>{% endif %}</small>{% if e.notes %}<br><small class="muted">{{ e.notes }}</small>{% endif %}</span>
+    <span class="inline-form">
+      {% if not e.done and e.kind != "repair" %}<form method="post" action="{% url 'maintenance_done' e.pk %}" class="inline-form">{% csrf_token %}<button class="btn btn-outline btn-sm">{% if e.kind == "problem" %}Mark fixed{% else %}Done{% endif %}</button></form>{% endif %}
+      <form method="post" action="{% url 'maintenance_delete' e.pk %}" class="inline-form" data-confirm="Delete this entry?">{% csrf_token %}<button class="btn btn-ghost btn-sm">Delete</button></form>
+    </span>
+  </div>
+  {% empty %}<p class="muted">Nothing logged yet.</p>{% endfor %}
+</section>
+{% endblock %}

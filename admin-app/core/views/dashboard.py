@@ -7,7 +7,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .. import checks, revenue
-from ..models import AuditLog, BackupRun, Room, Stay
+from ..models import AuditLog, BackupRun, MaintenanceLog, Room, Stay
 from .. import services
 from ..services import today
 
@@ -66,6 +66,9 @@ def dashboard(request):
         # without a check-in (their advance sits in "yet to receive" until they're checked in or cancelled).
         "rent_due": revenue.rent_not_added(t),
         "flags": checks.stay_flags(t),
+        "upkeep": list(MaintenanceLog.objects.filter(done=False).filter(
+            Q(kind=MaintenanceLog.Kind.PROBLEM) | Q(next_due__lte=t + timedelta(days=7))).select_related("room")
+            .order_by("next_due", "date")),
         "missed": list(upcoming.filter(check_out__lte=t).order_by("check_in")),
         "last_backup": BackupRun.objects.filter(kind=BackupRun.Kind.BACKUP).first(),
     }

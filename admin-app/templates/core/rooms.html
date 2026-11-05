@@ -34,7 +34,7 @@
         <td data-label="Type">{{ r.room_type.name }}</td>
         <td data-label="Status">{% if r.status == 'maintenance' %}<span class="warn">Maintenance</span>{% else %}Active{% endif %}</td>
         <td data-label="Stays">{{ r.stay_count }}</td>
-        <td><a class="btn btn-ghost btn-sm" href="{% url 'room_edit' r.pk %}">Edit</a> <a class="btn btn-ghost btn-sm" href="{% url 'room_month' r.pk %}">Calendar</a></td>
+        <td><a class="btn btn-ghost btn-sm" href="{% url 'room_edit' r.pk %}">Edit</a> <a class="btn btn-ghost btn-sm" href="{% url 'room_month' r.pk %}">Calendar</a> <a class="btn btn-ghost btn-sm" href="{% url 'room_log' r.pk %}">Upkeep</a></td>
       </tr>{% endfor %}
     </tbody>
   </table></div>

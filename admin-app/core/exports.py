@@ -10,7 +10,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from . import revenue
-from .models import AuditLog, Expense, Guest, MessageTemplate, Payment, RecurringExpense, Room, RoomType, Settlement, Stay, StayGuest
+from .models import AuditLog, Expense, Guest, MaintenanceLog, MessageTemplate, Payment, RecurringExpense, Room, RoomType, Settlement, Stay, StayGuest
 
 HEADER_FILL = PatternFill("solid", fgColor="1F2A30")
 HEADER_FONT = Font(bold=True, color="FFFFFF")
@@ -138,7 +138,7 @@ def build_workbook(start: date | None = None, end: date | None = None, full_ids:
     return buf.getvalue()
 
 
-BACKUP_MODELS = [RoomType, Room, Guest, Stay, StayGuest, Payment, RecurringExpense, Expense, Settlement, MessageTemplate, AuditLog]
+BACKUP_MODELS = [RoomType, Room, Guest, Stay, StayGuest, Payment, RecurringExpense, Expense, MaintenanceLog, Settlement, MessageTemplate, AuditLog]
 
 
 def backup_json() -> bytes:

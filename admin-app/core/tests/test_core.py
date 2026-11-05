@@ -1220,3 +1220,31 @@ class MonthlyReportTests(TestCase):
         self.assertContains(self.client.get(f"/revenue/{last:%Y-%m}/"), "report in Google Drive")
         r = self.client.get(f"/revenue/{last:%Y-%m}/share/")
         self.assertIn("https%3A//docs.google.com/x", r["Location"])
+
+
+class MaintenanceTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        _, _, self.rooms = make_rooms()
+        self.client.force_login(get_user_model().objects.create_user("mnt-admin", password="test-pass-123456"))
+
+    def test_service_due_problem_open_and_cost_to_expenses(self):
+        from core.models import MaintenanceLog
+        room = self.rooms["101"]
+        self.client.post(f"/rooms/room/{room.pk}/log/", {"kind": "service", "date": (T - timedelta(days=90)).isoformat(),
+                                                         "what": "AC service", "cost": "800", "add_expense": "on",
+                                                         "next_due": (T + timedelta(days=3)).isoformat()})
+        self.client.post(f"/rooms/room/{room.pk}/log/", {"kind": "problem", "date": T.isoformat(), "what": "Geyser not heating"})
+        self.assertEqual(Expense.objects.get().amount, Decimal(800))  # cost added to Expenses
+        page = self.client.get("/").content.decode()
+        self.assertIn("Room upkeep", page)
+        self.assertIn("AC service", page)
+        self.assertIn("Geyser not heating", page)
+        problem = MaintenanceLog.objects.get(kind="problem")
+        self.client.post(f"/rooms/log/{problem.pk}/done/", {"next": "/"})
+        # A new service replaces the old "next due" reminder.
+        self.client.post(f"/rooms/room/{room.pk}/log/", {"kind": "service", "date": T.isoformat(), "what": "AC service",
+                                                         "next_due": (T + timedelta(days=90)).isoformat()})
+        page = self.client.get("/").content.decode()
+        self.assertNotIn("Room upkeep", page)
+        self.assertContains(self.client.get(f"/rooms/room/{room.pk}/log/"), "Geyser not heating")
