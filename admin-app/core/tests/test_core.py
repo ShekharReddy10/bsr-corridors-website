@@ -1100,3 +1100,35 @@ class PaymentHistoryTests(TestCase):
         # Cancelled stays' payments don't count as collected (treated as refunded).
         services.cancel(s)
         self.assertEqual(revenue.collected()["total"], 0)
+
+
+class RecurringExpenseTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.client.force_login(get_user_model().objects.create_user("rec-admin", password="test-pass-123456"))
+        self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
+
+    def test_added_once_a_month_on_its_day(self):
+        from core.models import RecurringExpense
+        self.client.post("/expenses/monthly/new/", {"reason": "Building rent", "category": "rent", "amount": "40000",
+                                                     "day": "1", "payment_mode": "bank", "is_active": "on"})
+        r = RecurringExpense.objects.get()
+        self.assertEqual(Expense.objects.filter(recurring=r).count(), 1)  # day 1 has come: added for this month
+        self.client.get("/expenses/")
+        services.add_recurring_expenses()
+        self.assertEqual(Expense.objects.filter(recurring=r).count(), 1)  # never twice in a month
+        e = Expense.objects.get(recurring=r)
+        self.assertEqual((e.date, e.amount, e.category), (T.replace(day=1), Decimal(40000), "rent"))
+        # Next month, on its day.
+        nxt = (T.replace(day=28) + timedelta(days=5)).replace(day=1)
+        self.assertEqual(len(services.add_recurring_expenses(nxt)), 1)
+        # A later day doesn't come before its day; stopped ones aren't added.
+        late = RecurringExpense.objects.create(reason="Internet", category="internet", amount=Decimal(999), day=28)
+        self.assertEqual(services.add_recurring_expenses(nxt.replace(day=27)), [])
+        late.is_active = False
+        late.save()
+        self.assertEqual(services.add_recurring_expenses(nxt.replace(day=28)), [])
+        self.assertContains(self.client.get("/expenses/"), "Monthly fixed expenses")
+        self.assertContains(self.client.post("/expenses/monthly/new/", {"reason": "X", "category": "other",
+                                                                        "amount": "10", "day": "31", "payment_mode": "cash"}),
+                            "1 to 28")

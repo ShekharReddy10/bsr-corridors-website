@@ -309,6 +309,8 @@ class Expense(models.Model):
     room = models.ForeignKey(Room, null=True, blank=True, on_delete=models.SET_NULL, related_name="expenses",
                              help_text="Only if the expense is for one room")
     notes = models.TextField(blank=True)
+    recurring = models.ForeignKey("RecurringExpense", null=True, blank=True, on_delete=models.SET_NULL,
+                                  related_name="expenses", editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -319,6 +321,31 @@ class Expense(models.Model):
 
     def __str__(self):
         return f"{self.date:%d-%m-%Y} · {self.get_category_display()} · ₹{self.amount:,.0f}"
+
+
+class RecurringExpense(models.Model):
+    """A fixed monthly cost (building rent, salary, internet …): added to Expenses automatically each month on its day."""
+
+    category = models.CharField(max_length=20, choices=Expense.Category.choices, default=Expense.Category.OTHER)
+    reason = models.CharField("Reason / description", max_length=200, help_text="e.g. Building rent")
+    amount = models.DecimalField("Amount (₹)", max_digits=10, decimal_places=2)
+    day = models.PositiveSmallIntegerField("Day of the month", default=1, help_text="1–28: the expense is added on this day")
+    payment_mode = models.CharField(max_length=20, choices=Stay.PaymentMode.choices, default=Stay.PaymentMode.BANK)
+    paid_to = models.CharField("Paid to", max_length=120, blank=True)
+    room = models.ForeignKey(Room, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    is_active = models.BooleanField("Active", default=True, help_text="Untick to stop adding it")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "recurring_expenses"
+        ordering = ["day", "reason"]
+        constraints = [
+            models.CheckConstraint(condition=Q(amount__gt=0), name="recurring_amount_positive"),
+            models.CheckConstraint(condition=Q(day__gte=1, day__lte=28), name="recurring_day_1_28"),
+        ]
+
+    def __str__(self):
+        return f"{self.reason} · ₹{self.amount:,.0f} on day {self.day}"
 
 
 class Settlement(models.Model):

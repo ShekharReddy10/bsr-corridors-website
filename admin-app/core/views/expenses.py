@@ -7,15 +7,17 @@ from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from .. import checks, revenue
-from ..forms import ExpenseForm
-from ..models import AuditLog, Expense
+from .. import checks, revenue, services
+from ..forms import ExpenseForm, RecurringExpenseForm
+from ..models import AuditLog, Expense, RecurringExpense
 from ..services import today
 from .revenue import revenue_unlocked
 
 
 @revenue_unlocked
 def expense_list(request):
+    for e in services.add_recurring_expenses():
+        messages.info(request, f"Added this month’s fixed expense: {e.reason} ₹{e.amount:,.0f}.")
     # One month at a time (?month=2026-10, default this month), or ?period=all / week / year.
     this_month = today().replace(day=1)
     periods = {p.key: p for p in revenue.periods(today())}
@@ -57,6 +59,7 @@ def expense_list(request):
         "page": page, "total": total, "by_category": by_category, "by_mode": by_mode,
         "month_links": months, "period": period, "category": category, "q": q,
         "flags": checks.expense_flags(today()),
+        "recurring": RecurringExpense.objects.all(),
         "categories": Expense.Category.choices,
     })
 
@@ -85,3 +88,30 @@ def expense_delete(request, pk):
     obj.delete()
     messages.success(request, "Expense deleted.")
     return redirect("expense_list")
+
+
+@revenue_unlocked
+def recurring_form(request, pk=None):
+    obj = get_object_or_404(RecurringExpense, pk=pk) if pk else None
+    form = RecurringExpenseForm(request.POST or None, instance=obj)
+    if request.method == "POST" and form.is_valid():
+        saved = form.save()
+        AuditLog.record("expense", f"{'Updated' if obj else 'Added'} monthly fixed expense: {saved}")
+        messages.success(request, f"Monthly expense “{saved.reason}” saved — it is added on day {saved.day} of each month.")
+        for e in services.add_recurring_expenses():
+            messages.info(request, f"Added this month’s: {e.reason} ₹{e.amount:,.0f}.")
+        return redirect("/expenses/#recurring")
+    return render(request, "core/simple_form.html", {
+        "form": form, "title": f"{'Edit' if obj else 'Add'} monthly fixed expense", "back": "expense_list",
+        "delete_url": f"/expenses/monthly/{obj.pk}/delete/" if obj else "",
+    })
+
+
+@revenue_unlocked
+@require_POST
+def recurring_delete(request, pk):
+    obj = get_object_or_404(RecurringExpense, pk=pk)
+    AuditLog.record("expense", f"Deleted monthly fixed expense: {obj} (expenses already added are kept)")
+    obj.delete()
+    messages.success(request, "Monthly expense removed. Expenses already added are kept.")
+    return redirect("/expenses/#recurring")

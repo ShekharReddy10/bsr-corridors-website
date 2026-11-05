@@ -8,11 +8,13 @@ from django.views.decorators.http import require_POST
 
 from .. import checks, revenue
 from ..models import AuditLog, BackupRun, Room, Stay
+from .. import services
 from ..services import today
 
 
 def dashboard(request):
     t = today()
+    services.add_recurring_expenses(t)  # monthly fixed expenses, on their day
     live = Stay.objects.live().select_related("guest", "room", "room__room_type")
     in_house = live.filter(status=Stay.Status.CHECKED_IN).order_by("check_out", "room__number")
     tomorrow = t + timedelta(days=1)

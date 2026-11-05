@@ -9,7 +9,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from .. import gdrive
+from .. import gdrive, services
 from ..exports import build_workbook
 from ..forms import DateRangeForm
 from ..models import AppSetting, AuditLog, BackupRun, Guest, Stay
@@ -57,6 +57,7 @@ def backup_hook(request):
     token = request.headers.get("X-Backup-Token", "")
     if not settings.BACKUP_TOKEN or not hmac.compare_digest(token, settings.BACKUP_TOKEN):
         return HttpResponseForbidden("bad token")
+    services.add_recurring_expenses()
     run = gdrive.run_backup()
     return JsonResponse({"ok": run.ok, "message": run.message}, status=200 if run.ok else 500)
 

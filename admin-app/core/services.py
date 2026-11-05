@@ -463,3 +463,26 @@ def transfer_out(stay: Stay, hotel: str, reason: str = "") -> Stay:
         stay.status = Stay.Status.TRANSFERRED
         summary = f"Transferred to {hotel}{why} — {stay.room} is free again"
     return save_stay(stay, action="transfer", summary=summary)
+
+
+# ── Monthly fixed expenses ───────────────────────────────────
+
+
+def add_recurring_expenses(t: date | None = None) -> list:
+    """Add this month's fixed expenses whose day has come and that aren't added yet (safe to call any time:
+    the Today and Expenses pages and the nightly backup call it)."""
+    from .models import Expense, RecurringExpense
+
+    t = t or today()
+    month = t.replace(day=1)
+    added = []
+    for r in RecurringExpense.objects.filter(is_active=True, day__lte=t.day):
+        if Expense.objects.filter(recurring=r, date__gte=month).exists():
+            continue
+        e = Expense.objects.create(
+            date=month.replace(day=r.day), category=r.category, reason=r.reason, amount=r.amount,
+            payment_mode=r.payment_mode, paid_to=r.paid_to, room=r.room, recurring=r,
+            notes="Added automatically (monthly fixed expense)")
+        AuditLog.record("expense", f"Added monthly fixed expense: {e} — {e.reason}")
+        added.append(e)
+    return added

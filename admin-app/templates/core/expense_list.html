@@ -69,4 +69,15 @@
 {% else %}
 <div class="card empty"><p>No expenses found.</p><a class="btn btn-primary" href="{% url 'expense_new' %}">+ Add expense</a></div>
 {% endif %}
+
+<section class="card" id="recurring">
+  <div class="card-head"><h2>Monthly fixed expenses</h2><a class="btn btn-outline btn-sm" href="{% url 'recurring_new' %}">+ Add</a></div>
+  <p class="muted small">Building rent, salaries, internet … — added to the list above automatically on their day each month.</p>
+  {% for r in recurring %}
+  <div class="payment-line">
+    <span><b>{{ r.reason }}</b> <small class="muted">{{ r.get_category_display }} · day {{ r.day }}{% if not r.is_active %} · <span class="warn">stopped</span>{% endif %}</small></span>
+    <span><b>{{ r.amount|inr }}</b> <a class="btn btn-ghost btn-sm" href="{% url 'recurring_edit' r.pk %}">Edit</a></span>
+  </div>
+  {% empty %}<p class="muted">None yet.</p>{% endfor %}
+</section>
 {% endblock %}

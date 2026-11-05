@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from django import forms
 
-from .models import Expense, Guest, MessageTemplate, Room, RoomType, Settlement, Stay, StayGuest
+from .models import Expense, Guest, MessageTemplate, RecurringExpense, Room, RoomType, Settlement, Stay, StayGuest
 from .services import host_names, today
 
 DATE = forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")
@@ -310,6 +310,33 @@ class ExpenseForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["room"].queryset = Room.objects.filter(is_active=True)
         self.fields["room"].empty_label = "— Not for one room —"
+
+    def clean_amount(self):
+        amount = self.cleaned_data["amount"]
+        if amount <= 0:
+            raise forms.ValidationError("Amount must be more than zero.")
+        return amount
+
+
+class RecurringExpenseForm(forms.ModelForm):
+    class Meta:
+        model = RecurringExpense
+        fields = ["reason", "category", "amount", "day", "payment_mode", "paid_to", "room", "is_active"]
+        widgets = {
+            "amount": forms.NumberInput(attrs={"inputmode": "decimal", "min": "1", "step": "1"}),
+            "day": forms.NumberInput(attrs={"min": "1", "max": "28"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["room"].queryset = Room.objects.filter(is_active=True)
+        self.fields["room"].empty_label = "— Not for one room —"
+
+    def clean_day(self):
+        day = self.cleaned_data["day"]
+        if not 1 <= day <= 28:
+            raise forms.ValidationError("Pick a day from 1 to 28 (so it exists in every month).")
+        return day
 
     def clean_amount(self):
         amount = self.cleaned_data["amount"]
