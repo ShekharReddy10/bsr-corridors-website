@@ -167,3 +167,34 @@ def delete_file(file_id: str) -> None:
         _service().files().delete(fileId=file_id).execute()
     except Exception:  # already gone, or Drive unreachable: the link is removed either way
         log.warning("Could not delete Drive file %s", file_id)
+
+
+# ── Monthly report ──
+
+
+def report_link(month: date) -> str:
+    return AppSetting.get(f"report_{month:%Y-%m}")
+
+
+def save_monthly_report(month: date) -> str:
+    """Save that month's stays, payments, expenses and summary as a Google Sheet in "Monthly reports"; returns its link."""
+    from datetime import timedelta
+
+    svc = _service()
+    root, _, _ = _folders(svc)
+    folder = _folder(svc, "gdrive_reports", "Monthly reports", root)
+    nxt = (month.replace(day=28) + timedelta(days=4)).replace(day=1)
+    existing = AppSetting.get(f"report_id_{month:%Y-%m}")
+    f = _upload(svc, build_workbook(month, nxt - timedelta(days=1)), f"{settings.HOTEL_NAME} — {month:%B %Y} report",
+                XLSX, folder, as_sheet=True, file_id=existing if _exists(svc, existing) else "")
+    AppSetting.put(f"report_id_{month:%Y-%m}", f["id"])
+    AppSetting.put(f"report_{month:%Y-%m}", f.get("webViewLink", ""))
+    return f.get("webViewLink", "")
+
+
+def save_last_months_report_if_missing(today_: date) -> str:
+    """Nightly: once a month is over, save its report (only once)."""
+    from datetime import timedelta
+
+    last = (today_.replace(day=1) - timedelta(days=1)).replace(day=1)
+    return "" if report_link(last) else save_monthly_report(last)

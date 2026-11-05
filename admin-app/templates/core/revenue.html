@@ -11,8 +11,14 @@
 <section class="card profit-card" id="month">
   <div class="card-head">
     <h2>{{ month|date:"F Y" }}{% if is_current %} <span class="muted small">— so far</span>{% endif %}</h2>
-    <a class="btn btn-outline btn-sm" href="{% url 'expense_list' %}?month={{ month|date:'Y-m' }}">Expenses</a>
+    <div class="inline-form">
+      <a class="btn btn-outline btn-sm" href="{% url 'expense_list' %}?month={{ month|date:'Y-m' }}">Expenses</a>
+      <a class="btn btn-outline btn-sm" href="{% url 'revenue_month_share' month.year month.month %}" target="whatsapp" rel="noopener">Share on WhatsApp</a>
+    </div>
   </div>
+  <div class="muted small report-line">{% if report_link %}<a href="{{ report_link }}" target="_blank" rel="noopener">{{ month|date:"F" }} report in Google Drive</a> · {% endif %}
+    <form method="post" action="{% url 'revenue_month_report' month.year month.month %}" class="inline-form">{% csrf_token %}<button class="btn btn-ghost btn-sm">{% if report_link %}Refresh report{% else %}Save report to Google Drive{% endif %}</button></form>
+    {% if not report_link and not is_current %}<span>(saved automatically on the 1st)</span>{% endif %}</div>
   <div class="profit-sum">
     <div><span class="muted small">Received</span><b>{{ mb.received|inr }}</b></div>
     <span class="op" aria-hidden="true">−</span>

@@ -59,6 +59,11 @@ def backup_hook(request):
         return HttpResponseForbidden("bad token")
     services.add_recurring_expenses()
     run = gdrive.run_backup()
+    if run.ok:
+        try:
+            gdrive.save_last_months_report_if_missing(today())
+        except Exception:  # the backup itself succeeded; the report is retried the next night
+            pass
     return JsonResponse({"ok": run.ok, "message": run.message}, status=200 if run.ok else 500)
 
 

@@ -23,7 +23,7 @@ from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
-from .. import revenue
+from .. import gdrive, revenue
 from ..forms import SettlementForm
 from ..models import AppSetting, AuditLog, Expense, Settlement
 from ..services import partner_names, today
@@ -127,6 +127,7 @@ def revenue_page(request, year=None, month_no=None):
         "past_months": months[1:],
         "rooms": rooms,
         "collected": revenue.collected(month, revenue._add_months(month, 1)),
+        "report_link": gdrive.report_link(month),
         "rooms_due": rooms_due,
         "expected": b.received + rooms_due,
         "rent_due": revenue.rent_not_added(r.t),
@@ -219,3 +220,55 @@ def settlement_delete(request, pk):
     s.delete()
     messages.success(request, "Settlement deleted.")
     return redirect(_month_url(s.month))
+
+
+def _summary_text(month, r, b, collected: dict, link: str) -> str:
+    def inr(v):
+        return f"₹{v:,.0f}"
+    lines = [f"{settings.HOTEL_NAME} — {month:%B %Y}", "",
+             f"Received: {inr(b.received)}", f"Expenses: {inr(b.expenses)}", f"Profit: {inr(b.profit)}",
+             f"Settled: {inr(b.settled)} · Left: {inr(b.left)}"]
+    if collected["total"]:
+        modes = ", ".join(f"{name} {inr(v)}" for name, v in collected["by_mode"])
+        lines.append(f"Collected (payment dates): {inr(collected['total'])} — {modes}")
+    occupancy = f" · Occupancy {r.occupancy}%" if r.occupancy is not None else ""
+    lines.append(f"Room-nights sold: {r.in_period.nights}{occupancy}")
+    if link:
+        lines += ["", f"Full report: {link}"]
+    return "\n".join(lines)
+
+
+@revenue_unlocked
+def month_share(request, year, month_no):
+    """Open WhatsApp with this month's summary typed in — you pick the chat (e.g. your partner)."""
+    from .whatsapp import MOBILE, AppRedirect
+
+    try:
+        month = date(year, month_no, 1)
+    except ValueError:
+        raise Http404
+    r = revenue.build(month=month)
+    text = _summary_text(month, r, r.ledger[month], revenue.collected(month, revenue._add_months(month, 1)),
+                         gdrive.report_link(month))
+    AuditLog.record("whatsapp", f"Shared the {month:%B %Y} summary on WhatsApp")
+    mobile = bool(MOBILE.search(request.headers.get("User-Agent", "")))
+    return AppRedirect(("whatsapp://send?text=" if mobile else "https://web.whatsapp.com/send?text=") + quote(text))
+
+
+@revenue_unlocked
+@require_POST
+def month_report(request, year, month_no):
+    """Save (or refresh) this month's report in Google Drive."""
+    try:
+        month = date(year, month_no, 1)
+    except ValueError:
+        raise Http404
+    try:
+        gdrive.save_monthly_report(month)
+        AuditLog.record("export", f"Saved the {month:%B %Y} report to Google Drive")
+        messages.success(request, f"{month:%B %Y} report saved to Google Drive.")
+    except gdrive.DriveNotConfigured as exc:
+        messages.error(request, str(exc))
+    except Exception:
+        messages.error(request, "Couldn’t save the report to Google Drive. Please try again.")
+    return redirect(_month_url(month))

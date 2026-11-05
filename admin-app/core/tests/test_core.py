@@ -1188,3 +1188,35 @@ class PhotoTests(TestCase):
                                                 "amount": "500", "payment_mode": "cash", "receipt": self._jpeg()}, follow=True)
         self.assertContains(r, "isn’t connected yet")
         self.assertEqual(Expense.objects.get(reason="Fan").receipt_id, "")
+
+
+class MonthlyReportTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        _, _, self.rooms = make_rooms()
+        self.client.force_login(get_user_model().objects.create_user("rep-admin", password="test-pass-123456"))
+        self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
+
+    def test_share_summary_and_save_report(self):
+        from unittest import mock
+        from urllib.parse import unquote
+        from core import gdrive
+        last = (T.replace(day=1) - timedelta(days=1)).replace(day=1)
+        s = stay(make_guest(), self.rooms["101"], 0, 2, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(3000))
+        s.check_in, s.check_out = last + timedelta(days=2), last + timedelta(days=4)
+        s.save()
+        r = self.client.get(f"/revenue/{last:%Y-%m}/share/")
+        text = unquote(r["Location"].split("text=", 1)[1])
+        self.assertTrue(r["Location"].startswith("https://web.whatsapp.com/send?text="))
+        self.assertIn(f"{last:%B %Y}", text)
+        self.assertIn("Received: ₹3,000", text)
+
+        with mock.patch("core.gdrive._service"), mock.patch("core.gdrive._folders", return_value=("r", "b", "e")), \
+             mock.patch("core.gdrive._folder", return_value="f"), mock.patch("core.gdrive._exists", return_value=False), \
+             mock.patch("core.gdrive._upload", return_value={"id": "sheet1", "webViewLink": "https://docs.google.com/x"}) as up:
+            self.assertEqual(gdrive.save_last_months_report_if_missing(T), "https://docs.google.com/x")
+            self.assertEqual(gdrive.save_last_months_report_if_missing(T), "")  # only once
+            self.assertEqual(up.call_count, 1)
+        self.assertContains(self.client.get(f"/revenue/{last:%Y-%m}/"), "report in Google Drive")
+        r = self.client.get(f"/revenue/{last:%Y-%m}/share/")
+        self.assertIn("https%3A//docs.google.com/x", r["Location"])
