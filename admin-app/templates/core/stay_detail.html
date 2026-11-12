@@ -76,7 +76,7 @@
         <dd id="other-{{ o.pk }}">{{ o.name|default:"(no name)" }}{% if o.phone %} · <a href="tel:{{ o.phone }}">{{ o.phone }}</a>{% endif %}{% if o.id_number %} · {{ o.get_id_type_display }} {{ o.id_masked }}
           <button class="btn btn-ghost btn-sm" hx-post="{% url 'stay_reveal_id' stay.pk %}" hx-vals='{"field": "other:{{ o.pk }}"}' hx-target="#other-{{ o.pk }}" hx-swap="innerHTML">Show</button>{% endif %}</dd>
       {% endfor %}
-      <dt>ID photos</dt><dd>{% include "partials/id_photos.html" %}</dd>
+      <dt>ID photos</dt><dd id="id-photos">{% include "partials/id_photos.html" %}</dd>
       <dt>Previous stays</dt><dd>{{ g.stays.count|add:"-1" }} · <a href="{% url 'guest_detail' g.pk %}">Guest history</a> · <a href="{% url 'stay_new' %}?guest={{ g.pk }}">New booking</a></dd>
     </dl>
   </section>

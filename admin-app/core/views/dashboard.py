@@ -7,9 +7,22 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .. import checks, revenue
-from ..models import AuditLog, BackupRun, MaintenanceLog, Room, Stay
+from ..models import AuditLog, BackupRun, MaintenanceLog, Room, Stay, StayIdPhoto
 from .. import services
 from ..services import today
+
+
+def ids_missing(in_house) -> list[tuple]:
+    """Checked-in stays with fewer people's ID photos ticked than guests: (stay, people with an ID, guests)."""
+    have = {}
+    for stay_id, person in StayIdPhoto.objects.filter(stay__in=in_house).values_list("stay_id", "photo__person"):
+        have.setdefault(stay_id, set()).add(person)
+    out = []
+    for s in in_house:
+        n, need = len(have.get(s.pk, ())), max(s.num_guests, 1)
+        if n < need:
+            out.append((s, n, need))
+    return out
 
 
 def dashboard(request):
@@ -62,6 +75,7 @@ def dashboard(request):
         "unpaid": sorted(unpaid, key=lambda s: s.check_in),
         "unpaid_total": sum((s.balance for s in unpaid), Decimal(0)),
         "form_c_due": [s for s in in_house if s.form_c_due],
+        "ids_missing": ids_missing(in_house),
         # Money that could slip through: monthly rent not added to the bill, and bookings whose dates have passed
         # without a check-in (their advance sits in "yet to receive" until they're checked in or cancelled).
         "rent_due": revenue.rent_not_added(t),

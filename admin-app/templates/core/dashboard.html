@@ -30,6 +30,12 @@
     {% for s in form_c_due %}<a href="{% url 'stay_detail' s.pk %}">{{ s.guest.name }} ({{ s.room.number }})</a>{% if not forloop.last %}, {% endif %}{% endfor %}.
   </div>
 {% endif %}
+{% if ids_missing %}
+  <div class="alert">
+    <b>ID photos missing</b> — checked in, but not every guest’s ID is on the stay (one person each):
+    {% for s, have, need in ids_missing %}<a href="{% url 'stay_detail' s.pk %}#id-photos">{{ s.guest.name }} ({{ s.room.number }}) · {{ have }} of {{ need }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}
+  </div>
+{% endif %}
 {% if rent_due %}
   <div class="alert">
     <b>Monthly rent to add to the bill</b> — a new month has started:

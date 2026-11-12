@@ -11,7 +11,7 @@ from django.test import TestCase, override_settings
 
 from core import services
 from core.exports import backup_json, build_workbook
-from core.models import AppSetting, AuditLog, Expense, Guest, MessageTemplate, Room, RoomType, Settlement, Stay, StayGuest, StayIdPhoto
+from core.models import AppSetting, AuditLog, Expense, Guest, MessageTemplate, Room, RoomType, Settlement, Stay, StayGuest, StayIdPhoto, IdPhoto
 
 T = services.today()
 
@@ -1260,6 +1260,20 @@ class PhotoTests(TestCase):
                                  {"person": "Sita", "photo": SimpleUploadedFile("x.pdf", b"%PDF")}, follow=True)
             up.assert_not_called()
         self.assertContains(r, "isn’t a photo")
+
+    def test_today_reminds_missing_id_photos_after_check_in(self):
+        g = make_guest(name="Ravi Kumar")
+        s = stay(g, self.rooms["101"], 0, 2, num_guests=2)
+        StayGuest.objects.create(stay=s, position=2, name="Sita")
+        self.assertNotContains(self.client.get("/"), "ID photos missing")  # not checked in yet
+        Stay.objects.filter(pk=s.pk).update(status=Stay.Status.CHECKED_IN)
+        self.assertContains(self.client.get("/"), "Ravi Kumar (101) · 0 of 2")
+        front = IdPhoto.objects.create(guest=g, stay=s, person="Ravi Kumar", file_id="a", name="a.jpg")
+        back = IdPhoto.objects.create(guest=g, stay=s, person="Ravi Kumar", file_id="b", name="b.jpg")
+        StayIdPhoto.objects.bulk_create([StayIdPhoto(stay=s, photo=front), StayIdPhoto(stay=s, photo=back)])
+        self.assertContains(self.client.get("/"), "Ravi Kumar (101) · 1 of 2")  # front + back is still one person
+        StayIdPhoto.objects.create(stay=s, photo=IdPhoto.objects.create(guest=g, stay=s, person="Sita", file_id="c", name="c.jpg"))
+        self.assertNotContains(self.client.get("/"), "ID photos missing")
 
     def test_receipt_on_expense(self):
         from unittest import mock
