@@ -68,8 +68,10 @@ MAX_PHOTOS = 10  # per upload
 
 
 def people(stay) -> list[str]:
-    """Whose ID photos a stay can have: the main guest, then guest 2, 3, …"""
-    return [stay.guest.name] + [o.name or f"Guest {o.position}" for o in stay.other_guests.all()]
+    """Whose ID photos a stay can have: the main guest, then guest 2, 3, … — one per guest on the stay, named or not."""
+    names = [stay.guest.name] + [o.name or f"Guest {o.position}" for o in stay.other_guests.all()]
+    names += [f"Guest {n}" for n in range(len(names) + 1, stay.num_guests + 1) if f"Guest {n}" not in names]
+    return names
 
 
 def locked(stay) -> bool:
@@ -180,6 +182,25 @@ def id_photo_unuse(request, pk, photo_pk):
         link.delete()
         AuditLog.record("stay", f"Unticked ID photo for this stay: {link.photo.name}", stay=stay)
         messages.success(request, "Photo unticked for this stay (still saved for the guest).")
+    return _back(request, f"/stays/{pk}/")
+
+
+@require_POST
+def id_photo_person(request, pk, photo_pk):
+    """Change whose ID a photo is (e.g. guest 2's ID was added under the main guest). Not once it is the record for a
+    checked-out stay."""
+    stay = get_object_or_404(Stay.objects.select_related("guest"), pk=pk)
+    p = get_object_or_404(IdPhoto, pk=photo_pk, guest=stay.guest)
+    person = request.POST.get("person", "")
+    if person not in people(stay) and not stay.guest.id_photos.filter(person=person).exists():
+        messages.error(request, "Choose whose ID this is.")
+    elif p.stays.filter(status=Stay.Status.CHECKED_OUT).exists():
+        messages.error(request, "This photo is the ID record of a checked-out stay — it can’t be changed.")
+    elif person != p.person:
+        AuditLog.record("stay", f"ID photo {p.name}: changed from {p.person} to {person}", stay=stay)
+        p.person = person
+        p.save(update_fields=["person"])
+        messages.success(request, f"Photo is now {person}’s ID.")
     return _back(request, f"/stays/{pk}/")
 
 

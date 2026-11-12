@@ -64,6 +64,7 @@ urlpatterns = [
     path("stays/<int:pk>/id-photos/upload/", photos.id_photos_upload, name="id_photos_upload"),
     path("stays/<int:pk>/id-photos/use/", photos.id_photos_use, name="id_photos_use"),
     path("stays/<int:pk>/id-photos/<int:photo_pk>/unuse/", photos.id_photo_unuse, name="id_photo_unuse"),
+    path("stays/<int:pk>/id-photos/<int:photo_pk>/person/", photos.id_photo_person, name="id_photo_person"),
     path("id-photos/<int:pk>/", photos.id_photo, name="id_photo"),
     path("id-photos/<int:pk>/delete/", photos.id_photo_delete, name="id_photo_delete"),
     path("expenses/monthly/new/", expenses.recurring_form, name="recurring_new"),

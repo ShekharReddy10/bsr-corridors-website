@@ -1,11 +1,11 @@
-{# ID photos for this stay, one block per person: photos ticked for this stay, the guest's earlier photos to tick,
-   and new ones to add (saved once for the guest, kept in Google Drive). #}
+{% comment %}ID photos for this stay, one block per person: photos ticked for this stay, the guest's earlier photos to
+tick, and new ones to add (saved once for the guest, kept in Google Drive).{% endcomment %}
 {% for row in id_photo_rows %}
 <div class="photo-person-block">
   <div class="photo-row">
     <span class="photo-person">{{ row.person }}</span>
     {% for p in row.used %}
-      <span class="photo-chip"><a href="{% url 'id_photo' p.pk %}" target="_blank" rel="noopener" title="{{ p.name }}" data-viewer="ids">✓ {{ p.name|cut:".jpg" }}</a>{% if photos_locked %}<span class="photo-x" title="Checked out — kept as the record">🔒</span>{% else %}<form method="post" action="{% url 'id_photo_unuse' stay.pk p.pk %}" class="inline-form">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="photo-x" aria-label="Untick {{ p.name }} for this stay" title="Untick for this stay">×</button></form>{% endif %}</span>
+      <span class="photo-chip"><a href="{% url 'id_photo' p.pk %}" target="_blank" rel="noopener" title="{{ p.name }}" data-viewer="ids">✓ {{ p.name|cut:".jpg" }}</a>{% if photos_locked %}<span class="photo-x" title="Checked out — kept as the record">🔒</span>{% else %}{% if id_photo_rows|length > 1 %}<form method="post" action="{% url 'id_photo_person' stay.pk p.pk %}" class="inline-form">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><select name="person" class="photo-whose" aria-label="Whose ID is {{ p.name }}?" title="Whose ID is this?" onchange="this.form.submit()">{% for r in id_photo_rows %}<option{% if r.person == row.person %} selected{% endif %}>{{ r.person }}</option>{% endfor %}</select></form>{% endif %}<form method="post" action="{% url 'id_photo_unuse' stay.pk p.pk %}" class="inline-form">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="photo-x" aria-label="Untick {{ p.name }} for this stay" title="Untick for this stay">×</button></form>{% endif %}</span>
     {% endfor %}
     <form method="post" action="{% url 'id_photos_upload' stay.pk %}" enctype="multipart/form-data" class="inline-form photo-upload">{% csrf_token %}
       <input type="hidden" name="next" value="{{ request.get_full_path }}"><input type="hidden" name="person" value="{{ row.person }}">

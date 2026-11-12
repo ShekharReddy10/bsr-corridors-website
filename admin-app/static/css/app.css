@@ -457,10 +457,11 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .photo-row .inline-form { margin: 0; }
 .photo-upload label { cursor: pointer; }
 .photo-row + .photo-row, .photo-person-block + .photo-person-block { margin-top: 6px; }
+.photo-whose { font-size: .8rem; padding: 2px 4px; margin-left: 6px; max-width: 110px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); }
 .photo-earlier { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 4px 0 0; }
 .photo-pick { display: inline-flex; align-items: center; gap: 4px; overflow-wrap: anywhere; }
 .photo-person { font-weight: 600; margin-right: 4px; overflow-wrap: anywhere; }
-.photo-chip { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: .875rem; }
+.photo-chip { display: inline-flex; flex-wrap: wrap; max-width: 100%; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: .875rem; }
 .photo-x { border: 0; background: none; cursor: pointer; font-size: 1rem; line-height: 1; padding: 2px 6px; color: var(--ink-soft); }
 .user-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 12px; padding: 10px 0; border-top: 1px solid var(--line); }
 .user-row > div { min-width: 0; }

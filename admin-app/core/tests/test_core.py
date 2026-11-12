@@ -1275,6 +1275,28 @@ class PhotoTests(TestCase):
         StayIdPhoto.objects.create(stay=s, photo=IdPhoto.objects.create(guest=g, stay=s, person="Sita", file_id="c", name="c.jpg"))
         self.assertNotContains(self.client.get("/"), "ID photos missing")
 
+    def test_unnamed_second_guest_gets_a_row_and_photos_can_change_person(self):
+        g = make_guest(name="Kishore")
+        s = stay(g, self.rooms["101"], 0, 3, num_guests=2)  # 2 guests, guest 2 not named
+        Stay.objects.filter(pk=s.pk).update(status=Stay.Status.CHECKED_IN)
+        photos = [IdPhoto.objects.create(guest=g, stay=s, person="Kishore", file_id=f, name=f"{f}.jpg") for f in "ab"]
+        StayIdPhoto.objects.bulk_create([StayIdPhoto(stay=s, photo=p) for p in photos])
+        self.assertContains(self.client.get("/"), "Kishore (101) · 1 of 2")
+        page = self.client.get(f"/stays/{s.pk}/").content.decode()
+        self.assertIn('<span class="photo-person">Guest 2</span>', page)
+        self.assertNotIn("{#", page)
+        self.assertNotIn("comment", page.split('id="id-photos"')[1][:300])
+        self.client.post(f"/stays/{s.pk}/id-photos/{photos[1].pk}/person/", {"person": "Guest 2"})
+        photos[1].refresh_from_db()
+        self.assertEqual(photos[1].person, "Guest 2")
+        self.assertNotContains(self.client.get("/"), "ID photos missing")
+        # Not to someone off the stay, and not once it is a checked-out stay's record.
+        self.client.post(f"/stays/{s.pk}/id-photos/{photos[1].pk}/person/", {"person": "Stranger"})
+        Stay.objects.filter(pk=s.pk).update(status=Stay.Status.CHECKED_OUT)
+        self.client.post(f"/stays/{s.pk}/id-photos/{photos[1].pk}/person/", {"person": "Kishore"})
+        photos[1].refresh_from_db()
+        self.assertEqual(photos[1].person, "Guest 2")
+
     def test_receipt_on_expense(self):
         from unittest import mock
         self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
