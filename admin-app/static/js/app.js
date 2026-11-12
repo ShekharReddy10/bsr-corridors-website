@@ -13,6 +13,18 @@
     if (wa) window.open(wa, "whatsapp");
   });
 
+  // Keep the server awake while this page is open: Render's free plan puts it to sleep after 15 minutes without
+  // requests, and waking takes ~50 s. If the page hasn't talked to the server for 10 minutes (left idle), send a
+  // quiet ping — the page itself is never reloaded, so nothing being typed is lost.
+  const AWAKE_MS = 10 * 60 * 1000;
+  let lastContact = Date.now();
+  document.addEventListener("htmx:afterRequest", () => { lastContact = Date.now(); });
+  setInterval(() => {
+    if (Date.now() - lastContact < AWAKE_MS) return;
+    lastContact = Date.now();
+    fetch("/healthz/", { cache: "no-store" }).catch(() => {});
+  }, 60 * 1000);
+
   // Close the mobile "More" sheet when tapping elsewhere
   document.addEventListener("click", (e) => {
     document.querySelectorAll("details.tab-more[open]").forEach((d) => { if (!d.contains(e.target)) d.open = false; });
