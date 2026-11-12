@@ -16,7 +16,7 @@
     {% field form.notes "span-2" %}
     <div class="field span-2"><label for="receipt">Receipt / bill photo <span class="muted small">(optional — kept in Google Drive)</span></label>
       <input id="receipt" type="file" name="receipt" accept="image/*">
-      {% if expense.receipt_id %}<small><a href="{% url 'expense_receipt' expense.pk %}" target="_blank" rel="noopener">View current receipt</a> — choosing a new photo replaces it</small>{% endif %}</div>
+      {% if expense.receipt_id %}<small><a href="{% url 'expense_receipt' expense.pk %}" target="_blank" rel="noopener" title="Receipt · {{ expense.reason }}" data-viewer="receipts">View current receipt</a> — choosing a new photo replaces it</small>{% endif %}</div>
   </div>
   <div class="form-actions">
     <button class="btn btn-primary">Save</button>

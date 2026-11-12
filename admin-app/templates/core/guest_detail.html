@@ -15,7 +15,11 @@
     <dl class="dl">
       <dt>Address</dt><dd>{{ guest.address|linebreaksbr }}</dd>
       <dt>{{ guest.get_id_type_display }}</dt><dd>{{ guest.id_masked|default:"Not provided" }}</dd>
-      <dt>ID photos</dt><dd>{% for p in id_photos %}<a href="{% url 'id_photo' p.pk %}" target="_blank" rel="noopener">{{ p.name }}</a><br>{% empty %}<span class="muted">None yet — add them on any of the guest’s stays</span>{% endfor %}</dd>
+      <dt>ID photos</dt><dd>{% for p in id_photos %}
+        <div class="photo-row"><a href="{% url 'id_photo' p.pk %}" target="_blank" rel="noopener" title="{{ p.name }}" data-viewer="ids">{{ p.name|cut:".jpg" }}</a>
+          <span class="muted small">{{ p.person }} · used for {% for s in p.stays.all %}<a href="{% url 'stay_detail' s.pk %}">#{{ s.pk }}</a>{% if not forloop.last %}, {% endif %}{% empty %}no stay{% endfor %}</span>
+          <form method="post" action="{% url 'id_photo_delete' p.pk %}" class="inline-form" data-confirm="Delete {{ p.name }} for good (from Google Drive too)?">{% csrf_token %}<button class="btn btn-ghost btn-sm">Delete</button></form></div>
+        {% empty %}<span class="muted">None yet — add them on any of the guest’s stays</span>{% endfor %}</dd>
       {% if guest.is_foreign %}<dt>Visa</dt><dd>{{ guest.visa_number|default:"—" }} {% if guest.visa_type %}({{ guest.visa_type }}){% endif %}</dd>{% endif %}
       <dt>First seen</dt><dd>{{ guest.created_at|date:"d-m-Y" }}</dd>
     </dl>

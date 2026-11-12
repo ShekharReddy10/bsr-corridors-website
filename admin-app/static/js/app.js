@@ -25,6 +25,62 @@
     fetch("/healthz/", { cache: "no-store" }).catch(() => {});
   }, 60 * 1000);
 
+  // Photo viewer: ID photos and receipts open in the page (‹ › / arrow keys / swipe between the photos in the same
+  // group, tap to zoom) instead of a new tab. Without JS the links still open the photo in a new tab.
+  let viewer, shown = [], at = 0;
+  const showPhoto = () => {
+    const a = shown[at];
+    viewer.querySelector("img").src = a.href;
+    viewer.querySelector("img").classList.remove("zoomed");
+    viewer.querySelector(".viewer-title").textContent = a.title || a.textContent.trim();
+    viewer.querySelector(".viewer-count").textContent = shown.length > 1 ? `${at + 1} / ${shown.length}` : "";
+    viewer.querySelectorAll(".viewer-nav").forEach((b) => { b.hidden = shown.length < 2; });
+  };
+  const step = (d) => { if (shown.length > 1) { at = (at + d + shown.length) % shown.length; showPhoto(); } };
+  const makeViewer = () => {
+    viewer = document.createElement("dialog");
+    viewer.className = "photo-viewer";
+    viewer.innerHTML = `<div class="viewer-bar"><span class="viewer-title"></span><span class="viewer-count"></span>
+        <a class="viewer-open" target="_blank" rel="noopener" title="Open in a new tab">↗</a>
+        <button type="button" class="viewer-close" aria-label="Close">×</button></div>
+      <div class="viewer-stage"><img alt="Photo"></div>
+      <button type="button" class="viewer-nav viewer-prev" aria-label="Previous photo">‹</button>
+      <button type="button" class="viewer-nav viewer-next" aria-label="Next photo">›</button>`;
+    document.body.append(viewer);
+    viewer.querySelector(".viewer-close").addEventListener("click", () => viewer.close());
+    viewer.querySelector(".viewer-prev").addEventListener("click", () => step(-1));
+    viewer.querySelector(".viewer-next").addEventListener("click", () => step(1));
+    viewer.querySelector(".viewer-open").addEventListener("click", (e) => { e.currentTarget.href = shown[at].href; });
+    const img = viewer.querySelector("img");
+    img.addEventListener("click", () => img.classList.toggle("zoomed"));
+    viewer.addEventListener("click", (e) => { if (e.target === viewer || e.target.classList.contains("viewer-stage")) viewer.close(); });
+    viewer.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowLeft") step(-1);
+      if (e.key === "ArrowRight") step(1);
+    });
+    let x0 = null;
+    viewer.addEventListener("touchstart", (e) => { x0 = e.touches.length === 1 && !img.classList.contains("zoomed") ? e.touches[0].clientX : null; }, { passive: true });
+    viewer.addEventListener("touchend", (e) => {
+      if (x0 === null) return;
+      const dx = e.changedTouches[0].clientX - x0;
+      if (Math.abs(dx) > 50) step(dx < 0 ? 1 : -1);
+      x0 = null;
+    });
+    viewer.addEventListener("close", () => { viewer.querySelector("img").removeAttribute("src"); });
+  };
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest("a[data-viewer]");
+    if (!a || e.ctrlKey || e.metaKey || e.shiftKey || !window.HTMLDialogElement) return;
+    e.preventDefault();
+    if (!viewer) makeViewer();
+    const seen = new Set();
+    shown = Array.from(document.querySelectorAll(`a[data-viewer="${a.dataset.viewer}"]`))
+      .filter((l) => !seen.has(l.href) && seen.add(l.href));
+    at = Math.max(0, shown.findIndex((l) => l.href === a.href));
+    showPhoto();
+    viewer.showModal();
+  });
+
   // Close the mobile "More" sheet when tapping elsewhere
   document.addEventListener("click", (e) => {
     document.querySelectorAll("details.tab-more[open]").forEach((d) => { if (!d.contains(e.target)) d.open = false; });

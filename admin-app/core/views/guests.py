@@ -29,5 +29,5 @@ def guest_detail(request, pk):
     return render(request, "core/guest_detail.html", {
         "guest": guest, "stays": stays, "total": total, "paid": paid, "balance": total - paid,
         "nights": sum(s.nights for s in live),
-        "id_photos": guest.id_photos.all(),
+        "id_photos": guest.id_photos.prefetch_related("stays"),
     })

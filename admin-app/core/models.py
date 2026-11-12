@@ -280,9 +280,9 @@ class StayGuest(models.Model):
 
 
 class IdPhoto(models.Model):
-    """A photo of an ID, kept in Google Drive (only the file ID is stored here). Photos belong to the guest who books,
-    so every later booking of that guest has them too; companions' IDs (guest 2, 3, …) are kept there under their
-    own names. Any number per person (front and back, …)."""
+    """A photo of an ID, kept once in Google Drive (only the file ID is stored here). Photos belong to the guest who
+    books — companions' IDs (guest 2, 3, …) under their own names — and are ticked for each stay they were shown for
+    (StayIdPhoto), so a returning guest's photos are reused, not uploaded again."""
 
     guest = models.ForeignKey(Guest, on_delete=models.CASCADE, related_name="id_photos")
     stay = models.ForeignKey(Stay, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
@@ -290,6 +290,9 @@ class IdPhoto(models.Model):
     person = models.CharField(max_length=120, help_text="Whose ID this is (the main guest, guest 2, …)")
     file_id = models.CharField("Google Drive file", max_length=100)
     name = models.CharField("File name in Drive", max_length=200)
+    # Fingerprint of the uploaded file: the same photo sent again for this guest is reused, not stored twice.
+    sha256 = models.CharField(max_length=64, blank=True, db_index=True, editable=False)
+    stays = models.ManyToManyField(Stay, through="StayIdPhoto", related_name="id_photos")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -298,6 +301,23 @@ class IdPhoto(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class StayIdPhoto(models.Model):
+    """This ID photo was used for this stay. Locked once the stay is checked out."""
+
+    stay = models.ForeignKey(Stay, on_delete=models.CASCADE, related_name="photo_links")
+    photo = models.ForeignKey(IdPhoto, on_delete=models.CASCADE, related_name="links")
+    added_by = models.CharField(max_length=150, blank=True, editable=False)
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "stay_id_photos"
+        ordering = ["added_at", "pk"]
+        constraints = [models.UniqueConstraint(fields=["stay", "photo"], name="one_link_per_stay_photo")]
+
+    def __str__(self):
+        return f"{self.photo} → stay {self.stay_id}"
 
 
 class Expense(models.Model):

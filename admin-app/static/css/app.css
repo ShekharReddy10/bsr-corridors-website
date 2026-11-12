@@ -405,6 +405,19 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .clash-dialog { border: 0; border-radius: var(--radius); padding: 18px; width: min(520px, calc(100vw - 32px)); max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 50px rgba(0,0,0,.3); }
 .clash-dialog:not([open]) { display: none; }
 .clash-dialog:not(:modal) { position: static; margin: 16px 0; width: auto; }  /* without JS: shown in the page */
+.photo-viewer { border: 0; padding: 0; margin: 0; width: 100vw; height: 100dvh; max-width: none; max-height: none; background: rgba(12, 14, 16, .96); color: #fff; overflow: hidden; }
+.photo-viewer::backdrop { background: rgba(12, 14, 16, .9); }
+.viewer-bar { position: absolute; top: 0; left: 0; right: 0; z-index: 2; display: flex; align-items: center; gap: 10px; padding: calc(8px + env(safe-area-inset-top)) 12px 8px 16px; background: linear-gradient(rgba(0,0,0,.6), transparent); }
+.viewer-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .95rem; }
+.viewer-count { font-size: .85rem; opacity: .8; }
+.viewer-open, .viewer-close { color: #fff; text-decoration: none; background: rgba(255,255,255,.15); border: 0; border-radius: 999px; width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; font-size: 1.3rem; cursor: pointer; }
+.viewer-stage { position: absolute; inset: 0; overflow: auto; display: flex; }
+.viewer-stage img { margin: auto; max-width: 100%; max-height: 100%; object-fit: contain; cursor: zoom-in; }  /* margin: auto centres without clipping when zoomed */
+.viewer-stage img.zoomed { max-width: none; max-height: none; cursor: zoom-out; }
+.viewer-nav { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; width: 44px; height: 64px; border: 0; border-radius: 10px; background: rgba(255,255,255,.15); color: #fff; font-size: 2rem; cursor: pointer; }
+.viewer-nav[hidden] { display: none; }
+.viewer-prev { left: 8px; }
+.viewer-next { right: 8px; }
 .clash-dialog::backdrop { background: rgba(20, 24, 28, .55); }
 .clash-dialog h2 { margin: 0 0 8px; font-size: 1.1rem; }
 .clash-option { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
@@ -443,7 +456,9 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .photo-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .photo-row .inline-form { margin: 0; }
 .photo-upload label { cursor: pointer; }
-.photo-row + .photo-row { margin-top: 4px; }
+.photo-row + .photo-row, .photo-person-block + .photo-person-block { margin-top: 6px; }
+.photo-earlier { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 4px 0 0; }
+.photo-pick { display: inline-flex; align-items: center; gap: 4px; overflow-wrap: anywhere; }
 .photo-person { font-weight: 600; margin-right: 4px; overflow-wrap: anywhere; }
 .photo-chip { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: .875rem; }
 .photo-x { border: 0; background: none; cursor: pointer; font-size: 1rem; line-height: 1; padding: 2px 6px; color: var(--ink-soft); }

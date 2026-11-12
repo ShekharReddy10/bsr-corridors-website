@@ -11,7 +11,7 @@ from django.test import TestCase, override_settings
 
 from core import services
 from core.exports import backup_json, build_workbook
-from core.models import AppSetting, AuditLog, Expense, Guest, MessageTemplate, Room, RoomType, Settlement, Stay, StayGuest
+from core.models import AppSetting, AuditLog, Expense, Guest, MessageTemplate, Room, RoomType, Settlement, Stay, StayGuest, StayIdPhoto
 
 T = services.today()
 
@@ -1175,56 +1175,88 @@ class PhotoTests(TestCase):
         Image.new("RGB", size, "white").save(buf, "PNG")
         return SimpleUploadedFile("id.png", buf.getvalue(), content_type="image/png")
 
-    def test_id_photos_several_per_person(self):
+    def _photo(self, colour="white"):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.new("RGB", (40, 30), colour).save(buf, "PNG")
+        return SimpleUploadedFile("id.png", buf.getvalue(), content_type="image/png")
+
+    def test_id_photos_saved_once_and_ticked_per_stay(self):
         from unittest import mock
         from PIL import Image
         from django.core.files.uploadedfile import SimpleUploadedFile
-        s = stay(make_guest(name="Ravi Kumar"), self.rooms["101"], 0, 2)
+        g = make_guest(name="Ravi Kumar")
+        s = stay(g, self.rooms["101"], 0, 2)
         StayGuest.objects.create(stay=s, position=2, name="Sita")
-        ids = iter(f"drive-{i}" for i in range(1, 10))
+        ids = iter(f"drive-{i}" for i in range(1, 20))
+        up_url = f"/stays/{s.pk}/id-photos/upload/"
         with mock.patch("core.gdrive.upload_photo", side_effect=lambda *a: next(ids)) as up, \
              mock.patch("core.gdrive.fetch", return_value=b"jpeg-bytes"), mock.patch("core.gdrive.delete_file") as rm:
-            self.client.post(f"/stays/{s.pk}/id-photos/upload/",
-                             {"person": "Ravi Kumar", "photo": [self._jpeg(), self._jpeg()], "next": f"/stays/{s.pk}/"})
-            self.client.post(f"/stays/{s.pk}/id-photos/upload/", {"person": "Sita", "photo": [self._jpeg()]})
-            self.client.post(f"/stays/{s.pk}/id-photos/upload/", {"person": "Ravi Kumar", "photo": [self._jpeg()]})
+            self.client.post(up_url, {"person": "Ravi Kumar", "photo": [self._jpeg(), self._photo("red")]})
+            self.client.post(up_url, {"person": "Sita", "photo": [self._photo("blue")]})
             day = f"{s.check_in:%d-%m-%Y}"
-            self.assertEqual([(p.person, p.name, p.file_id) for p in s.guest.id_photos.all()], [
+            self.assertEqual([(p.person, p.name, p.file_id) for p in g.id_photos.all()], [
                 ("Ravi Kumar", f"Ravi Kumar_{s.pk}_{day}.jpg", "drive-1"),
                 ("Ravi Kumar", f"Ravi Kumar_{s.pk}_{day}_2.jpg", "drive-2"),
                 ("Sita", f"Sita_{s.pk}_{day}.jpg", "drive-3"),
-                ("Ravi Kumar", f"Ravi Kumar_{s.pk}_{day}_3.jpg", "drive-4"),
             ])
-            self.assertEqual(up.call_args_list[0][0][1:], (f"Ravi Kumar_{s.pk}_{day}.jpg", "ids"))
-            sent = Image.open(io.BytesIO(up.call_args[0][0]))
+            self.assertEqual(s.id_photos.count(), 3)  # new photos are ticked for the stay they were added on
+            sent = Image.open(io.BytesIO(up.call_args_list[0][0][0]))
             self.assertEqual((sent.format, max(sent.size)), ("JPEG", 1600))  # shrunk, re-encoded
-            page = self.client.get(f"/stays/{s.pk}/")
-            self.assertContains(page, "Photo 3")
-            self.assertContains(self.client.get(f"/guests/{s.guest.pk}/"), f"Ravi Kumar_{s.pk}_{day}_2.jpg")
-            first = s.guest.id_photos.first()
-            r = self.client.get(f"/id-photos/{first.pk}/")
+            r = self.client.get(f"/id-photos/{g.id_photos.first().pk}/")
             self.assertEqual((r.content, r["Content-Type"]), (b"jpeg-bytes", "image/jpeg"))
             self.assertTrue(AuditLog.objects.filter(action="reveal_id", summary__contains="ID photo").exists())
-            self.client.post(f"/id-photos/{first.pk}/delete/")
-            rm.assert_called_once_with("drive-1")
-            self.assertEqual(s.guest.id_photos.count(), 3)
-            # Someone not on the stay → refused.
-            self.client.post(f"/stays/{s.pk}/id-photos/upload/", {"person": "Stranger", "photo": [self._jpeg()]})
-            self.assertEqual(s.guest.id_photos.count(), 3)
-            # The guest books again: the photos are already there, and more can be added on the new booking.
-            again = stay(s.guest, self.rooms["101"], 10, 12)
-            page = self.client.get(f"/stays/{again.pk}/").content.decode()
-            self.assertIn("Photo 2", page)  # Ravi's two remaining photos
-            self.assertIn("Sita", page)  # companion from the earlier booking, still listed with her photo
+
+            # Same photo sent again → not stored twice.
+            r = self.client.post(up_url, {"person": "Ravi Kumar", "photo": [self._photo("red")]}, follow=True)
+            self.assertContains(r, "not stored again")
+            self.assertEqual((g.id_photos.count(), up.call_count), (3, 3))
+
+            # The guest books again: earlier photos are offered to tick, none ticked yet.
+            again = stay(g, self.rooms["101"], 10, 2)
+            page = self.client.get(f"/stays/{again.pk}/")
+            self.assertContains(page, "Saved earlier — tick to use for this stay")
+            self.assertContains(page, "No ID photo for this stay yet")
+            red, blue = g.id_photos.get(file_id="drive-2"), g.id_photos.get(file_id="drive-3")
+            self.client.post(f"/stays/{again.pk}/id-photos/use/", {"photo": [red.pk, blue.pk]})
+            self.assertEqual(set(again.id_photos.all()), {red, blue})
+            self.assertEqual(StayIdPhoto.objects.get(stay=again, photo=red).added_by, "photo-admin")
+            # Re-sending a saved photo on the new booking ticks it there, still without storing it again.
             self.client.post(f"/stays/{again.pk}/id-photos/upload/", {"person": "Ravi Kumar", "photo": [self._jpeg()]})
-            self.assertEqual(s.guest.id_photos.last().name, f"Ravi Kumar_{again.pk}_{again.check_in:%d-%m-%Y}.jpg")
-            self.assertEqual(s.guest.id_photos.filter(person="Ravi Kumar").count(), 3)
-            # Deleting a booking keeps the guest's photos.
-            again.delete()
-            self.assertEqual(s.guest.id_photos.count(), 4)
+            self.assertEqual((again.id_photos.count(), g.id_photos.count(), up.call_count), (3, 3, 3))
+            # A new photo (ID changed) on the new booking: stored, named after that booking, ticked there only.
+            self.client.post(f"/stays/{again.pk}/id-photos/upload/", {"person": "Ravi Kumar", "photo": [self._photo("green")]})
+            new = g.id_photos.last()
+            self.assertEqual(new.name, f"Ravi Kumar_{again.pk}_{again.check_in:%d-%m-%Y}.jpg")
+            self.assertEqual(list(new.stays.all()), [again])
+            # Untick on an open stay: allowed, photo stays saved.
+            self.client.post(f"/stays/{again.pk}/id-photos/{blue.pk}/unuse/")
+            self.assertNotIn(blue, again.id_photos.all())
+            self.assertTrue(g.id_photos.filter(pk=blue.pk).exists())
+            # Someone else's photo can't be ticked.
+            other = stay(make_guest(name="Other", phone="+91 90000 00000"), self.rooms["101"], 20, 2)
+            self.client.post(f"/stays/{other.pk}/id-photos/use/", {"photo": [red.pk]})
+            self.assertEqual(other.id_photos.count(), 0)
+
+            # Checked out: the stay's photos are the record — can't be unticked or deleted.
+            Stay.objects.filter(pk=s.pk).update(status=Stay.Status.CHECKED_OUT)
+            self.client.post(f"/stays/{s.pk}/id-photos/{red.pk}/unuse/")
+            self.assertIn(red, s.id_photos.all())
+            r = self.client.post(f"/id-photos/{red.pk}/delete/", follow=True)
+            self.assertContains(r, "can’t be deleted")
+            rm.assert_not_called()
+            # A photo not used on any checked-out stay can be deleted (Drive too).
+            self.client.post(f"/id-photos/{new.pk}/delete/")
+            rm.assert_called_once_with(new.file_id)
+            self.assertFalse(g.id_photos.filter(pk=new.pk).exists())
+            # Someone not on the stay → refused.
+            self.client.post(up_url, {"person": "Stranger", "photo": [self._photo("black")]})
+            self.assertFalse(g.id_photos.filter(person="Stranger").exists())
+            self.assertContains(self.client.get(f"/guests/{g.pk}/"), f"#{again.pk}")
         # Not a photo → refused, nothing saved.
         with mock.patch("core.gdrive.upload_photo") as up:
-            r = self.client.post(f"/stays/{s.pk}/id-photos/upload/",
+            r = self.client.post(f"/stays/{again.pk}/id-photos/upload/",
                                  {"person": "Sita", "photo": SimpleUploadedFile("x.pdf", b"%PDF")}, follow=True)
             up.assert_not_called()
         self.assertContains(r, "isn’t a photo")

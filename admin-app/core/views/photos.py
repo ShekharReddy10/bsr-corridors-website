@@ -1,6 +1,7 @@
 """Receipt and ID photos: upload to Google Drive, view through the app (so any signed-in host can see them without
 Drive access), remove. Viewing an ID photo is logged, like showing a full ID number."""
 
+import hashlib
 import logging
 
 from django.contrib import messages
@@ -10,7 +11,8 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .. import gdrive, photos
-from ..models import AuditLog, Expense, IdPhoto, Stay
+from ..middleware import current_user_name
+from ..models import AuditLog, Expense, IdPhoto, Stay, StayIdPhoto
 from .revenue import revenue_unlocked
 
 log = logging.getLogger(__name__)
@@ -70,14 +72,35 @@ def people(stay) -> list[str]:
     return [stay.guest.name] + [o.name or f"Guest {o.position}" for o in stay.other_guests.all()]
 
 
-def photo_rows(stay) -> list[tuple[str, list]]:
-    """(person, their photos) for each person on the stay — photos saved on the guest's earlier bookings included —
-    then anyone else the guest has ID photos of (a companion from an earlier booking)."""
+def locked(stay) -> bool:
+    """A checked-out stay's ID photos are the record of what was shown — they can't be unticked any more."""
+    return stay.status == Stay.Status.CHECKED_OUT
+
+
+def photo_rows(stay) -> list[dict]:
+    """For each person on the stay (then anyone else the guest has ID photos of, e.g. a companion from an earlier
+    booking): the photos ticked for this stay, and the guest's other photos of that person that can be ticked."""
+    used = set(stay.photo_links.values_list("photo_id", flat=True))
     by_person = {}
     for p in stay.guest.id_photos.all():
         by_person.setdefault(p.person, []).append(p)
     names = people(stay)
-    return [(n, by_person.get(n, [])) for n in names] + [(n, ps) for n, ps in by_person.items() if n not in names]
+    names += [n for n in by_person if n not in names]
+    return [{"person": n, "used": [p for p in by_person.get(n, []) if p.pk in used],
+             "earlier": [p for p in by_person.get(n, []) if p.pk not in used]} for n in names]
+
+
+def _fingerprint(upload) -> str:
+    h = hashlib.sha256()
+    for chunk in upload.chunks():
+        h.update(chunk)
+    upload.seek(0)
+    return h.hexdigest()
+
+
+def _link(stay, photo) -> bool:
+    _, created = StayIdPhoto.objects.get_or_create(stay=stay, photo=photo, defaults={"added_by": current_user_name()})
+    return created
 
 
 def photo_name(stay, person: str, n: int) -> str:
@@ -94,6 +117,8 @@ def id_photo(request, pk):
 
 @require_POST
 def id_photos_upload(request, pk):
+    """New photos for a person on this stay: saved once for the guest and ticked for this stay. A photo already
+    saved for this guest (same file) isn't stored again — the saved one is ticked instead."""
     stay = get_object_or_404(Stay.objects.select_related("guest"), pk=pk)
     person = request.POST.get("person", "")
     uploads = request.FILES.getlist("photo")
@@ -105,24 +130,70 @@ def id_photos_upload(request, pk):
         messages.error(request, f"Up to {MAX_PHOTOS} photos at a time, please.")
     else:
         n = stay.guest.id_photos.filter(person=person, stay=stay).count()
-        saved = 0
+        saved, already = 0, []
         for upload in uploads:
+            sha = _fingerprint(upload)
+            if same := stay.guest.id_photos.filter(sha256=sha).first():
+                _link(stay, same)
+                already.append(same.name)
+                continue
             name = photo_name(stay, person, n + saved + 1)
             if not (file_id := store(request, upload, "ids", name)):
                 break
-            IdPhoto.objects.create(guest=stay.guest, stay=stay, person=person, file_id=file_id, name=name)
+            _link(stay, IdPhoto.objects.create(guest=stay.guest, stay=stay, person=person, file_id=file_id,
+                                               name=name, sha256=sha))
             saved += 1
         if saved:
             AuditLog.record("stay", f"{saved} ID photo{'s' if saved > 1 else ''} saved for {person}", stay=stay)
             messages.success(request, f"{saved} ID photo{'s' if saved > 1 else ''} saved for {person}.")
+        if already:
+            AuditLog.record("stay", f"ID photo sent again, not stored twice — ticked for this stay: "
+                                    f"{', '.join(already)}", stay=stay)
+            messages.info(request, f"Already saved for this guest, so not stored again — ticked for this stay: "
+                                   f"{', '.join(already)}.")
+    return _back(request, f"/stays/{pk}/")
+
+
+@require_POST
+def id_photos_use(request, pk):
+    """Tick the guest's saved photos for this stay."""
+    stay = get_object_or_404(Stay.objects.select_related("guest"), pk=pk)
+    chosen = stay.guest.id_photos.filter(pk__in=request.POST.getlist("photo"))
+    added = [p.name for p in chosen if _link(stay, p)]
+    if added:
+        AuditLog.record("stay", f"Ticked ID photo{'s' if len(added) > 1 else ''} for this stay: {', '.join(added)}",
+                        stay=stay)
+        messages.success(request, f"{len(added)} saved photo{'s' if len(added) > 1 else ''} ticked for this stay.")
+    else:
+        messages.error(request, "Tick at least one photo.")
+    return _back(request, f"/stays/{pk}/")
+
+
+@require_POST
+def id_photo_unuse(request, pk, photo_pk):
+    """Untick a photo for this stay (it stays saved for the guest). Not once the stay is checked out."""
+    stay = get_object_or_404(Stay, pk=pk)
+    link = get_object_or_404(StayIdPhoto.objects.select_related("photo"), stay=stay, photo_id=photo_pk)
+    if locked(stay):
+        messages.error(request, "This stay is checked out — its ID photos are kept as the record.")
+    else:
+        link.delete()
+        AuditLog.record("stay", f"Unticked ID photo for this stay: {link.photo.name}", stay=stay)
+        messages.success(request, "Photo unticked for this stay (still saved for the guest).")
     return _back(request, f"/stays/{pk}/")
 
 
 @require_POST
 def id_photo_delete(request, pk):
-    p = get_object_or_404(IdPhoto.objects.select_related("stay"), pk=pk)
+    """Delete a photo for good (Drive too). Not if it is the record for a checked-out stay."""
+    p = get_object_or_404(IdPhoto, pk=pk)
+    used_on = p.stays.filter(status=Stay.Status.CHECKED_OUT).order_by("check_in")
+    if used_on:
+        messages.error(request, f"{p.name} can’t be deleted — it’s the ID record for checked-out stay"
+                                f"{'s' if len(used_on) > 1 else ''} {', '.join(f'#{s.pk}' for s in used_on)}.")
+        return _back(request, f"/guests/{p.guest_id}/")
     gdrive.delete_file(p.file_id)
     p.delete()
-    AuditLog.record("stay", f"Removed ID photo {p.name}", stay=p.stay)
-    messages.success(request, "ID photo removed.")
+    AuditLog.record("guest", f"Deleted ID photo {p.name}")
+    messages.success(request, "ID photo deleted.")
     return _back(request, f"/guests/{p.guest_id}/")
