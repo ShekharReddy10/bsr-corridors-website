@@ -457,15 +457,27 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .collected-grid { margin: 8px 0 0; }
 .sub-title { margin: 14px 0 4px; font-size: .95rem; }
 .photo-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.photo-row .inline-form { margin: 0; }
+.photo-row .inline-form, .idp .inline-form { margin: 0; }
+.photo-row + .photo-row { margin-top: 4px; }
 .photo-upload label { cursor: pointer; }
-.photo-row + .photo-row, .photo-person-block + .photo-person-block { margin-top: 6px; }
-.photo-whose { font-size: .8rem; padding: 2px 4px; margin-left: 6px; max-width: 110px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); }
-.photo-earlier { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 4px 0 0; }
-.photo-pick { display: inline-flex; align-items: center; gap: 4px; overflow-wrap: anywhere; }
-.photo-person { font-weight: 600; margin-right: 4px; overflow-wrap: anywhere; }
-.photo-chip { display: inline-flex; flex-wrap: wrap; max-width: 100%; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: .875rem; }
-.photo-x { border: 0; background: none; cursor: pointer; font-size: 1rem; line-height: 1; padding: 2px 6px; color: var(--ink-soft); }
+/* ID photos on a stay: one compact line per person */
+.idp-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 30px; }
+.idp-line + .idp-line, .idp-earlier + .idp-line { margin-top: 4px; }
+.photo-person { font-weight: 600; margin-right: 2px; overflow-wrap: anywhere; }
+.idp-chip, .idp-add { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 28px; padding: 0 8px; border-radius: 8px; font-size: .85rem; font-weight: 600; text-decoration: none; }
+.idp-chip { background: rgba(31, 138, 76, .12); color: var(--green); }
+.idp-chip::before { content: "🪪"; font-size: .8rem; margin-right: 4px; }
+.idp-add { border: 1px dashed var(--line); color: var(--ink-soft); cursor: pointer; font-size: 1rem; }
+.idp-add:hover { border-color: var(--gold); color: var(--gold-dark); }
+.idp-none { font-size: .8rem; color: var(--amber); }
+.idp-earlier { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 2px 0 0; font-size: .85rem; }
+.idp-pick { display: inline-flex; align-items: center; gap: 3px; }
+.idp-earlier .btn { padding: 2px 12px; min-height: 0; height: 28px; }
+.idp-manage { margin-top: 6px; font-size: .85rem; }
+.idp-manage summary { cursor: pointer; color: var(--ink-soft); width: max-content; }
+.idp-manage-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 4px 0; border-top: 1px solid var(--line); }
+.idp-manage-row > a { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
+.photo-whose { font-size: .8rem; padding: 2px 4px; max-width: 120px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); }
 .user-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 12px; padding: 10px 0; border-top: 1px solid var(--line); }
 .user-row > div { min-width: 0; }
 .user-actions[open] { flex-basis: 100%; }

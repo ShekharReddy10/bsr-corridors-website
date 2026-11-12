@@ -1,27 +1,36 @@
-{% comment %}ID photos for this stay, one block per person: photos ticked for this stay, the guest's earlier photos to
-tick, and new ones to add (saved once for the guest, kept in Google Drive).{% endcomment %}
+{% comment %}ID photos for this stay, one line per person: numbered chips for the photos ticked for this stay (tap to
+view), + to add new ones, the guest's earlier photos to tick, and Manage (whose ID / untick) tucked away.{% endcomment %}
+<div class="idp">
 {% for row in id_photo_rows %}
-<div class="photo-person-block">
-  <div class="photo-row">
+  <div class="idp-line">
     <span class="photo-person">{{ row.person }}</span>
-    {% for p in row.used %}
-      <span class="photo-chip"><a href="{% url 'id_photo' p.pk %}" target="_blank" rel="noopener" title="{{ p.name }}" data-viewer="ids">✓ {{ p.name|cut:".jpg" }}</a>{% if photos_locked %}<span class="photo-x" title="Checked out — kept as the record">🔒</span>{% else %}{% if id_photo_rows|length > 1 %}<form method="post" action="{% url 'id_photo_person' stay.pk p.pk %}" class="inline-form">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><select name="person" class="photo-whose" aria-label="Whose ID is {{ p.name }}?" title="Whose ID is this?" onchange="this.form.submit()">{% for r in id_photo_rows %}<option{% if r.person == row.person %} selected{% endif %}>{{ r.person }}</option>{% endfor %}</select></form>{% endif %}<form method="post" action="{% url 'id_photo_unuse' stay.pk p.pk %}" class="inline-form">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="photo-x" aria-label="Untick {{ p.name }} for this stay" title="Untick for this stay">×</button></form>{% endif %}</span>
-    {% endfor %}
+    {% for p in row.used %}<a class="idp-chip" href="{% url 'id_photo' p.pk %}" target="_blank" rel="noopener" title="{{ p.name }}" data-viewer="ids">{{ forloop.counter }}</a>{% empty %}<span class="idp-none">no ID</span>{% endfor %}
     <form method="post" action="{% url 'id_photos_upload' stay.pk %}" enctype="multipart/form-data" class="inline-form photo-upload">{% csrf_token %}
       <input type="hidden" name="next" value="{{ request.get_full_path }}"><input type="hidden" name="person" value="{{ row.person }}">
-      <label class="btn btn-ghost btn-sm"><span>+ Add new</span><input type="file" name="photo" accept="image/*" multiple hidden data-autosubmit></label>
+      <label class="idp-add" title="Add photos of {{ row.person }}’s ID"><span>+</span><input type="file" name="photo" accept="image/*" multiple hidden data-autosubmit></label>
     </form>
   </div>
   {% if row.earlier %}
-  <form method="post" action="{% url 'id_photos_use' stay.pk %}" class="photo-earlier">{% csrf_token %}
+  <form method="post" action="{% url 'id_photos_use' stay.pk %}" class="idp-earlier">{% csrf_token %}
     <input type="hidden" name="next" value="{{ request.get_full_path }}">
-    <span class="muted small">Saved earlier — tick to use for this stay:</span>
-    {% for p in row.earlier %}
-      <label class="photo-pick"><input type="checkbox" name="photo" value="{{ p.pk }}"> <a href="{% url 'id_photo' p.pk %}" target="_blank" rel="noopener" title="{{ p.name }}" data-viewer="ids">{{ p.name|cut:".jpg" }}</a></label>
-    {% endfor %}
-    <button class="btn btn-outline btn-sm">Use ticked photos</button>
+    <span class="muted small">Saved earlier — tick to use:</span>
+    {% for p in row.earlier %}<label class="idp-pick" title="{{ p.name }}"><input type="checkbox" name="photo" value="{{ p.pk }}"> <a href="{% url 'id_photo' p.pk %}" target="_blank" rel="noopener" title="{{ p.name }}" data-viewer="ids">{{ p.created_at|date:"d-m-y" }}</a></label>{% endfor %}
+    <button class="btn btn-outline btn-sm">Use</button>
   </form>
   {% endif %}
-</div>
 {% endfor %}
-{% if not has_stay_photos %}<p class="muted small">No ID photo for this stay yet.</p>{% endif %}
+{% if has_stay_photos %}
+  <details class="idp-manage">
+    <summary>Manage</summary>
+    {% for row in id_photo_rows %}{% for p in row.used %}
+    <div class="idp-manage-row">
+      <a href="{% url 'id_photo' p.pk %}" target="_blank" rel="noopener" title="{{ p.name }}" data-viewer="ids-manage">{{ p.name|cut:".jpg" }}</a>
+      {% if photos_locked %}<span class="muted small" title="Checked out — kept as the record">🔒 locked</span>{% else %}
+      {% if id_photo_rows|length > 1 %}<form method="post" action="{% url 'id_photo_person' stay.pk p.pk %}" class="inline-form">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><select name="person" class="photo-whose" aria-label="Whose ID is {{ p.name }}?" onchange="this.form.submit()">{% for r in id_photo_rows %}<option{% if r.person == row.person %} selected{% endif %}>{{ r.person }}</option>{% endfor %}</select></form>{% endif %}
+      <form method="post" action="{% url 'id_photo_unuse' stay.pk p.pk %}" class="inline-form">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn btn-ghost btn-sm" title="Untick for this stay (stays saved for the guest)">Untick</button></form>
+      {% endif %}
+    </div>
+    {% endfor %}{% endfor %}
+  </details>
+{% else %}<p class="muted small">No ID photo for this stay yet.</p>{% endif %}
+</div>

@@ -1216,7 +1216,7 @@ class PhotoTests(TestCase):
             # The guest books again: earlier photos are offered to tick, none ticked yet.
             again = stay(g, self.rooms["101"], 10, 2)
             page = self.client.get(f"/stays/{again.pk}/")
-            self.assertContains(page, "Saved earlier — tick to use for this stay")
+            self.assertContains(page, "Saved earlier — tick to use")
             self.assertContains(page, "No ID photo for this stay yet")
             red, blue = g.id_photos.get(file_id="drive-2"), g.id_photos.get(file_id="drive-3")
             self.client.post(f"/stays/{again.pk}/id-photos/use/", {"photo": [red.pk, blue.pk]})
