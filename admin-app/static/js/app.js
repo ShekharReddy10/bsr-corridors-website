@@ -28,10 +28,21 @@
   // Photo viewer: ID photos and receipts open in the page (‹ › / arrow keys / swipe between the photos in the same
   // group, tap to zoom) instead of a new tab. Without JS the links still open the photo in a new tab.
   let viewer, shown = [], at = 0;
+  const preloaded = new Map();
+  const preload = (a) => { if (a && !preloaded.has(a.href)) { const i = new Image(); i.src = a.href; preloaded.set(a.href, i); } };
   const showPhoto = () => {
     const a = shown[at];
-    viewer.querySelector("img").src = a.href;
-    viewer.querySelector("img").classList.remove("zoomed");
+    const img = viewer.querySelector("img"), status = viewer.querySelector(".viewer-status");
+    // Clear the previous photo first: photos come from Google Drive and take a moment, and the old one staying up
+    // made it look as if ‹ › didn't change the photo.
+    img.hidden = true;
+    img.classList.remove("zoomed");
+    status.textContent = "Loading…";
+    status.hidden = false;
+    img.onload = () => { if (img.src === a.href) { img.hidden = false; status.hidden = true; } };
+    img.onerror = () => { if (img.src === a.href) status.textContent = "Couldn’t load this photo — try ↗ to open it in a new tab."; };
+    img.src = a.href;
+    if (shown.length > 1) { preload(shown[(at + 1) % shown.length]); preload(shown[(at - 1 + shown.length) % shown.length]); }
     viewer.querySelector(".viewer-title").textContent = a.title || a.textContent.trim();
     viewer.querySelector(".viewer-count").textContent = shown.length > 1 ? `${at + 1} / ${shown.length}` : "";
     viewer.querySelectorAll(".viewer-nav").forEach((b) => { b.hidden = shown.length < 2; });
@@ -43,7 +54,7 @@
     viewer.innerHTML = `<div class="viewer-bar"><span class="viewer-title"></span><span class="viewer-count"></span>
         <a class="viewer-open" target="_blank" rel="noopener" title="Open in a new tab">↗</a>
         <button type="button" class="viewer-close" aria-label="Close">×</button></div>
-      <div class="viewer-stage"><img alt="Photo"></div>
+      <div class="viewer-stage"><img alt="Photo" hidden><p class="viewer-status"></p></div>
       <button type="button" class="viewer-nav viewer-prev" aria-label="Previous photo">‹</button>
       <button type="button" class="viewer-nav viewer-next" aria-label="Next photo">›</button>`;
     document.body.append(viewer);
@@ -66,7 +77,7 @@
       if (Math.abs(dx) > 50) step(dx < 0 ? 1 : -1);
       x0 = null;
     });
-    viewer.addEventListener("close", () => { viewer.querySelector("img").removeAttribute("src"); });
+    viewer.addEventListener("close", () => { viewer.querySelector("img").removeAttribute("src"); preloaded.clear(); });
   };
   document.addEventListener("click", (e) => {
     const a = e.target.closest("a[data-viewer]");

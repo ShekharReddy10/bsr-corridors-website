@@ -413,6 +413,9 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .viewer-open, .viewer-close { color: #fff; text-decoration: none; background: rgba(255,255,255,.15); border: 0; border-radius: 999px; width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; font-size: 1.3rem; cursor: pointer; }
 .viewer-stage { position: absolute; inset: 0; overflow: auto; display: flex; }
 .viewer-stage img { margin: auto; max-width: 100%; max-height: 100%; object-fit: contain; cursor: zoom-in; }  /* margin: auto centres without clipping when zoomed */
+.viewer-stage img[hidden] { display: none; }
+.viewer-status { margin: auto; padding: 0 24px; text-align: center; opacity: .85; }
+.viewer-status[hidden] { display: none; }
 .viewer-stage img.zoomed { max-width: none; max-height: none; cursor: zoom-out; }
 .viewer-nav { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; width: 44px; height: 64px; border: 0; border-radius: 10px; background: rgba(255,255,255,.15); color: #fff; font-size: 2rem; cursor: pointer; }
 .viewer-nav[hidden] { display: none; }
