@@ -71,9 +71,10 @@ def people(stay) -> list[str]:
 
 
 def photo_rows(stay) -> list[tuple[str, list]]:
-    """(person, their photos) for each person on the stay, plus anyone whose name has since changed."""
+    """(person, their photos) for each person on the stay — photos saved on the guest's earlier bookings included —
+    then anyone else the guest has ID photos of (a companion from an earlier booking)."""
     by_person = {}
-    for p in stay.id_photos.all():
+    for p in stay.guest.id_photos.all():
         by_person.setdefault(p.person, []).append(p)
     names = people(stay)
     return [(n, by_person.get(n, [])) for n in names] + [(n, ps) for n, ps in by_person.items() if n not in names]
@@ -96,20 +97,20 @@ def id_photos_upload(request, pk):
     stay = get_object_or_404(Stay.objects.select_related("guest"), pk=pk)
     person = request.POST.get("person", "")
     uploads = request.FILES.getlist("photo")
-    if person not in people(stay):
+    if person not in people(stay) and not stay.guest.id_photos.filter(person=person).exists():
         messages.error(request, "Choose whose ID this is.")
     elif not uploads:
         messages.error(request, "Choose a photo first.")
     elif len(uploads) > MAX_PHOTOS:
         messages.error(request, f"Up to {MAX_PHOTOS} photos at a time, please.")
     else:
-        n = stay.id_photos.filter(person=person).count()
+        n = stay.guest.id_photos.filter(person=person, stay=stay).count()
         saved = 0
         for upload in uploads:
             name = photo_name(stay, person, n + saved + 1)
             if not (file_id := store(request, upload, "ids", name)):
                 break
-            IdPhoto.objects.create(stay=stay, person=person, file_id=file_id, name=name)
+            IdPhoto.objects.create(guest=stay.guest, stay=stay, person=person, file_id=file_id, name=name)
             saved += 1
         if saved:
             AuditLog.record("stay", f"{saved} ID photo{'s' if saved > 1 else ''} saved for {person}", stay=stay)
@@ -124,4 +125,4 @@ def id_photo_delete(request, pk):
     p.delete()
     AuditLog.record("stay", f"Removed ID photo {p.name}", stay=p.stay)
     messages.success(request, "ID photo removed.")
-    return _back(request, f"/stays/{p.stay_id}/")
+    return _back(request, f"/guests/{p.guest_id}/")

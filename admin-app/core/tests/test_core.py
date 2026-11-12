@@ -1189,7 +1189,7 @@ class PhotoTests(TestCase):
             self.client.post(f"/stays/{s.pk}/id-photos/upload/", {"person": "Sita", "photo": [self._jpeg()]})
             self.client.post(f"/stays/{s.pk}/id-photos/upload/", {"person": "Ravi Kumar", "photo": [self._jpeg()]})
             day = f"{s.check_in:%d-%m-%Y}"
-            self.assertEqual([(p.person, p.name, p.file_id) for p in s.id_photos.all()], [
+            self.assertEqual([(p.person, p.name, p.file_id) for p in s.guest.id_photos.all()], [
                 ("Ravi Kumar", f"Ravi Kumar_{s.pk}_{day}.jpg", "drive-1"),
                 ("Ravi Kumar", f"Ravi Kumar_{s.pk}_{day}_2.jpg", "drive-2"),
                 ("Sita", f"Sita_{s.pk}_{day}.jpg", "drive-3"),
@@ -1201,16 +1201,27 @@ class PhotoTests(TestCase):
             page = self.client.get(f"/stays/{s.pk}/")
             self.assertContains(page, "Photo 3")
             self.assertContains(self.client.get(f"/guests/{s.guest.pk}/"), f"Ravi Kumar_{s.pk}_{day}_2.jpg")
-            first = s.id_photos.first()
+            first = s.guest.id_photos.first()
             r = self.client.get(f"/id-photos/{first.pk}/")
             self.assertEqual((r.content, r["Content-Type"]), (b"jpeg-bytes", "image/jpeg"))
             self.assertTrue(AuditLog.objects.filter(action="reveal_id", summary__contains="ID photo").exists())
             self.client.post(f"/id-photos/{first.pk}/delete/")
             rm.assert_called_once_with("drive-1")
-            self.assertEqual(s.id_photos.count(), 3)
+            self.assertEqual(s.guest.id_photos.count(), 3)
             # Someone not on the stay → refused.
             self.client.post(f"/stays/{s.pk}/id-photos/upload/", {"person": "Stranger", "photo": [self._jpeg()]})
-            self.assertEqual(s.id_photos.count(), 3)
+            self.assertEqual(s.guest.id_photos.count(), 3)
+            # The guest books again: the photos are already there, and more can be added on the new booking.
+            again = stay(s.guest, self.rooms["101"], 10, 12)
+            page = self.client.get(f"/stays/{again.pk}/").content.decode()
+            self.assertIn("Photo 2", page)  # Ravi's two remaining photos
+            self.assertIn("Sita", page)  # companion from the earlier booking, still listed with her photo
+            self.client.post(f"/stays/{again.pk}/id-photos/upload/", {"person": "Ravi Kumar", "photo": [self._jpeg()]})
+            self.assertEqual(s.guest.id_photos.last().name, f"Ravi Kumar_{again.pk}_{again.check_in:%d-%m-%Y}.jpg")
+            self.assertEqual(s.guest.id_photos.filter(person="Ravi Kumar").count(), 3)
+            # Deleting a booking keeps the guest's photos.
+            again.delete()
+            self.assertEqual(s.guest.id_photos.count(), 4)
         # Not a photo → refused, nothing saved.
         with mock.patch("core.gdrive.upload_photo") as up:
             r = self.client.post(f"/stays/{s.pk}/id-photos/upload/",

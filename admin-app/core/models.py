@@ -280,10 +280,13 @@ class StayGuest(models.Model):
 
 
 class IdPhoto(models.Model):
-    """A photo of a guest's ID, kept in Google Drive (only the file ID is stored here). A stay can have any number:
-    front and back, and one set for each guest on the stay."""
+    """A photo of an ID, kept in Google Drive (only the file ID is stored here). Photos belong to the guest who books,
+    so every later booking of that guest has them too; companions' IDs (guest 2, 3, …) are kept there under their
+    own names. Any number per person (front and back, …)."""
 
-    stay = models.ForeignKey(Stay, on_delete=models.CASCADE, related_name="id_photos")
+    guest = models.ForeignKey(Guest, on_delete=models.CASCADE, related_name="id_photos")
+    stay = models.ForeignKey(Stay, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+                             help_text="The booking it was added on (used in the file name)")
     person = models.CharField(max_length=120, help_text="Whose ID this is (the main guest, guest 2, …)")
     file_id = models.CharField("Google Drive file", max_length=100)
     name = models.CharField("File name in Drive", max_length=200)

@@ -2,7 +2,7 @@ from django.core.paginator import Paginator
 from django.db.models import Count, Max, Q, Sum
 from django.shortcuts import get_object_or_404, render
 
-from ..models import Guest, IdPhoto, Stay
+from ..models import Guest, Stay
 
 
 def guest_list(request):
@@ -29,5 +29,5 @@ def guest_detail(request, pk):
     return render(request, "core/guest_detail.html", {
         "guest": guest, "stays": stays, "total": total, "paid": paid, "balance": total - paid,
         "nights": sum(s.nights for s in live),
-        "id_photos": IdPhoto.objects.filter(stay__guest=guest).order_by("-stay__check_in", "created_at"),
+        "id_photos": guest.id_photos.all(),
     })
