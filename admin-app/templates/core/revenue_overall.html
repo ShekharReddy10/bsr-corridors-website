@@ -15,7 +15,7 @@
       <span class="money-label">Paid by guests <small class="muted">(every payment recorded)</small></span>
       <b class="money-big">{{ r.paid_total|inr }}</b>
       <ul class="money-split">
-        <li><span>Received <small class="muted">(checked out + completed months)</small></span><b>{{ r.collected|inr }}</b></li>
+        <li><span>Received <small class="muted">(nights stayed and paid for)</small></span><b>{{ r.collected|inr }}</b></li>
         <li><span>Held <small class="muted">(guests staying now)</small></span><b>{{ r.held_in_house|inr }}</b></li>
         <li><span>Advances <small class="muted">(upcoming bookings)</small></span><b>{{ r.advance_upcoming|inr }}</b></li>
       </ul>

@@ -4,14 +4,15 @@ Room revenue is counted per night stayed: a stay's total is spread evenly over i
 3-night ₹4,500 stay adds ₹1,500 to each night (and to that night's week, month and room type).
 Nights already stayed are "earned"; later nights of current and upcoming stays are "booked ahead".
 
-Money: guests who have checked in owe "balance pending" (bill − paid). What they paid only counts as
-"received" when it is done: a daily stay on its check-out day, so a 29th → 2nd stay counts in the month of the
-2nd; a monthly guest's rent month by month, on the last day of each of their months (joined 1 Oct → the first
-month is 1–31 Oct and counts on 31 Oct; joined 14 Oct → 14 Oct–13 Nov, counts on 13 Nov), and whatever is
-left over on the day they leave. Until then it is "held" (paid by guests
-staying now). Bookings not checked in yet are "yet to receive" in full (advances included).
+Money: guests who have checked in owe "balance pending" (bill − paid). What they paid counts as "received" night by
+night: each night's share of the bill counts once that night is stayed (the next morning), in the month of that night —
+a 10-night ₹10,000 stay has received ₹2,000 after 2 nights, and a 29 Oct → 2 Nov stay counts 3 nights in October and 1
+in November. A monthly guest's rent is spread over the days of their month (₹15,000 for a 30-day month = ₹500 a day).
+Only money actually paid counts: a guest who paid a ₹2,000 advance and stayed 5 nights of ₹1,000 has ₹2,000 received
+and ₹3,000 balance pending; more counts as they pay. Whatever is still left (extra charges, early check-out) counts on
+the check-out day. Paid but not counted yet is "held" (paid by guests staying now, for nights still to come).
+Bookings not checked in yet are "yet to receive" in full (advances included).
 Received + held + balance pending + yet to receive = the full amount of all bookings.
-Each month's received money is fixed once the month is over, and the next month starts from zero.
 Profit = received − expenses. Cancelled and transferred stays are left out: whatever was paid on them is treated
 as refunded.
 
@@ -97,39 +98,78 @@ def _same_day_months_later(d: date, n: int) -> date:
     return first.replace(day=min(d.day, (nxt - timedelta(days=1)).day))
 
 
+CENT = Decimal("0.01")
+
+
 @dataclass
 class Received:
-    """Money that counts as received on `day`, for the nights start → end of the stay."""
+    """Money that counts as received for the nights start → end of the stay (all in one month), on `day`."""
     day: date
     stay: Stay
     amount: Decimal
     what: str
     start: date
     end: date
+    parts: list = field(default_factory=list)  # (night, amount) — so weeks and months get each night's share
+    label: str = ""
+
+
+def night_values(stay: Stay, until: date):
+    """Yield (night, value, label) for each night of the stay before `until`: the bill spread evenly over the nights;
+    a monthly guest's rent spread over the days of each of their months. Monthly with no rent set: nothing (what they
+    paid counts when they leave)."""
+    if stay.check_out:
+        until = min(until, stay.check_out)
+    if stay.kind == Stay.Kind.MONTHLY:
+        if not stay.monthly_rent or stay.monthly_rent <= 0:
+            return
+        k, start = 1, stay.check_in
+        while start < until:
+            nxt = _same_day_months_later(stay.check_in, k)
+            rate = stay.monthly_rent / (nxt - start).days
+            d = start
+            while d < min(nxt, until):
+                yield d, rate, f"Month {k} rent"
+                d += timedelta(days=1)
+            start, k = nxt, k + 1
+    elif stay.check_out and (nights := (stay.check_out - stay.check_in).days) > 0:
+        rate = (stay.total_amount or ZERO) / nights
+        d = stay.check_in
+        while d < until:
+            yield d, rate, ""
+            d += timedelta(days=1)
 
 
 def received_on(stay: Stay, t: date) -> list[Received]:
-    """The money this stay has paid that counts as received by today (see module doc).
-    The rest of amount_paid is still held."""
+    """The money this stay has paid that counts as received by today (see module doc), one item per month (and per
+    rent month). The rest of amount_paid is still held."""
     paid = stay.amount_paid or ZERO
     if stay.status not in (Stay.Status.CHECKED_IN, Stay.Status.CHECKED_OUT) or paid <= 0:
         return []
     done = stay.status == Stay.Status.CHECKED_OUT
-    out = []
-    start = stay.check_in
-    if stay.kind == Stay.Kind.MONTHLY and stay.monthly_rent and stay.monthly_rent > 0:
-        limit = stay.check_out if done else t
-        k = 1
-        # Month k is complete on its last day: the day before the same date k months later.
-        while paid > 0 and (end := _same_day_months_later(stay.check_in, k) - timedelta(days=1)) <= limit:
-            part = min(stay.monthly_rent, paid)
-            out.append(Received(end, stay, part, f"Month {k} rent", start, end))
-            paid -= part
-            start = end + timedelta(days=1)
-            k += 1
-    if done and paid > 0:
+    out, cum, counted = [], ZERO, ZERO
+    # Nights fully stayed: before today, or every night once checked out.
+    for d, rate, label in night_values(stay, (stay.check_out or t) if done else t):
+        cum += rate
+        part = min(paid, cum.quantize(CENT)) - counted
+        if part <= 0:
+            break  # all that was paid is counted; the rest is balance pending
+        counted += part
+        x = out[-1] if out else None
+        if not x or x.label != label or (x.day.year, x.day.month) != (d.year, d.month):
+            x = Received(d, stay, ZERO, label, d, d, label=label)
+            out.append(x)
+        x.amount += part
+        x.parts.append((d, part))
+        x.day = x.end = d
+    for x in out:
+        n = len(x.parts)
+        x.what = f"{x.label} · {n} day{'s' if n > 1 else ''}" if x.label else f"{n} night{'s' if n > 1 else ''}"
+    if done and paid > counted:
         end = stay.check_out or t
-        out.append(Received(end, stay, paid, "Final payment" if out else "Checked out", min(start, end), end))
+        start = min(out[-1].end + timedelta(days=1), end) if out else min(stay.check_in, end)
+        out.append(Received(end, stay, paid - counted, "Final payment" if out else "Checked out", start, end,
+                            parts=[(end, paid - counted)]))
     return out
 
 
@@ -328,7 +368,8 @@ def build(period_key: str = "month", month: date | None = None) -> Report:
         else:
             got = ZERO
             for x in received_on(s, t):
-                add_received(x.day, x.amount)
+                for d, amount in x.parts:
+                    add_received(d, amount)
                 r.ledger[x.day.replace(day=1)].items.append(x)
                 got += x.amount
             r.collected += got
@@ -415,47 +456,34 @@ def bar_rows(groups: dict) -> list[dict]:
 
 
 def rooms_for_month(r: Report, month: date) -> list[dict]:
-    """Per room for one month: money received in it (check-outs, completed monthly rent); money due in it that
-    isn't received yet (guests checking out this month who haven't yet, monthly rent months ending this month);
-    and — just for information — stays that checked in this month but check out in a later month."""
+    """Per room for one month: money received in it (nights stayed and paid for), and what is still due in it from
+    guests not checked out yet — their nights in this month (stayed or to come) not counted as received yet."""
     next_month = _add_months(month, 1)
     rows = {}
 
     def row(room):
-        return rows.setdefault(room.pk, {"room": room, "received": ZERO, "items": [], "due": [], "due_total": ZERO,
-                                         "later": [], "later_total": ZERO})
+        return rows.setdefault(room.pk, {"room": room, "received": ZERO, "items": [], "due": [], "due_total": ZERO})
 
     for room in Room.objects.filter(is_active=True):
         row(room)
+    got = defaultdict(Decimal)
     for item in r.ledger[month].items:
         x = row(item.stay.room)
         x["received"] += item.amount
         x["items"].append(item)
+        got[item.stay.pk] += item.amount
 
-    def add_due(s, day, amount, what):
-        x = row(s.room)
-        x["due"].append({"stay": s, "day": day, "amount": amount, "what": what})
-        x["due_total"] += amount
-
-    # Not checked out yet, but their check-out (when the money counts) falls in this month.
-    for s in (Stay.objects.filter(status__in=[Stay.Status.UPCOMING, Stay.Status.CHECKED_IN],
-                                  check_out__gte=month, check_out__lt=next_month).select_related("guest", "room")):
-        add_due(s, s.check_out, s.total, "checks out")
-    # Monthly guests staying on: the month of rent that ends in this month, if it hasn't ended yet.
-    for s in (Stay.objects.filter(status=Stay.Status.CHECKED_IN, kind=Stay.Kind.MONTHLY, check_out__isnull=True,
-                                  monthly_rent__gt=0).select_related("guest", "room")):
-        k = 1
-        while (end := _same_day_months_later(s.check_in, k) - timedelta(days=1)) < month:
-            k += 1
-        if end < next_month and end > r.t:
-            add_due(s, end, s.monthly_rent, f"month {k} rent ends")
-
-    later = (Stay.objects.live().filter(check_in__gte=month, check_in__lt=next_month)
-             .filter(Q(check_out__gte=next_month) | Q(check_out__isnull=True)).select_related("guest", "room"))
-    for s in later:
-        x = row(s.room)
-        x["later"].append(s)
-        x["later_total"] += s.total
+    stays = (Stay.objects.filter(status__in=[Stay.Status.UPCOMING, Stay.Status.CHECKED_IN], check_in__lt=next_month)
+             .filter(Q(check_out__gt=month) | Q(check_out__isnull=True)).select_related("guest", "room"))
+    for s in stays:
+        nights = [(d, v) for d, v, _ in night_values(s, next_month) if d >= month]
+        due = sum((v for _, v in nights), ZERO).quantize(CENT) - got[s.pk]
+        if due > 0:
+            x = row(s.room)
+            n = len(nights)
+            x["due"].append({"stay": s, "day": nights[0][0], "amount": due,
+                             "what": f"{n} night{'s' if n > 1 else ''} in {month:%b}"})
+            x["due_total"] += due
     for x in rows.values():
         x["due"].sort(key=lambda d: d["day"])
     return sorted(rows.values(), key=lambda x: (x["room"].sort_order, x["room"].floor, x["room"].number))
