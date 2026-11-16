@@ -1,6 +1,6 @@
 """Typo checks: amounts that look wrong compared with our own usual figures (an extra zero, too many nights for
-the amount, paid more than the bill, …). Flagged entries are listed to double-check until someone edits them or
-taps "Looks right" — a confirmation is tied to the exact figures, so changing them later asks again.
+the amount, paid more than the bill, …). Stays only — expenses aren't checked, big ones are normal. Flagged entries
+are listed to double-check until someone edits them or taps "Looks right" — a confirmation is tied to the exact figures, so changing them later asks again.
 
 Usual figures are medians of past entries (so one odd stay doesn't move them); a check only runs once there are
 enough past entries to compare with.
@@ -13,12 +13,10 @@ from statistics import median
 
 from django.urls import reverse
 
-from .models import AppSetting, Expense, Stay
+from .models import AppSetting, Stay
 
 CONFIRMED_KEY = "checked_ok"
 STAY_FACTOR = 3  # per-night price or monthly rent this many times above / below the usual
-EXPENSE_FACTOR = 5  # expense this many times the usual for its category
-EXPENSE_MIN = Decimal(1000)  # small expenses are never flagged
 MIN_SAMPLES = 5
 MAX_DAILY_NIGHTS = 31
 RECENT_DAYS = 45  # only recent / current entries are checked
@@ -53,10 +51,6 @@ def _stay_key(s: Stay) -> str:
     return f"s{s.pk}-{_n(s.total_amount)}-{_n(s.amount_paid)}-{_n(s.monthly_rent)}-{s.check_in}-{s.check_out}"
 
 
-def _expense_key(e: Expense) -> str:
-    return f"e{e.pk}-{_n(e.amount)}-{e.category}"
-
-
 def _nightly(s: Stay) -> Decimal | None:
     if s.kind != Stay.Kind.DAILY or not s.check_out or not s.total_amount:
         return None
@@ -65,9 +59,9 @@ def _nightly(s: Stay) -> Decimal | None:
 
 
 class Usual:
-    """Median per-night price per room type (and overall), median monthly rent, median expense per category."""
+    """Median per-night price per room type (and overall), and median monthly rent."""
 
-    def __init__(self, exclude_stay=None, exclude_expense=None):
+    def __init__(self, exclude_stay=None):
         nightly_by_type, nightly_all, rents = {}, [], []
         for s in Stay.objects.live().exclude(pk=exclude_stay).select_related("room"):
             rate = _nightly(s)
@@ -79,10 +73,6 @@ class Usual:
         self.nightly = {k: median(v) for k, v in nightly_by_type.items() if len(v) >= MIN_SAMPLES}
         self.nightly_all = median(nightly_all) if len(nightly_all) >= MIN_SAMPLES else None
         self.rent = median(rents) if len(rents) >= MIN_SAMPLES else None
-        by_category = {}
-        for cat, amount in Expense.objects.exclude(pk=exclude_expense).values_list("category", "amount"):
-            by_category.setdefault(cat, []).append(amount)
-        self.expense = {k: median(v) for k, v in by_category.items() if len(v) >= MIN_SAMPLES}
 
 
 def stay_reasons(s: Stay, usual: Usual) -> list[str]:
@@ -111,14 +101,6 @@ def stay_reasons(s: Stay, usual: Usual) -> list[str]:
     return out
 
 
-def expense_reasons(e: Expense, usual: Usual) -> list[str]:
-    typical = usual.expense.get(e.category)
-    if typical and e.amount >= EXPENSE_MIN and e.amount >= typical * EXPENSE_FACTOR:
-        return [f"{_inr(e.amount)} — about {e.amount / typical:.0f}× the usual {_inr(typical)} for "
-                f"{e.get_category_display().lower()}. Extra zero?"]
-    return []
-
-
 def stay_flags(t: date) -> list[Flag]:
     """Current and recent stays (upcoming, in-house, or ended in the last few weeks) that look wrong."""
     usual, ok = Usual(), _confirmed()
@@ -133,21 +115,7 @@ def stay_flags(t: date) -> list[Flag]:
     return out
 
 
-def expense_flags(t: date) -> list[Flag]:
-    usual, ok = Usual(), _confirmed()
-    out = []
-    for e in Expense.objects.filter(date__gte=t - timedelta(days=RECENT_DAYS)):
-        reasons = expense_reasons(e, usual)
-        if reasons and _expense_key(e) not in ok:
-            out.append(Flag(_expense_key(e), f"{e.date:%d-%m-%Y} · {e.reason}", " ".join(reasons),
-                            reverse("expense_edit", args=[e.pk])))
-    return out
-
-
 def check_stay(s: Stay) -> list[str]:
     """Right after saving: anything that looks wrong with this stay (compared with the others)."""
     return stay_reasons(s, Usual(exclude_stay=s.pk))
 
-
-def check_expense(e: Expense) -> list[str]:
-    return expense_reasons(e, Usual(exclude_expense=e.pk))

@@ -1098,14 +1098,12 @@ class TypoCheckTests(TestCase):
             "o-TOTAL_FORMS": "0", "o-INITIAL_FORMS": "0", "o-MIN_NUM_FORMS": "0", "o-MAX_NUM_FORMS": "9"}, follow=True)
         self.assertContains(r, "Please double-check: ₹15,000 a night")
 
-    def test_expense_extra_zero(self):
-        from core import checks
+    def test_expenses_not_checked(self):
         for i in range(5):
             Expense.objects.create(date=T - timedelta(days=60 + i), category="laundry", reason="Laundry", amount=Decimal(800))
-        big = Expense.objects.create(date=T, category="laundry", reason="Laundry", amount=Decimal(8000))
-        Expense.objects.create(date=T, category="laundry", reason="Laundry", amount=Decimal(900))
-        self.assertEqual([f.key for f in checks.expense_flags(T)], [f"e{big.pk}-8000.00-laundry"])
-        self.assertEqual(checks.check_expense(big)[0][:7], "₹8,000 ")
+        Expense.objects.create(date=T, category="laundry", reason="Laundry", amount=Decimal(80000))
+        self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
+        self.assertNotContains(self.client.get("/expenses/"), "Please double-check")
 
 
 class PaymentHistoryTests(TestCase):
