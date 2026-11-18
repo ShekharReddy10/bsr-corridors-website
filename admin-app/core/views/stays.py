@@ -197,7 +197,10 @@ def stay_detail(request, pk):
         "collector": request.user.first_name if request.user.first_name in services.host_names() else stay.host,
         "shorten_form": ShortenForm(initial={"new_check_out": services.today()}),
         "today": services.today(),
+        "swap_with": list(services.swap_candidates(stay)),
         "wa_templates": MessageTemplate.objects.all(),
+        "last_payment": stay.payments.order_by("-date", "-pk").first(),
+        "just_paid": int(request.GET["paid"]) if request.GET.get("paid", "").isdigit() else None,
         "just_checked_in": request.GET.get("welcome") == "1" and stay.status == Stay.Status.CHECKED_IN,
         "just_checked_out": request.GET.get("departed") == "1" and stay.status == Stay.Status.CHECKED_OUT,
     }
@@ -257,6 +260,13 @@ def stay_action(request, pk, action):
                 c = form.cleaned_data
                 services.add_payment(stay, c["amount"], c["mode"], c["collected_by"], c["date"], c["note"])
                 messages.success(request, f"Payment of ₹{c['amount']:,.0f} recorded.")
+                if not request.POST.get("next"):
+                    return redirect(f"/stays/{stay.pk}/?paid={c['amount']:.0f}#payment")
+        elif action == "swap":
+            other = get_object_or_404(Stay.objects.select_related("guest", "room"), pk=request.POST.get("other") or 0)
+            services.swap_rooms(stay, other)
+            messages.success(request, f"Rooms swapped: {stay.guest.name} is now in {stay.room}, "
+                                      f"{other.guest.name} in {other.room}.")
         elif action == "shorten":
             form = ShortenForm(request.POST)
             if form.is_valid():

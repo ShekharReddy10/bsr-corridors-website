@@ -1,6 +1,7 @@
 """WhatsApp messages: ready-made texts, hotel info (Wi-Fi, rules, timings) and click-to-send links."""
 
 import re
+from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode
 
 from django.contrib import messages
@@ -85,7 +86,7 @@ def in_house(request):
     return render(request, "core/whatsapp_in_house.html", {
         "templates": templates, "template": template, "text": text, "query": query,
         "with_phone": with_phone, "no_phone": [s for s in stays if not s.guest.phone],
-        "preview": whatsapp.render(body, whatsapp.context(with_phone[0])) if body and with_phone else "",
+        "preview": whatsapp.with_footer(whatsapp.render(body, whatsapp.context(with_phone[0]))) if body and with_phone else "",
     })
 
 
@@ -100,6 +101,10 @@ def send(request, pk):
         messages.error(request, f"Add {stay.guest.name}’s phone number to send WhatsApp messages.")
         return redirect("stay_detail", pk=pk)
     t = request.GET.get("t", "")
+    try:
+        amount = Decimal(request.GET.get("amount") or "x")
+    except InvalidOperation:
+        amount = None
     if t:
         templates = MessageTemplate.objects.all()
         if t in AUTO:
@@ -109,10 +114,11 @@ def send(request, pk):
         if not template:
             messages.error(request, "That message no longer exists.")
             return redirect("stay_detail", pk=pk)
-        name, text = template.name, whatsapp.render(template.body, whatsapp.context(stay))
+        name, text = template.name, whatsapp.render(template.body, whatsapp.context(stay, amount))
     else:
-        text = whatsapp.render(request.GET.get("text", ""), whatsapp.context(stay))  # {guest}, {room}, … allowed
+        text = whatsapp.render(request.GET.get("text", ""), whatsapp.context(stay, amount))  # {guest}, {room}, … allowed
         name = "custom message" if text else "chat"
+    text = whatsapp.with_footer(text)
     AuditLog.record("whatsapp", f"WhatsApp {name} opened for {stay.guest.name}", stay)
     mobile = bool(MOBILE.search(request.headers.get("User-Agent", "")))
     return AppRedirect(whatsapp.link(stay.guest.phone, text, mobile))

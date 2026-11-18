@@ -40,6 +40,7 @@ STAY_FIELDS = {
     "total": "Total amount",
     "paid": "Amount paid",
     "balance": "Balance due",
+    "amount": "Amount just received (typed in next to the button; else the latest payment)",
     "host": "Host looking after the guest",
     "hotel": "Hotel name",
 }
@@ -67,7 +68,10 @@ def floor(room) -> str:
     return digits[:-2] if len(digits) > 2 else ""
 
 
-def context(stay: Stay) -> dict[str, str]:
+def context(stay: Stay, amount=None) -> dict[str, str]:
+    if amount is None:
+        last = stay.payments.order_by("-date", "-pk").first() if stay.pk else None
+        amount = last.amount if last else stay.amount_paid
     ctx = {
         "guest": stay.guest.name,
         "room": stay.room.number,
@@ -78,6 +82,7 @@ def context(stay: Stay) -> dict[str, str]:
         "total": _money(stay.total),
         "paid": _money(stay.amount_paid),
         "balance": _money(max(stay.balance, 0)),
+        "amount": _money(amount or 0),
         "host": stay.host,
         "hotel": settings.HOTEL_NAME,
     }
@@ -88,6 +93,18 @@ def context(stay: Stay) -> dict[str, str]:
 def render(body: str, ctx: dict[str, str]) -> str:
     """Fill {placeholders}; unknown ones (or stray braces) are left as typed."""
     return PLACEHOLDER.sub(lambda m: ctx.get(m.group(1), m.group(0)), body).strip()
+
+
+def footer() -> str:
+    return f"- {settings.HOTEL_NAME}"
+
+
+def with_footer(text: str) -> str:
+    """Every message ends with the hotel's sign-off (once, even if the message already has it)."""
+    text = text.rstrip()
+    if not text or text.endswith(footer()):
+        return text
+    return f"{text}\n\n{footer()}"
 
 
 def wa_number(phone: str) -> str:

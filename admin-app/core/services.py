@@ -207,6 +207,38 @@ def move_blocking(stay: Stay) -> list:
     return clash.moves or []
 
 
+def swap_candidates(stay: Stay):
+    """Other upcoming / in-house stays, in another room, whose nights overlap this one's — the ones it can swap rooms
+    with (e.g. guest A was put in B's room by mistake)."""
+    if not stay.is_active:
+        return Stay.objects.none()
+    return (Stay.objects.filter(status__in=[Stay.Status.UPCOMING, Stay.Status.CHECKED_IN])
+            .overlapping(stay.check_in, stay.check_out).exclude(pk=stay.pk).exclude(room=stay.room)
+            .select_related("guest", "room").order_by("room__sort_order", "room__number"))
+
+
+def swap_rooms(a: Stay, b: Stay) -> None:
+    """Swap the rooms of two stays: a goes to b's room and b to a's. Dates, amounts and payments stay with the guest.
+    Raises StayConflict if either room is taken by a third stay for some of the other guest's nights."""
+    if a.pk == b.pk or a.room_id == b.room_id or not (a.is_active and b.is_active):
+        raise ValueError("These two stays can’t swap rooms.")
+    with transaction.atomic():
+        for room in sorted([a.room, b.room], key=lambda r: r.pk):
+            _lock_room(room)
+        clash = (list(conflicts(b.room, a.check_in, a.check_out, exclude_ids=[a.pk, b.pk]))
+                 + list(conflicts(a.room, b.check_in, b.check_out, exclude_ids=[a.pk, b.pk])))
+        if clash:
+            raise StayConflict(clash)
+        room_a, room_b, now = a.room, b.room, timezone.now()
+        # The no-overlap rule is checked row by row, so a steps aside (as if cancelled) while b moves into its room.
+        Stay.objects.filter(pk=a.pk).update(status=Stay.Status.CANCELLED)
+        Stay.objects.filter(pk=b.pk).update(room=room_a, updated_at=now)
+        Stay.objects.filter(pk=a.pk).update(room=room_b, status=a.status, updated_at=now)
+        a.room, b.room = room_b, room_a
+        AuditLog.record("move", f"Rooms swapped with {b.guest.name}: {room_a} → {room_b}", a)
+        AuditLog.record("move", f"Rooms swapped with {a.guest.name}: {room_b} → {room_a}", b)
+
+
 def plan_extension(stay: Stay, new_check_out: date) -> ExtensionPlan:
     if stay.is_open_ended:
         raise ValueError("Monthly stays have no check-out to extend — use “Add month’s rent”, or set a check-out date.")

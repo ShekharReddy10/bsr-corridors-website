@@ -962,13 +962,14 @@ class HostSettlementWhatsAppTests(TestCase):
         self.assertEqual(parse_qs(url.query)["phone"], ["919876543210"])
         text = parse_qs(url.query)["text"][0]
         self.assertIn("Ravi Kumar", text)
-        self.assertIn("Room 101", text)
+        self.assertIn("Room: 101", text)
         self.assertIn("corridors@123", text)
         self.assertTrue(AuditLog.objects.filter(stay=s, action="whatsapp").exists())
 
-        self.assertIn("🙏", text)
+        self.assertTrue(text.startswith("Dear Ravi Kumar,\n\n"))  # formal
+        self.assertTrue(text.endswith("\n\n- BSR Corridors"))  # every message is signed off
         custom = self.client.get(f"/stays/{s.pk}/whatsapp/", {"text": "Hello {guest}"})
-        self.assertIn("text=Hello%20Ravi%20Kumar", custom["Location"])  # {guest} etc. filled in typed text too
+        self.assertIn("text=Hello%20Ravi%20Kumar%0A%0A-%20BSR%20Corridors", custom["Location"])  # typed text too
         # Phone: straight into the WhatsApp app. No text: just open the chat.
         phone = self.client.get(f"/stays/{s.pk}/whatsapp/", HTTP_USER_AGENT="Mozilla/5.0 (Linux; Android 14) Mobile")
         self.assertEqual(phone["Location"], "whatsapp://send?phone=919876543210")
@@ -1048,9 +1049,55 @@ class HostSettlementWhatsAppTests(TestCase):
         self.assertEqual(self.client.post(f"/stays/{s.pk}/check-out/")["Location"], f"/stays/{s.pk}/?departed=1")
         self.assertContains(self.client.get(f"/stays/{s.pk}/?departed=1"), "Send departure message")
         text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/?t=checkout")["Location"]).query)["text"][0]
-        self.assertTrue(text.startswith("Thank you for staying at BSR Corridors, Ravi Kumar! 🙏\n\n"))
-        self.assertIn("Thank you for staying", text)
+        self.assertTrue(text.startswith("Dear Ravi Kumar,\n\nThank you for staying with us at BSR Corridors."))
         self.assertIn("Room 101", text)
+        self.assertEqual(text.count("- BSR Corridors"), 1)
+
+    def test_payment_done_message_with_amount(self):
+        from urllib.parse import parse_qs, urlparse
+        done = MessageTemplate.objects.get(name="Payment done")
+        s = stay(make_guest(phone="98765 43210"), self.rooms["302"] if "302" in self.rooms else self.rooms["101"], 0, 2)
+        r = self.client.post(f"/stays/{s.pk}/payment/", {"amount": "1200", "mode": "upi"})
+        self.assertEqual(r["Location"], f"/stays/{s.pk}/?paid=1200#payment")
+        page = self.client.get(f"/stays/{s.pk}/?paid=1200").content.decode()
+        self.assertIn(f"/stays/{s.pk}/whatsapp/?t={done.pk}&amp;amount=1200", page)  # offered right after paying
+        self.assertIn('class="wa-amount"', page)  # amount box next to the button
+        text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/", {"t": done.pk, "amount": "1200"})
+                                 ["Location"]).query)["text"][0]
+        self.assertIn("receipt of ₹1,200 towards your stay in Room 101", text)
+        self.assertIn("Balance due: ₹1,800", text)
+        self.assertTrue(text.endswith("- BSR Corridors"))
+        # Without an amount: the latest payment.
+        text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/", {"t": done.pk})["Location"]).query)["text"][0]
+        self.assertIn("receipt of ₹1,200", text)
+
+
+class SwapRoomTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        _, _, self.rooms = make_rooms()
+        self.client.force_login(get_user_model().objects.create_user("swap-admin", password="test-pass-123456"))
+
+    def test_swap_rooms_of_two_bookings(self):
+        a = stay(make_guest("A", "+91 90000 00001"), self.rooms["101"], 1, 3, amount_paid=Decimal(1000))
+        b = stay(make_guest("B", "+91 90000 00002"), self.rooms["102"], 2, 2, status=Stay.Status.UPCOMING)
+        page = self.client.get(f"/stays/{a.pk}/").content.decode()
+        self.assertIn("Swap room", page)
+        self.assertIn(f'<option value="{b.pk}">Room 102 — B', page)
+        self.client.post(f"/stays/{a.pk}/swap/", {"other": b.pk})
+        a.refresh_from_db(); b.refresh_from_db()
+        self.assertEqual((a.room.number, b.room.number), ("102", "101"))
+        self.assertEqual((a.status, a.amount_paid, a.check_in), (Stay.Status.UPCOMING, Decimal(1000), T + timedelta(days=1)))
+        self.assertTrue(AuditLog.objects.filter(stay=a, summary__contains="Rooms swapped with B").exists())
+
+    def test_swap_refused_when_a_third_stay_is_in_the_way(self):
+        a = stay(make_guest("A", "+91 90000 00001"), self.rooms["101"], 0, 4)
+        b = stay(make_guest("B", "+91 90000 00002"), self.rooms["102"], 0, 1)
+        stay(make_guest("C", "+91 90000 00003"), self.rooms["102"], 2, 2)  # 102 is taken for A's later nights
+        r = self.client.post(f"/stays/{a.pk}/swap/", {"other": b.pk}, follow=True)
+        self.assertContains(r, "already booked")
+        a.refresh_from_db(); b.refresh_from_db()
+        self.assertEqual((a.room.number, b.room.number), ("101", "102"))
 
 
 class TypoCheckTests(TestCase):

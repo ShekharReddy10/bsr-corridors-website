@@ -10,7 +10,7 @@
 
 <section class="card">
   <h2>Ready-made messages</h2>
-  <p class="muted small">Each one is a button on the stay page. The one marked <b>at check-in</b> opens by itself when you tap Check in, and the one marked <b>at check-out</b> when you tap Check out.</p>
+  <p class="muted small">Each one is a button on the stay page. Every message ends with “- {{ HOTEL_NAME }}” automatically. A message using <code>{amount}</code> (like Payment done) gets an amount box next to its button. The one marked <b>at check-in</b> opens by itself when you tap Check in, and the one marked <b>at check-out</b> when you tap Check out.</p>
   {% for t in templates %}
     <div class="wa-template">
       <div class="card-head"><h3>{{ t.name }}{% if t.on_check_in %} <span class="status status-checked_in">at check-in</span>{% endif %}{% if t.on_check_out %} <span class="status status-checked_out">at check-out</span>{% endif %}{% if t.shortcut %} <span class="status status-upcoming">button: {{ t.get_shortcut_display }}</span>{% endif %}</h3>
