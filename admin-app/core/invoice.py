@@ -24,7 +24,7 @@ LOGO = Path(__file__).resolve().parent / "invoice_logo.png"  # black and white
 SALT = "invoice"
 PENTHOUSE = "601"
 BLACK = (0, 0, 0)
-GREY = (90, 90, 90)
+GREY = (55, 55, 55)
 SHADE = (235, 235, 235)
 
 
@@ -211,6 +211,9 @@ def pdf(stay: Stay) -> bytes:
     # Title and invoice number / date.
     y += 3
     p.put(left, y, width, 7, "I N V O I C E", size=14, style="B", align="C")
+    p.set_line_width(0.3)
+    p.rect(right - 46, y + 0.5, 46, 6)
+    p.put(right - 46, y + 1, 46, 5, "ORIGINAL FOR RECIPIENT", size=8, style="B", align="C")
     y += 9
     p.put(left, y, width / 2, 5, f"Invoice No : {inv.number}", style="B")
     p.put(left + width / 2, y, width / 2, 5, f"Date : {inv.date:%d-%m-%Y}", style="B", align="R")
@@ -325,15 +328,19 @@ def pdf(stay: Stay) -> bytes:
         p.add_page()
     y = p.h - 52
     p.set_auto_page_break(False)
-    p.put(right - 70, y, 70, 5, f"For {settings.HOTEL_NAME}", style="B", align="R")
-    p.put(right - 70, y + 14, 70, 5, "Authorised Signatory", size=9, align="R")
+    p.put(right - 80, y, 80, 5, f"For {settings.HOTEL_NAME}", style="B", align="R")
+    p.put(right - 80, y + 6, 80, 4.5, "Electronically generated", size=8.5, align="R")
+    p.put(right - 80, y + 10.5, 80, 4.5, "(no signature required)", size=8.5, align="R")
+    p.put(right - 80, y + 16, 80, 5, "Authorised Signatory", size=9, style="B", align="R")
     y += 24
     p.hline(y, 0.2)
     p.hline(y + 0.9, 0.6)
     p.put(left, y + 3, width, 5, "Thank you for staying with us. We look forward to welcoming you again.", size=9,
           align="C")
-    p.put(left, y + 8, width, 5, "This is a computer-generated invoice and does not require a signature.", size=8,
-          align="C", color=GREY)
+    p.put(left, y + 8, width, 4.5, "This is an electronically generated invoice and does not require a physical "
+                                   "signature or stamp.", size=8, align="C", color=GREY)
+    p.put(left, y + 12, width, 4.5, "It is valid and shall be treated as the original invoice.", size=8, align="C",
+          color=GREY)
     return bytes(p.output())
 
 
