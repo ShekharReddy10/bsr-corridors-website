@@ -74,6 +74,7 @@ def floor(room) -> str:
 def context(stay: Stay, amount=None, base_url: str = "") -> dict[str, str]:
     """base_url: the site address (https://…/), for links in the message."""
     from . import invoice
+    from .shortlinks import shorten
     if amount is None:
         last = stay.payments.order_by("-date", "-pk").first() if stay.pk else None
         amount = last.amount if last else stay.amount_paid
@@ -93,7 +94,7 @@ def context(stay: Stay, amount=None, base_url: str = "") -> dict[str, str]:
         "hotel": settings.HOTEL_NAME,
         # Only once the invoice is generated; until then the message's invoice part is left out (see render).
         "invoice_no": invoice.number(stay) if has_inv else "",
-        "invoice_link": f"{base_url.rstrip('/')}/invoice/{invoice.token(stay)}/" if has_inv else "",
+        "invoice_link": shorten(f"{base_url.rstrip('/')}/invoice/{invoice.token(stay)}/") if has_inv else "",
     }
     # Hotel info may use stay placeholders too, e.g. a Wi-Fi name "BSR {floor}".
     return {**{k: render(v, ctx) for k, v in hotel_info().items()}, **ctx}

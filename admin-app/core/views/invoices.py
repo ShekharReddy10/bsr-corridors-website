@@ -23,6 +23,16 @@ def stay_invoice(request, pk):
     return _pdf_response(stay, request.GET.get("download") == "1")
 
 
+def short_link(request, code):
+    """Public: /s/<code> → the page it stands for (the page itself checks its own link)."""
+    from django.shortcuts import redirect
+    from ..models import ShortLink
+    link = ShortLink.objects.filter(code=code).first()
+    if link is None:
+        raise Http404
+    return redirect(link.path)
+
+
 def guest_invoice(request, token):
     """Public: the guest's own invoice (no login). A wrong or altered link is a plain 404."""
     stay = invoice.stay_for_token(token)

@@ -11,6 +11,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from .. import invoice, payments, services, whatsapp
+from ..shortlinks import shorten
 from ..models import AuditLog, Guest, MessageTemplate, PaymentRequest, Room, RoomType, Stay
 from .whatsapp import MOBILE, AppRedirect
 
@@ -45,7 +46,7 @@ def send_link(request, pk):
         return redirect("stay_detail", pk=pk)
     req = payments.create(stay, amount, request.user.get_full_name() or request.user.username)
     ctx = {**whatsapp.context(stay, amount, request.build_absolute_uri("/")),
-           "payment_link": payments.link(req, request.build_absolute_uri("/"))}
+           "payment_link": shorten(payments.link(req, request.build_absolute_uri("/")))}
     text = whatsapp.with_footer(whatsapp.render(template.body, ctx))
     mobile = bool(MOBILE.search(request.headers.get("User-Agent", "")))
     return AppRedirect(whatsapp.link(stay.guest.phone, text, mobile))

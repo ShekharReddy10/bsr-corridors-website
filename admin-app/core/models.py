@@ -296,6 +296,20 @@ class PaymentRequest(models.Model):
         return f"₹{self.amount:,.0f} · {self.get_status_display()}"
 
 
+class ShortLink(models.Model):
+    """A short address for a link sent to guests: /s/<code> → the real page (payment link, invoice, …)."""
+
+    code = models.CharField(max_length=12, unique=True)
+    path = models.CharField(max_length=500, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "short_links"
+
+    def __str__(self):
+        return f"/s/{self.code} → {self.path}"
+
+
 class StayGuest(models.Model):
     """Guest 2, 3, … on a stay (the main guest is Stay.guest). All fields optional."""
 

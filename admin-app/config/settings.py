@@ -150,6 +150,9 @@ HOTEL_NAME = env("HOTEL_NAME", "BSR Corridors")
 # Payment links (UPI, no gateway): the UPI ID that receives the money and the name shown in the guest's UPI app.
 UPI_ID = env("UPI_ID")
 UPI_NAME = env("UPI_NAME", HOTEL_NAME)
+# Short links sent to guests (/s/<code>): the address they start with, e.g. the website https://bsrcorridors.com
+# (its Netlify rules forward /s/* here). Empty: this app's own address.
+SHORT_LINK_BASE = env("SHORT_LINK_BASE").rstrip("/")
 
 # Fernet key for encrypting ID numbers at rest. Generate with:
 #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

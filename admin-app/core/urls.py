@@ -24,6 +24,8 @@ urlpatterns = [
     path("invoice/<str:token>/", invoices.guest_invoice, name="guest_invoice"),
     path("stays/<int:pk>/invoice/", invoices.stay_invoice, name="stay_invoice"),
     path("pay/<str:token>/", pay.guest_page, name="pay_page"),
+    path("s/<str:code>", invoices.short_link, name="short_link"),
+    path("s/<str:code>/", invoices.short_link),
     path("stays/<int:pk>/pay-link/", pay.send_link, name="stay_pay_link"),
     path("testing/", pay.testing, name="testing"),
     path("", dashboard.dashboard, name="dashboard"),

@@ -1104,7 +1104,7 @@ class InvoiceTests(TestCase):
         t = MessageTemplate.objects.get(name="Check-out details")
         text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/?t={t.pk}")["Location"]).query)["text"][0]
         self.assertTrue(invoice.generated_at(s))
-        self.assertIn("Your invoice (261115-261118-101):\nhttp://testserver/invoice/", text)
+        self.assertRegex(text, r"Your invoice \(261115-261118-101\):\nhttp://testserver/s/[A-Za-z2-9]{7}\n")
         self.assertNotIn("data-busy", self.client.get(f"/stays/{s.pk}/").content.decode())
         # Check-out generates it; the departure message then carries the guest's link.
         self.client.post(f"/stays/{s.pk}/check-out/")
@@ -1116,11 +1116,11 @@ class InvoiceTests(TestCase):
         no = invoice.number(s)
         self.assertIn(f'filename="Invoice {no}.pdf"', r["Content-Disposition"])
         text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/?t=checkout")["Location"]).query)["text"][0]
-        link = next(w for w in text.split() if "/invoice/" in w)
-        self.assertTrue(link.startswith("http://testserver/invoice/"))
+        link = next(w for w in text.split() if "/s/" in w)  # short link → the signed invoice address
         self.assertIn("Your invoice (", text)
         self.client.logout()
-        path = urlparse(link).path
+        path = self.client.get(urlparse(link).path)["Location"]
+        self.assertTrue(path.startswith("/invoice/"))
         self.assertEqual(self.client.get(path)["Content-Type"], "application/pdf")
         self.assertEqual(self.client.get(path[:-3] + "x1/").status_code, 404)  # altered link
         self.assertEqual(self.client.get(f"/stays/{s.pk}/invoice/").status_code, 302)  # staff link needs login
@@ -1132,7 +1132,7 @@ class InvoiceTests(TestCase):
             t = MessageTemplate.objects.get(name=name)
             text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/?t={t.pk}")["Location"]).query)["text"][0]
             self.assertIn(no, text)
-            self.assertIn("http://testserver/invoice/", text)
+            self.assertIn("http://testserver/s/", text)
 
     def test_platform_booking_has_no_invoice(self):
         from urllib.parse import parse_qs, urlparse
@@ -1762,12 +1762,14 @@ class PaymentLinkTests(TestCase):
         text = self._send(s, "2500")  # changed amount
         self.assertIn("₹2,500", text)
         self.assertTrue(text.endswith("- BSR Corridors"))
-        link = next(w for w in text.split() if "/pay/" in w)
+        link = next(w for w in text.split() if "/s/" in w)
         req = PaymentRequest.objects.get()
         self.assertEqual((req.amount, req.status), (Decimal(2500), "open"))
         # Guest's page: no login; UPI button with payee and amount; QR code.
         self.client.logout()
-        path = urlparse(link).path
+        path = self.client.get(urlparse(link).path)["Location"]  # short link → the signed pay page
+        self.assertTrue(path.startswith("/pay/"))
+        self.assertEqual(self.client.get("/s/zzzzzzz").status_code, 404)
         page = self.client.get(path).content.decode()
         self.assertIn("upi://pay?pa=bsr%40upi&amp;pn=BSR%20Corridors&amp;am=2500.00&amp;cu=INR", page)
         self.assertIn('src="data:image/png;base64,', page)
@@ -1832,3 +1834,14 @@ class PaymentLinkTests(TestCase):
         make_guest("Real", "+91 90000 11111")
         self.client.post("/testing/", {"phone": "+91 90000 11111"})
         self.assertFalse(Stay.objects.filter(room__number="TEST").exists())
+
+
+class ShortLinkTests(TestCase):
+    @override_settings(SHORT_LINK_BASE="https://bsrcorridors.com")
+    def test_short_link_uses_website_and_is_stable(self):
+        from core.shortlinks import shorten
+        a = shorten("https://bsr-corridors-admin.onrender.com/pay/12:abc/")
+        self.assertRegex(a, r"^https://bsrcorridors\.com/s/[A-Za-z2-9]{7}$")
+        self.assertEqual(shorten("http://other/pay/12:abc/"), a)  # same page → same short link
+        self.assertNotEqual(shorten("https://x/pay/13:def/"), a)
+        self.assertEqual(self.client.get("/s/" + a.rsplit("/", 1)[1])["Location"], "/pay/12:abc/")

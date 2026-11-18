@@ -20,3 +20,10 @@
   to = "https://bsr-corridors-admin.onrender.com/:splat"
   status = 302
   force = true
+
+# Short links sent to guests (payment links, invoices): website/s/<code> → the admin app, which opens the page.
+[[redirects]]
+  from = "/s/*"
+  to = "https://bsr-corridors-admin.onrender.com/s/:splat"
+  status = 302
+  force = true
