@@ -1,8 +1,14 @@
 """Guest invoices as PDF (no GST — the hotel isn't GST-registered).
 
-One invoice per stay, covering its room moves too (linked stays). The number is built from the stay:
-check-in date (YYMMDD) - check-out date (YYMMDD) - room number (3 digits; the penthouse is 601), e.g.
-261115-261118-101. It follows the stay's dates and room, so it is never stored.
+Only money paid to us is invoiced: Walk-in and Direct bookings (the whole stay, covering its room moves too), and for
+platform bookings (Airbnb, Booking.com, …) only the nights the guest extended directly with us and the payments made to
+us for them. A platform booking that wasn't extended with us has no invoice at all.
+
+An invoice exists once it is generated — with the Generate button on the stay page, or at check-out. Until then no
+link is sent and the guest's link doesn't open.
+
+The number is built from the invoiced nights: first night (YYMMDD) - check-out (YYMMDD) - room number (3 digits; the
+penthouse is 601), e.g. 261115-261118-101. It follows the stay's dates and room, so it is never stored.
 
 Guests open their invoice through a signed link (no login), which only ever shows that one invoice.
 """
@@ -17,7 +23,7 @@ from django.conf import settings
 from django.core import signing
 from fpdf import FPDF
 
-from .models import Payment, Stay
+from .models import Stay
 from .services import today
 
 FONTS = Path(__file__).resolve().parent / "fonts"
@@ -42,10 +48,50 @@ def _live_chain(stay: Stay) -> list[Stay]:
     return chain or [stay]
 
 
-def number(stay: Stay) -> str:
-    chain = _live_chain(stay)
-    end = chain[-1].check_out or today()
-    return f"{chain[0].check_in:%y%m%d}-{end:%y%m%d}-{room_code(chain[-1].room)}"
+@dataclass
+class Part:
+    """The invoiced part of one stay: all of it (Walk-in / Direct), or the nights extended directly with us."""
+    stay: Stay
+    start: date
+    end: date | None
+    amount: Decimal
+    paid: Decimal
+    payments: list
+    whole: bool
+
+    @property
+    def nights(self) -> int:
+        return ((self.end or max(today(), self.start)) - self.start).days
+
+
+def parts(stay: Stay) -> list[Part]:
+    out = []
+    for s in _live_chain(stay):
+        if s.is_void:
+            continue
+        if s.is_direct_booking:
+            pays = list(s.payments.order_by("date", "pk"))
+            out.append(Part(s, s.check_in, s.check_out, s.total, s.amount_paid or Decimal(0), pays, True))
+        elif s.direct_from and (s.check_out is None or s.check_out > s.direct_from):
+            pays = s.payments.filter(created_at__gte=s.direct_since) if s.direct_since else \
+                s.payments.filter(date__gte=s.direct_from)
+            pays = list(pays.order_by("date", "pk"))
+            out.append(Part(s, max(s.direct_from, s.check_in), s.check_out, s.direct_amount or Decimal(0),
+                            sum((x.amount for x in pays), Decimal(0)), pays, False))
+    return out
+
+
+def eligible(stay: Stay) -> bool:
+    """Can this stay have an invoice: Walk-in / Direct, or a platform booking extended directly with us."""
+    return bool(parts(stay))
+
+
+def number(stay: Stay, ps: list[Part] | None = None) -> str:
+    ps = parts(stay) if ps is None else ps
+    if not ps:
+        return ""
+    end = ps[-1].end or today()
+    return f"{ps[0].start:%y%m%d}-{end:%y%m%d}-{room_code(ps[-1].stay.room)}"
 
 
 def token(stay: Stay) -> str:
@@ -90,7 +136,7 @@ class Invoice:
     stay: Stay
     lines: list = field(default_factory=list)
     payments: list = field(default_factory=list)
-    lines_stays: list = field(default_factory=list)  # the stays covered (room moves), in date order
+    parts: list = field(default_factory=list)  # the invoiced stays (room moves) or their direct nights, in date order
     total: Decimal = Decimal(0)
     paid: Decimal = Decimal(0)
     deposit: Decimal = Decimal(0)
@@ -101,15 +147,22 @@ class Invoice:
 
 
 def build(stay: Stay) -> Invoice:
-    chain = _live_chain(stay)
-    last = chain[-1]
-    inv = Invoice(number=number(stay), stay=last, lines_stays=chain,
+    ps = parts(stay)
+    if not ps:
+        raise ValueError("This stay has no invoice (booked through a platform and not extended with us).")
+    last = ps[-1].stay
+    inv = Invoice(number=number(stay, ps), stay=last, parts=ps,
                   date=(last.check_out if last.status == Stay.Status.CHECKED_OUT and last.check_out else today()))
-    for s in chain:
+    for part in ps:
+        s = part.stay
         room = f"Room {s.room.number} – {s.room.room_type.name}"
-        end = f"{s.check_out:%d-%m-%Y}" if s.check_out else "ongoing"
-        detail = f"{s.check_in:%d-%m-%Y} to {end}"
-        if s.kind == Stay.Kind.MONTHLY:
+        end = f"{part.end:%d-%m-%Y}" if part.end else "ongoing"
+        detail = f"{part.start:%d-%m-%Y} to {end}"
+        if not part.whole:
+            n = part.nights
+            inv.lines.append(Line(room, detail, f"{n} night{'s' if n != 1 else ''}",
+                                  money(part.amount / n) if n else "", part.amount))
+        elif s.kind == Stay.Kind.MONTHLY:
             rent = s.monthly_rent or Decimal(0)
             months = s.total / rent if rent else None
             whole = months is not None and months == months.to_integral_value() and months > 0
@@ -119,10 +172,12 @@ def build(stay: Stay) -> Invoice:
             n = s.nights
             inv.lines.append(Line(room, detail, f"{n} night{'s' if n != 1 else ''}", money(s.total / n) if n else "",
                                   s.total))
-        inv.total += s.total
-        inv.paid += s.amount_paid or Decimal(0)
-        inv.deposit += s.deposit_amount or Decimal(0)
-    inv.payments = list(Payment.objects.filter(stay__in=chain).order_by("date", "pk"))
+        inv.total += part.amount
+        inv.paid += part.paid
+        if part.whole:
+            inv.deposit += s.deposit_amount or Decimal(0)
+        inv.payments += part.payments
+    inv.payments.sort(key=lambda x: (x.date, x.pk))
     return inv
 
 
@@ -183,7 +238,7 @@ def pdf(stay: Stay) -> bytes:
     inv = build(stay)
     info = hotel_info()
     guest = inv.stay.guest
-    first = inv.lines_stays[0]
+    first = inv.parts[0].stay
     p = _PDF()
     p.add_page()
     left, right = p.l_margin, p.w - p.r_margin
@@ -221,13 +276,16 @@ def pdf(stay: Stay) -> bytes:
     y += 7
 
     # Two boxes: billed to, stay details.
-    rooms = ", ".join(dict.fromkeys(s.room.number for s in inv.lines_stays))
-    end = inv.lines_stays[-1].check_out
-    nights = sum(s.nights for s in inv.lines_stays)
-    source = first.get_source_display() + (f" (Ref {first.source_ref})" if first.source_ref else "")
+    rooms = ", ".join(dict.fromkeys(part.stay.room.number for part in inv.parts))
+    start, end = inv.parts[0].start, inv.parts[-1].end
+    nights = sum(part.nights for part in inv.parts)
+    if all(part.whole for part in inv.parts):
+        source = first.get_source_display() + (f" (Ref {first.source_ref})" if first.source_ref else "")
+    else:  # a platform booking extended with us: only our nights are on it
+        source = "Direct"
     billed = [("Name", guest.name), ("Phone", guest.phone), ("Address", guest.address)]
     stay_rows = [("Room", f"{rooms} - {inv.stay.room.room_type.name}"),
-                 ("Check-in", f"{first.check_in:%d-%m-%Y} ({first.check_in:%a})"),
+                 ("Check-in", f"{start:%d-%m-%Y} ({start:%a})"),
                  ("Check-out", f"{end:%d-%m-%Y} ({end:%a})" if end else "Ongoing (monthly)"),
                  ("Guests", f"{first.num_guests}    Nights: {nights}"),
                  ("Booked via", source)]
@@ -358,59 +416,84 @@ def drive_link(stay: Stay) -> str:
 
 
 def generated_at(stay: Stay) -> str:
-    """When the invoice in Drive was last made ("" if never)."""
+    """When the invoice was last generated ("" if never)."""
     from .models import AppSetting
     return AppSetting.get(f"{_drive_key(stay)}_at")
 
 
-def save_to_drive(stay: Stay) -> str:
-    """Generate this stay's invoice and save it in Drive, updating the existing file; returns the Drive link."""
+def has_invoice(stay: Stay) -> bool:
+    """An invoice exists: generated (button or check-out) and the stay still qualifies."""
+    return bool(generated_at(stay)) and eligible(stay)
+
+
+def generate(stay: Stay) -> str:
+    """Generate (or update) this stay's invoice, saving it in Drive in the same file.
+    Returns "saved", "no-drive" (Drive not connected, so it's not saved there) or "failed" (Drive error)."""
     from django.utils import timezone
     from . import gdrive
     from .models import AppSetting
-    no = number(stay)
-    link = gdrive.save_invoice(pdf(stay), f"{no} {stay.guest.name}.pdf".replace("/", " "), _drive_key(stay), no)
+    data = pdf(stay)  # raises ValueError if the stay has no invoice
     AppSetting.put(f"{_drive_key(stay)}_at", f"{timezone.localtime():%d-%m-%Y %I:%M %p}")
-    return link
+    if not gdrive.is_configured():
+        return "no-drive"
+    no = number(stay)
+    try:
+        gdrive.save_invoice(data, f"{no} {stay.guest.name}.pdf".replace("/", " "), _drive_key(stay), no)
+    except Exception:
+        logging.getLogger(__name__).exception("Invoice to Drive failed")
+        return "failed"
+    return "saved"
+
+
+def forget(stay: Stay) -> None:
+    """The stay no longer has an invoice (cancelled, transferred, or no longer qualifies): remove it and its file."""
+    from . import gdrive
+    from .models import AppSetting
+    key = _drive_key(stay)
+    if gdrive.is_configured():
+        try:
+            gdrive.delete_invoice(key)
+        except Exception:
+            logging.getLogger(__name__).exception("Removing invoice from Drive failed")
+            return
+    AppSetting.objects.filter(key__startswith=f"{key}_").delete()
 
 
 def remove_from_drive(stay: Stay) -> None:
-    from . import gdrive
-    if gdrive.is_configured() and not [s for s in stay.chain() if not s.is_void]:
-        try:
-            gdrive.delete_invoice(_drive_key(stay))
-        except Exception:
-            logging.getLogger(__name__).exception("Removing invoice from Drive failed")
+    """After a cancel / transfer: if nothing invoiceable is left, the invoice goes."""
+    if not eligible(stay):
+        forget(stay)
 
 
-def sync_to_drive(request, stay: Stay) -> None:
-    """At check-out, or after a change to a stay whose invoice was already generated: keep the invoice in Drive up to
-    date (same file). Never blocks the action itself — if Drive fails, the nightly run saves it."""
+def on_check_out(request, stay: Stay) -> None:
+    """Check-out generates the invoice (or updates it) once the guest has left — if the stay has one. Never blocks
+    the check-out itself."""
     from django.contrib import messages
-    from . import gdrive
-    if stay.is_void or not gdrive.is_configured():
+    if not eligible(stay) or _live_chain(stay)[-1].status != Stay.Status.CHECKED_OUT:
         return
-    if _live_chain(stay)[-1].status != Stay.Status.CHECKED_OUT and not generated_at(stay):
-        return
-    try:
-        save_to_drive(stay)
-    except Exception:
-        logging.getLogger(__name__).exception("Invoice to Drive failed")
-        messages.warning(request, "The invoice couldn’t be saved to Google Drive just now — it will be saved tonight.")
+    result = generate(stay)
+    if result == "failed":
+        messages.warning(request, "The invoice was generated but couldn’t be saved to Google Drive just now — "
+                                  "use Update invoice on the stay page to try again.")
 
 
-def save_missing_to_drive(days: int = 60) -> int:
-    """Nightly: checked-out stays of the last `days` days whose invoice isn't in Drive yet."""
-    from datetime import timedelta
+def tidy() -> int:
+    """Nightly: remove invoices of stays that no longer qualify (e.g. booked through Airbnb and not extended with
+    us, or deleted). Returns how many were removed."""
+    import re
     from .models import AppSetting
-    saved = set(AppSetting.objects.filter(key__startswith="invoice_", key__endswith="_id").values_list("key", flat=True))
+    pks = {int(m.group(1)) for k in AppSetting.objects.filter(key__startswith="invoice_").values_list("key", flat=True)
+           if (m := re.fullmatch(r"invoice_(\d+)_(?:id|link|at)", k))}
     n = 0
-    for s in (Stay.objects.filter(status=Stay.Status.CHECKED_OUT, check_out__gte=today() - timedelta(days=days))
-              .select_related("guest", "room", "room__room_type", "linked_to")):
-        if s.continuations.filter(status__in=[Stay.Status.CHECKED_IN, Stay.Status.UPCOMING]).exists():
-            continue  # moved rooms and still staying
-        if f"{_drive_key(s)}_id" not in saved:
-            save_to_drive(s)
-            saved.add(f"{_drive_key(s)}_id")
+    for pk in pks:
+        stay = Stay.objects.filter(pk=pk).select_related("guest", "room", "room__room_type").first()
+        if stay is None:
+            from . import gdrive
+            if gdrive.is_configured():
+                gdrive.delete_invoice(f"invoice_{pk}")
+            AppSetting.objects.filter(key__startswith=f"invoice_{pk}_").delete()
+            n += 1
+        elif not eligible(stay):
+            forget(stay)
             n += 1
     return n

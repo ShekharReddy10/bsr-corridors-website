@@ -86,10 +86,13 @@ class StayForm(forms.ModelForm):
     class Meta:
         model = Stay
         fields = ["source", "source_ref", "kind", "room", "check_in", "check_out", "num_guests",
-                  "total_amount", "amount_paid", "payment_mode", "monthly_rent", "deposit_amount", "host", "notes"]
+                  "total_amount", "amount_paid", "payment_mode", "monthly_rent", "deposit_amount", "direct_from",
+                  "direct_amount", "host", "notes"]
         widgets = {
             "check_in": DATE,
             "check_out": DATE,
+            "direct_from": DATE,
+            "direct_amount": forms.NumberInput(attrs={"inputmode": "decimal", "step": "1", "min": "0"}),
             "notes": forms.Textarea(attrs={"rows": 2}),
             "total_amount": forms.NumberInput(attrs={"inputmode": "decimal", "step": "1", "min": "0"}),
             "monthly_rent": forms.NumberInput(attrs={"inputmode": "decimal", "step": "1", "min": "0"}),
@@ -99,6 +102,7 @@ class StayForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["direct_amount"].required = False
         rooms = Room.objects.filter(is_active=True).select_related("room_type")
         if self.instance.pk:
             rooms = rooms | Room.objects.filter(pk=self.instance.room_id)
@@ -137,6 +141,9 @@ class StayForm(forms.ModelForm):
     def clean_deposit_amount(self):
         return self._zero("deposit_amount")
 
+    def clean_direct_amount(self):
+        return self._zero("direct_amount")
+
     def clean_kind(self):
         return self.cleaned_data.get("kind") or Stay.Kind.DAILY
 
@@ -157,6 +164,12 @@ class StayForm(forms.ModelForm):
             self.add_error("num_guests", f"{room.room_type.name} allows up to {room.room_type.max_guests} guests.")
         if room and room.status == Room.Status.MAINTENANCE and (not self.instance.pk or self.instance.room_id != room.pk):
             self.add_error("room", "This room is under maintenance.")
+        direct_from = data.get("direct_from")
+        if data.get("source") in Stay.DIRECT_SOURCES or not direct_from:
+            data["direct_from"], data["direct_amount"] = None, Decimal(0)  # the whole stay is ours / nothing extended
+        elif check_in and (direct_from <= check_in or (check_out and direct_from >= check_out)):
+            self.add_error("direct_from", "Pick a date after check-in and before check-out (the first night paid "
+                                          "to us).")
         return data
 
 
@@ -239,6 +252,12 @@ class ExtendForm(forms.Form):
         self.stay = stay
         self.fields["new_check_out"].initial = stay.check_out + timedelta(days=1)
         self.fields["new_check_out"].widget.attrs["min"] = (stay.check_out + timedelta(days=1)).isoformat()
+        if not stay.is_direct_booking:  # Airbnb etc.: extended with us (invoiced) or through the platform (not)
+            self.fields["via"] = forms.ChoiceField(
+                label="Extended", widget=forms.RadioSelect, initial="direct",
+                choices=[("direct", "Directly with us (paid to us)"),
+                         ("platform", f"Through {stay.get_source_display()}")],
+                help_text="Only nights extended directly with us go on the guest’s invoice")
 
     def clean_new_check_out(self):
         value = self.cleaned_data["new_check_out"]

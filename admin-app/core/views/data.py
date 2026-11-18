@@ -66,7 +66,7 @@ def backup_hook(request):
         except Exception:  # the backup itself succeeded; the report is retried the next night
             pass
         try:
-            invoice.save_missing_to_drive()
+            invoice.tidy()
         except Exception:  # retried the next night
             pass
     return JsonResponse({"ok": run.ok, "message": run.message}, status=200 if run.ok else 500)

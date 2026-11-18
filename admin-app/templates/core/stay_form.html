@@ -63,6 +63,11 @@
         {% field sform.monthly_rent %}
         {% field sform.deposit_amount %}
       </div>
+      <div class="span-2 form-grid" id="direct-fields">
+        <p class="span-2 muted small">Extended directly with us? Only these nights and the payments made to us go on the guest’s invoice.</p>
+        {% field sform.direct_from %}
+        {% field sform.direct_amount %}
+      </div>
       <p class="span-2 total-line" id="total-line"></p>
       {% field sform.host %}
       {% field sform.notes "span-2" %}

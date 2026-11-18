@@ -1082,19 +1082,31 @@ class InvoiceTests(TestCase):
         from urllib.parse import parse_qs, urlparse
         from core import invoice
         s = Stay(guest=make_guest(phone="98765 43210"), room=self.rooms["101"], check_in=date(2026, 11, 15),
-                 check_out=date(2026, 11, 18), total_amount=Decimal(4500), source="walk_in")
+                 check_out=date(2026, 11, 18), total_amount=Decimal(4500), source="walk_in",
+                 status=Stay.Status.CHECKED_IN)
         services.save_stay(s, action="create", summary="test")
         self.assertEqual(invoice.number(s), "261115-261118-101")
         pt = RoomType.objects.create(name="Penthouse", max_guests=4)
         self.assertEqual(invoice.room_code(Room.objects.create(number="PH", room_type=pt)), "601")
         services.add_payment(s, Decimal(4500), "upi")
+        # Not generated yet: only the Generate button, no PDF, and no invoice part in the messages.
+        page = self.client.get(f"/stays/{s.pk}/").content.decode()
+        self.assertIn("Generate invoice", page)
+        self.assertNotIn("View PDF", page)
+        self.assertEqual(self.client.get(f"/stays/{s.pk}/invoice/").status_code, 404)
+        t = MessageTemplate.objects.get(name="Check-out details")
+        text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/?t={t.pk}")["Location"]).query)["text"][0]
+        self.assertNotIn("invoice", text.lower())
+        self.assertIn("Balance due", text)
+        # Check-out generates it; the departure message then carries the guest's link.
+        self.client.post(f"/stays/{s.pk}/check-out/")
+        self.assertTrue(invoice.has_invoice(s))
         r = self.client.get(f"/stays/{s.pk}/invoice/")
         self.assertEqual((r.status_code, r["Content-Type"]), (200, "application/pdf"))
         self.assertTrue(r.content.startswith(b"%PDF"))
-        self.assertIn('filename="Invoice 261115-261118-101.pdf"', r["Content-Disposition"])
-        self.assertContains(self.client.get(f"/stays/{s.pk}/"), "261115-261118-101")
-        # The check-out message carries the guest's link; it opens without logging in, only for that stay.
-        services.check_out(s)
+        s.refresh_from_db()
+        no = invoice.number(s)
+        self.assertIn(f'filename="Invoice {no}.pdf"', r["Content-Disposition"])
         text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/?t=checkout")["Location"]).query)["text"][0]
         link = next(w for w in text.split() if "/invoice/" in w)
         self.assertTrue(link.startswith("http://testserver/invoice/"))
@@ -1111,11 +1123,68 @@ class InvoiceTests(TestCase):
         for name in ("Invoice", "Check-out details"):
             t = MessageTemplate.objects.get(name=name)
             text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/?t={t.pk}")["Location"]).query)["text"][0]
-            self.assertIn("261115-261118-101", text)
+            self.assertIn(no, text)
             self.assertIn("http://testserver/invoice/", text)
 
+    def test_platform_booking_has_no_invoice(self):
+        from urllib.parse import parse_qs, urlparse
+        from core import invoice
+        s = stay(make_guest(phone="98765 43210"), self.rooms["101"], -2, 2, status=Stay.Status.CHECKED_IN,
+                 source="airbnb", amount_paid=Decimal(3000))
+        page = self.client.get(f"/stays/{s.pk}/").content.decode()
+        self.assertNotIn("Generate invoice", page)
+        self.assertNotIn("WhatsApp invoice", page)
+        self.client.post(f"/stays/{s.pk}/make-invoice/")  # not even by hand
+        self.assertFalse(invoice.generated_at(s))
+        self.client.post(f"/stays/{s.pk}/check-out/")
+        self.assertFalse(invoice.has_invoice(s))
+        text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/?t=checkout")["Location"]).query)["text"][0]
+        self.assertNotIn("invoice", text.lower())
+        self.assertEqual(self.client.get(f"/invoice/{invoice.token(s)}/").status_code, 404)
 
-    def test_invoice_saved_in_drive_at_check_out_and_kept_up_to_date(self):
+    def test_platform_booking_extended_through_platform_has_no_invoice(self):
+        from core import invoice
+        s = stay(make_guest(phone="98765 43210"), self.rooms["101"], -2, 3, status=Stay.Status.CHECKED_IN,
+                 source="airbnb")
+        self.assertContains(self.client.get(f"/stays/{s.pk}/extend/"), "Through Airbnb")
+        self.client.post(f"/stays/{s.pk}/extend/", {"new_check_out": (s.check_out + timedelta(days=2)).isoformat(),
+                                                    "amount": "3000", "via": "platform"})
+        s.refresh_from_db()
+        self.assertEqual(s.check_out, T + timedelta(days=3))
+        self.assertFalse(invoice.eligible(s))
+
+    def test_platform_booking_extended_with_us_invoices_only_our_nights(self):
+        from core import invoice
+        s = stay(make_guest(phone="98765 43210"), self.rooms["101"], -2, 3, status=Stay.Status.CHECKED_IN,
+                 source="airbnb", source_ref="ABC123", amount_paid=Decimal(4500))  # paid on Airbnb
+        old_out = s.check_out
+        self.client.post(f"/stays/{s.pk}/extend/", {"new_check_out": (old_out + timedelta(days=2)).isoformat(),
+                                                    "amount": "3000", "paid_now": "1000", "payment_mode": "cash",
+                                                    "via": "direct"})
+        s.refresh_from_db()
+        self.assertEqual((s.direct_from, s.direct_amount, s.total_amount), (old_out, Decimal(3000), Decimal(7500)))
+        services.add_payment(s, Decimal(2000), "upi")
+        inv = invoice.build(s)
+        self.assertEqual((inv.total, inv.paid, inv.balance), (Decimal(3000), Decimal(3000), Decimal(0)))
+        self.assertEqual(len(inv.lines), 1)
+        self.assertEqual(inv.lines[0].qty, "2 nights")
+        self.assertEqual(sorted(p.amount for p in inv.payments), [Decimal(1000), Decimal(2000)])
+        self.assertEqual(inv.number, f"{old_out:%y%m%d}-{s.check_out:%y%m%d}-101")
+        self.assertTrue(invoice.pdf(s).startswith(b"%PDF"))
+        self.assertContains(self.client.get(f"/stays/{s.pk}/"), "Generate invoice")
+        self.client.post(f"/stays/{s.pk}/make-invoice/")
+        self.assertTrue(invoice.has_invoice(s))
+
+    def test_platform_booking_direct_nights_entered_by_hand(self):
+        from core import invoice
+        s = stay(make_guest(phone="98765 43210"), self.rooms["101"], -4, 6, source="booking_com")
+        services.add_payment(s, Decimal(2000), "cash", day=T)
+        s.direct_from, s.direct_amount = T, Decimal(3000)
+        services.save_stay(s, action="update", summary="test")
+        inv = invoice.build(s)
+        self.assertEqual((inv.total, inv.paid, inv.lines[0].qty), (Decimal(3000), Decimal(2000), "2 nights"))
+
+    def test_invoice_made_only_by_button_or_check_out(self):
         from unittest import mock
         from core import gdrive, invoice
         s = stay(make_guest(phone="98765 43210"), self.rooms["101"], -2, 2, status=Stay.Status.CHECKED_IN)
@@ -1128,20 +1197,24 @@ class InvoiceTests(TestCase):
             return "https://drive.google.com/file/d/file1/view"
 
         with mock.patch.object(gdrive, "is_configured", return_value=True), \
-                mock.patch.object(gdrive, "save_invoice", side_effect=fake_save):
+                mock.patch.object(gdrive, "save_invoice", side_effect=fake_save), \
+                mock.patch.object(gdrive, "delete_invoice") as deleted:
             self.client.post(f"/stays/{s.pk}/payment/", {"amount": "1000", "mode": "upi"})
-            self.assertEqual(calls, [])  # not checked out yet: nothing in Drive
+            self.assertEqual(calls, [])
             self.client.post(f"/stays/{s.pk}/check-out/")
             self.assertEqual(calls, [(f"{invoice.number(s)} Ravi Kumar.pdf", f"invoice_{s.pk}")])
-            self.client.post(f"/stays/{s.pk}/payment/", {"amount": "2000", "mode": "cash"})  # same file, updated
+            self.client.post(f"/stays/{s.pk}/payment/", {"amount": "2000", "mode": "cash"})  # not regenerated
+            self.assertEqual(len(calls), 1)
+            self.client.post(f"/stays/{s.pk}/make-invoice/")  # Update invoice: same file
             self.assertEqual(len(calls), 2)
             self.assertEqual(calls[1][1], f"invoice_{s.pk}")
             self.assertContains(self.client.get(f"/stays/{s.pk}/"), "https://drive.google.com/file/d/file1/view")
-            # Nightly: catches up checked-out stays not in Drive yet (only those).
-            other = stay(make_guest("B", "+91 90000 00002"), self.rooms["102"], -3, 2, status=Stay.Status.CHECKED_OUT)
-            self.assertEqual(invoice.save_missing_to_drive(), 1)
-            self.assertEqual(calls[-1][1], f"invoice_{other.pk}")
-            self.assertEqual(invoice.save_missing_to_drive(), 0)
+            # Nightly: an invoice whose stay no longer qualifies (now marked Airbnb) is removed.
+            self.assertEqual(invoice.tidy(), 0)
+            Stay.objects.filter(pk=s.pk).update(source="airbnb")
+            self.assertEqual(invoice.tidy(), 1)
+            deleted.assert_called_once_with(f"invoice_{s.pk}")
+            self.assertFalse(invoice.generated_at(s))
 
 
     def test_generate_invoice_keeps_one_file_per_number(self):

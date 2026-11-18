@@ -76,6 +76,7 @@ def context(stay: Stay, amount=None, base_url: str = "") -> dict[str, str]:
     if amount is None:
         last = stay.payments.order_by("-date", "-pk").first() if stay.pk else None
         amount = last.amount if last else stay.amount_paid
+    has_inv = bool(stay.pk) and invoice.has_invoice(stay)
     ctx = {
         "guest": stay.guest.name,
         "room": stay.room.number,
@@ -89,15 +90,19 @@ def context(stay: Stay, amount=None, base_url: str = "") -> dict[str, str]:
         "amount": _money(amount or 0),
         "host": stay.host,
         "hotel": settings.HOTEL_NAME,
-        "invoice_no": invoice.number(stay) if stay.pk else "",
-        "invoice_link": f"{base_url.rstrip('/')}/invoice/{invoice.token(stay)}/" if stay.pk else "",
+        # Only once the invoice is generated; until then the message's invoice part is left out (see render).
+        "invoice_no": invoice.number(stay) if has_inv else "",
+        "invoice_link": f"{base_url.rstrip('/')}/invoice/{invoice.token(stay)}/" if has_inv else "",
     }
     # Hotel info may use stay placeholders too, e.g. a Wi-Fi name "BSR {floor}".
     return {**{k: render(v, ctx) for k, v in hotel_info().items()}, **ctx}
 
 
 def render(body: str, ctx: dict[str, str]) -> str:
-    """Fill {placeholders}; unknown ones (or stray braces) are left as typed."""
+    """Fill {placeholders}; unknown ones (or stray braces) are left as typed. A paragraph with the invoice link is
+    left out while the stay has no invoice (not generated yet, or a platform booking not extended with us)."""
+    if "invoice_link" in ctx and not ctx["invoice_link"]:
+        body = "\n\n".join(p for p in re.split(r"\n\s*\n", body) if "{invoice_link}" not in p and "{invoice_no}" not in p)
     return PLACEHOLDER.sub(lambda m: ctx.get(m.group(1), m.group(0)), body).strip()
 
 

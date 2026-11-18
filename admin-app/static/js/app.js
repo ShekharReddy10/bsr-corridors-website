@@ -195,6 +195,15 @@
   });
   syncKind();
 
+  // ── Airbnb etc.: nights extended directly with us (invoiced) ──
+  const source = f("s-source");
+  const direct = $("#direct-fields");
+  if (source && direct) {
+    const syncSource = () => { direct.hidden = ["walk_in", "direct", ""].includes(source.value); };
+    source.addEventListener("change", syncSource);
+    syncSource();
+  }
+
   // ── Other guests: one row per guest beyond the first ──
   const guestsInput = f("s-num_guests");
   const rows = Array.from(document.querySelectorAll(".other-guest"));

@@ -148,6 +148,14 @@ class Stay(models.Model):
     source = models.CharField("Booked via", max_length=20, choices=Source.choices, default=Source.WALK_IN, db_index=True)
     source_ref = models.CharField("Booking reference", max_length=60, blank=True,
                                   help_text="e.g. Airbnb / Booking.com confirmation code")
+    # A platform booking (Airbnb, …) extended directly with us: the nights from direct_from (the platform booking's
+    # check-out) are ours, for direct_amount, and payments recorded from direct_since on were paid to us. Only these
+    # go on the guest's invoice. Walk-in / Direct bookings don't use these — the whole stay is ours.
+    direct_from = models.DateField("Direct with us from", null=True, blank=True,
+                                   help_text="Airbnb etc. extended directly with us: the first night paid to us "
+                                             "(the platform booking's check-out date)")
+    direct_amount = models.DecimalField("Amount for the direct nights (₹)", max_digits=10, decimal_places=2, default=0)
+    direct_since = models.DateTimeField(null=True, blank=True, editable=False)
     # Agreed price for the whole stay (not per night). Extensions add their amount to it.
     total_amount = models.DecimalField("Total amount (₹)", max_digits=10, decimal_places=2, default=0)
     amount_paid = models.DecimalField("Advance / amount paid (₹)", max_digits=10, decimal_places=2, default=0)
@@ -210,6 +218,13 @@ class Stay(models.Model):
     @property
     def balance(self) -> Decimal:
         return self.total - (self.amount_paid or Decimal(0))
+
+    DIRECT_SOURCES = ("walk_in", "direct")
+
+    @property
+    def is_direct_booking(self) -> bool:
+        """Walk-in / Direct: the whole stay is ours (and invoiced). Other sources only for nights extended with us."""
+        return self.source in self.DIRECT_SOURCES
 
     @property
     def is_void(self) -> bool:

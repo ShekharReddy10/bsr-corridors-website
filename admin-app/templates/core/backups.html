@@ -11,7 +11,7 @@
       Kept: one for each of the last {{ keep.daily }} days, {{ keep.weekly }} weeks and {{ keep.monthly }} months; older ones are deleted automatically.</li>
     <li><b>Guest register</b> — a Google Sheet that always has the latest data (ID numbers show last 4 digits).</li>
     <li><b>Exports</b> — sheets from the Export page are deleted after {{ keep.exports }} days. Monthly reports are kept.</li>
-    <li><b>Invoices</b> — each guest’s invoice PDF (e.g. <i>261115-261118-101 Ravi Kumar.pdf</i>), saved at check-out and updated if a payment or the stay changes later. Kept for good.</li>
+    <li><b>Invoices</b> — each guest’s invoice PDF (e.g. <i>261115-261118-101 Ravi Kumar.pdf</i>), saved when you tap Generate / Update invoice on the stay page, or at check-out. Only Walk-in and Direct bookings, and nights a platform guest extended directly with us, have invoices. Kept for good.</li>
   </ul>
   {% if not drive_ready %}<p class="alert">Google Drive isn’t connected yet. See README → “Google Drive setup”, then set the GOOGLE_* environment variables.</p>{% endif %}
 </section>

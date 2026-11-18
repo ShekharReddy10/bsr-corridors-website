@@ -122,7 +122,6 @@ def stay_form(request, pk=None):
                     if checking_in and new.status == Stay.Status.UPCOMING:
                         services.check_in(new)
                 messages.success(request, f"{guest.name} checked in to {new.room}." if checking_in else f"Stay for {guest.name} saved.")
-                invoice.sync_to_drive(request, new)
                 for b, room in moved:
                     messages.info(request, f"{b.guest.name} ({b.dates_label}) moved to {room}.")
                 for reason in checks.check_stay(new):
@@ -205,6 +204,7 @@ def stay_detail(request, pk):
         "shorten_form": ShortenForm(initial={"new_check_out": services.today()}),
         "today": services.today(),
         "swap_with": list(services.swap_candidates(stay)),
+        "invoice_ok": invoice.eligible(stay) and not stay.is_void,
         "invoice_no": invoice.number(stay),
         "invoice_drive": invoice.drive_link(stay),
         "invoice_at": invoice.generated_at(stay),
@@ -238,7 +238,7 @@ def stay_action(request, pk, action):
         elif action == "check-out":
             services.check_out(stay)
             messages.success(request, f"{stay.guest.name} checked out of {stay.room}.")
-            invoice.sync_to_drive(request, stay)
+            invoice.on_check_out(request, stay)
             return redirect(f"/stays/{stay.pk}/?departed=1")
         elif action == "cancel":
             services.cancel(stay)
@@ -275,7 +275,6 @@ def stay_action(request, pk, action):
                 c = form.cleaned_data
                 services.add_payment(stay, c["amount"], c["mode"], c["collected_by"], c["date"], c["note"])
                 messages.success(request, f"Payment of ₹{c['amount']:,.0f} recorded.")
-                invoice.sync_to_drive(request, stay)
                 if not request.POST.get("next"):
                     return redirect(f"/stays/{stay.pk}/?paid={c['amount']:.0f}#payment")
         elif action == "swap":
@@ -284,20 +283,23 @@ def stay_action(request, pk, action):
             messages.success(request, f"Rooms swapped: {stay.guest.name} is now in {stay.room}, "
                                       f"{other.guest.name} in {other.room}.")
         elif action == "make-invoice":
-            if stay.is_void:
-                messages.error(request, "A cancelled or transferred stay has no invoice.")
-            elif not gdrive.is_configured():
-                messages.error(request, "Google Drive isn’t connected yet (see Backups) — use View PDF or Download.")
+            if stay.is_void or not invoice.eligible(stay):
+                messages.error(request, "This stay has no invoice — only Walk-in / Direct bookings, or nights a "
+                                        "platform guest extended directly with us, are invoiced.")
             else:
-                again = bool(invoice.generated_at(stay))
-                try:
-                    invoice.save_to_drive(stay)
-                    AuditLog.record("invoice", f"Invoice {invoice.number(stay)} {'updated' if again else 'generated'}",
-                                    stay)
-                    messages.success(request, f"Invoice {invoice.number(stay)} "
-                                              f"{'updated (same file)' if again else 'generated'} in Google Drive.")
-                except Exception:
-                    messages.error(request, "Couldn’t save the invoice to Google Drive. Please try again.")
+                again, no = bool(invoice.generated_at(stay)), invoice.number(stay)
+                result = invoice.generate(stay)
+                AuditLog.record("invoice", f"Invoice {no} {'updated' if again else 'generated'}", stay)
+                done = "updated" if again else "generated"
+                if result == "saved":
+                    messages.success(request, f"Invoice {no} {done} and saved in Google Drive"
+                                              f"{' (same file)' if again else ''}.")
+                elif result == "no-drive":
+                    messages.success(request, f"Invoice {no} {done}. (Google Drive isn’t connected, so it isn’t "
+                                              f"saved there.)")
+                else:
+                    messages.warning(request, f"Invoice {no} {done}, but couldn’t be saved to Google Drive — "
+                                              f"please try Update invoice again.")
         elif action == "shorten":
             form = ShortenForm(request.POST)
             if form.is_valid():
@@ -350,7 +352,8 @@ def extend(request, pk):
         form = ExtendForm(request.POST, stay=stay)
         if form.is_valid():
             new_co = form.cleaned_data["new_check_out"]
-            money = (form.cleaned_data["amount"], form.cleaned_data["paid_now"] or 0, form.cleaned_data["payment_mode"])
+            money = (form.cleaned_data["amount"], form.cleaned_data["paid_now"] or 0, form.cleaned_data["payment_mode"],
+                     form.cleaned_data.get("via", "direct") == "direct")
             choice = request.POST.get("choice", "")
             try:
                 if choice in {"split", "move"}:
@@ -387,6 +390,6 @@ def extend(request, pk):
 @require_POST
 def payment_delete(request, pk, payment_pk):
     payment = get_object_or_404(Payment.objects.select_related("stay"), pk=payment_pk, stay_id=pk)
-    invoice.sync_to_drive(request, services.delete_payment(payment))
+    services.delete_payment(payment)
     messages.success(request, f"Payment of ₹{payment.amount:,.0f} from {payment.date:%d-%m-%Y} deleted.")
     return redirect("stay_detail", pk=pk)

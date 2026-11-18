@@ -20,6 +20,7 @@
     {% field form.amount %}
     {% field form.paid_now %}
     {% field form.payment_mode %}
+    {% if form.via %}{% field form.via "span-2" %}{% endif %}
   </div>
   <p class="total-line" id="extend-summary"></p>
   <div class="form-actions"><button class="btn btn-primary">Extend stay</button></div>
@@ -48,7 +49,7 @@
     {% for r in plan.split_rooms %}
       <form method="post">{% csrf_token %}
         <input type="hidden" name="new_check_out" value="{{ plan.new_check_out|date:'Y-m-d' }}"><input type="hidden" name="choice" value="split"><input type="hidden" name="room" value="{{ r.pk }}">
-        <input type="hidden" name="amount" value="{{ amount }}"><input type="hidden" name="paid_now" value="{{ paid|default_if_none:'' }}"><input type="hidden" name="payment_mode" value="{{ mode }}">
+        <input type="hidden" name="amount" value="{{ amount }}"><input type="hidden" name="paid_now" value="{{ paid|default_if_none:'' }}"><input type="hidden" name="payment_mode" value="{{ mode }}">{% if form.via %}<input type="hidden" name="via" value="{{ form.cleaned_data.via }}">{% endif %}
         <button class="btn btn-outline">Move to <b>Room {{ r.number }}</b> on {{ stay.check_out|date:"d-m" }}</button>
       </form>
     {% endfor %}
@@ -62,7 +63,7 @@
     {% for r in plan.move_rooms %}
       <form method="post">{% csrf_token %}
         <input type="hidden" name="new_check_out" value="{{ plan.new_check_out|date:'Y-m-d' }}"><input type="hidden" name="choice" value="move"><input type="hidden" name="room" value="{{ r.pk }}">
-        <input type="hidden" name="amount" value="{{ amount }}"><input type="hidden" name="paid_now" value="{{ paid|default_if_none:'' }}"><input type="hidden" name="payment_mode" value="{{ mode }}">
+        <input type="hidden" name="amount" value="{{ amount }}"><input type="hidden" name="paid_now" value="{{ paid|default_if_none:'' }}"><input type="hidden" name="payment_mode" value="{{ mode }}">{% if form.via %}<input type="hidden" name="via" value="{{ form.cleaned_data.via }}">{% endif %}
         <button class="btn btn-outline">Room <b>{{ r.number }}</b> · {{ r.room_type.name }}</button>
       </form>
     {% endfor %}

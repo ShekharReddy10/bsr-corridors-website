@@ -27,8 +27,9 @@ def inr(value):
 
 @register.filter
 def invoice_no(stay):
-    from ..invoice import number
-    return number(stay)
+    """The invoice number if the stay has a generated invoice, else ""."""
+    from ..invoice import has_invoice, number
+    return number(stay) if has_invoice(stay) else ""
 
 
 @register.filter

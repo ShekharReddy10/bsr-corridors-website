@@ -274,26 +274,42 @@ def _apply_payment(stay: Stay, paid: Decimal, mode: str) -> None:
             stay.payment_mode = mode
 
 
-def extend_in_place(stay: Stay, new_check_out: date, amount=Decimal(0), paid=Decimal(0), mode="") -> Stay:
+def _mark_direct(stay: Stay, start: date, amount, direct: bool) -> None:
+    """A platform booking (Airbnb, …) extended directly with us: the nights from `start` are ours, and payments
+    recorded from now on were paid to us — only these go on the guest's invoice. Walk-in / Direct: nothing to mark."""
+    if not direct or stay.is_direct_booking:
+        return
+    if stay.direct_from is None:
+        stay.direct_from = start
+        stay.direct_since = timezone.now()
+        stay.direct_amount = Decimal(0)
+    stay.direct_amount = (stay.direct_amount or Decimal(0)) + (amount or Decimal(0))
+
+
+def extend_in_place(stay: Stay, new_check_out: date, amount=Decimal(0), paid=Decimal(0), mode="",
+                    direct=False) -> Stay:
     old = stay.check_out
     stay.check_out = new_check_out
     stay.total_amount = (stay.total_amount or Decimal(0)) + amount
+    _mark_direct(stay, old, amount, direct)
     _apply_payment(stay, paid, mode)
     return save_stay(stay, action="extend",
                      summary=f"Extended in {stay.room}: check-out {old:%d-%m-%Y} → {new_check_out:%d-%m-%Y}{_money(amount, paid)}")
 
 
-def extend_with_moves(stay: Stay, new_check_out: date, moves: list, amount=Decimal(0), paid=Decimal(0), mode="") -> Stay:
+def extend_with_moves(stay: Stay, new_check_out: date, moves: list, amount=Decimal(0), paid=Decimal(0), mode="",
+                      direct=False) -> Stay:
     """Move future bookings out of the guest's room (to rooms of the same type), then extend in place."""
     with transaction.atomic():
         for b, room in moves:
             old = b.room
             b.room = room
             save_stay(b, action="move", summary=f"Room changed {old} → {room} so {stay.guest.name} could extend in {old}")
-        return extend_in_place(stay, new_check_out, amount, paid, mode)
+        return extend_in_place(stay, new_check_out, amount, paid, mode, direct)
 
 
-def extend_split(stay: Stay, new_check_out: date, room: Room, amount=Decimal(0), paid=Decimal(0), mode="") -> Stay:
+def extend_split(stay: Stay, new_check_out: date, room: Room, amount=Decimal(0), paid=Decimal(0), mode="",
+                 direct=False) -> Stay:
     """Keep the current room until its check-out, then continue in `room` for the extra nights."""
     with transaction.atomic():
         continuation = Stay(
@@ -312,6 +328,7 @@ def extend_split(stay: Stay, new_check_out: date, room: Room, amount=Decimal(0),
             linked_to=stay.root,
             notes=f"Continuation of stay in {stay.room}.",
         )
+        _mark_direct(continuation, continuation.check_in, amount, direct)
         save_stay(
             continuation,
             action="extend",
@@ -322,14 +339,15 @@ def extend_split(stay: Stay, new_check_out: date, room: Room, amount=Decimal(0),
 
 
 def extend_move(stay: Stay, new_check_out: date, room: Room, move_start: date,
-                amount=Decimal(0), paid=Decimal(0), mode="") -> Stay:
+                amount=Decimal(0), paid=Decimal(0), mode="", direct=False) -> Stay:
     """Move the guest to `room` from `move_start` until the new check-out."""
     if move_start >= stay.check_out:
-        return extend_split(stay, new_check_out, room, amount, paid, mode)
+        return extend_split(stay, new_check_out, room, amount, paid, mode, direct)
     with transaction.atomic():
         if move_start <= stay.check_in:
             old_room = stay.room
             stay.room = room
+            _mark_direct(stay, stay.check_out, amount, direct)
             stay.check_out = new_check_out
             stay.total_amount = (stay.total_amount or Decimal(0)) + amount
             _apply_payment(stay, paid, mode)
@@ -353,6 +371,7 @@ def extend_move(stay: Stay, new_check_out: date, room: Room, move_start: date,
             linked_to=stay.root,
             notes=f"Moved from {stay.room}.",
         )
+        _mark_direct(continuation, stay.check_out, amount, direct)
         old_check_out = stay.check_out
         stay.check_out = move_start
         if stay.status == Stay.Status.CHECKED_IN:

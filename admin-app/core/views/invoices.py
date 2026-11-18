@@ -18,13 +18,15 @@ def _pdf_response(stay: Stay, download: bool) -> HttpResponse:
 
 def stay_invoice(request, pk):
     stay = get_object_or_404(Stay.objects.select_related("guest", "room", "room__room_type"), pk=pk)
+    if not invoice.has_invoice(stay):  # only once generated, and only stays that have one
+        raise Http404
     return _pdf_response(stay, request.GET.get("download") == "1")
 
 
 def guest_invoice(request, token):
     """Public: the guest's own invoice (no login). A wrong or altered link is a plain 404."""
     stay = invoice.stay_for_token(token)
-    if stay is None or stay.is_void:
+    if stay is None or not invoice.has_invoice(stay):
         raise Http404
     AuditLog.record("invoice", f"Guest opened invoice {invoice.number(stay)}", stay)
     return _pdf_response(stay, request.GET.get("download") == "1")
