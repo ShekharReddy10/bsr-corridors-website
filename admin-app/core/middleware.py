@@ -4,7 +4,7 @@ from urllib.parse import quote
 from django.shortcuts import redirect
 
 # Paths reachable without signing in.
-PUBLIC_PREFIXES = ("/login/", "/static/", "/healthz/", "/backup/run/", "/invoice/")  # invoice: signed guest links
+PUBLIC_PREFIXES = ("/login/", "/static/", "/healthz/", "/backup/run/", "/invoice/", "/pay/")  # signed guest links
 
 
 class LoginRequiredMiddleware:

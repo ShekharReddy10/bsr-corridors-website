@@ -1,0 +1,53 @@
+{% load static bsr %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#1f2a30">
+  <title>Pay {{ req.amount|inr }} · {{ HOTEL_NAME }}</title>
+  <link rel="icon" href="{% static 'img/icon.png' %}">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body class="pay-page">
+<main class="pay-wrap">
+  <header class="pay-head">
+    <img src="{% static 'img/icon.png' %}" alt="" width="48" height="48">
+    <h1>{{ HOTEL_NAME }}</h1>
+  </header>
+  <section class="card pay-card">
+  {% if open %}
+    <p class="muted">Dear {{ first_name }}, payment for your stay in Room {{ stay.room.number }}</p>
+    <p class="pay-amount">{{ req.amount|inr }}</p>
+    <a class="btn btn-primary pay-btn" href="{{ upi }}">Pay {{ req.amount|inr }} with UPI</a>
+    <p class="muted small">Opens Google Pay, PhonePe, Paytm, BHIM or your bank’s UPI app with the amount filled in.</p>
+    <details class="pay-qr">
+      <summary>Paying from another phone? Show QR code</summary>
+      <div class="qr">{{ qr|safe }}</div>
+      <p class="muted small">Scan with any UPI app.</p>
+    </details>
+    <p class="small">UPI ID: <b>{{ upi_id }}</b> ({{ upi_name }})</p>
+    <form method="post" class="pay-done">{% csrf_token %}
+      <h2>After paying</h2>
+      <label class="field">UPI reference / UTR (optional)
+        <input name="reference" inputmode="numeric" maxlength="40" placeholder="e.g. 412345678901" autocomplete="off">
+      </label>
+      <label class="pay-check"><input type="checkbox" name="paid" value="1" required> I have paid {{ req.amount|inr }}</label>
+      <button class="btn btn-outline">Confirm payment</button>
+    </form>
+  {% elif req.status == "claimed" %}
+    <p class="pay-amount">✓ Thank you</p>
+    <p>We have noted your payment of <b>{{ req.amount|inr }}</b>{% if req.reference %} (UPI ref {{ req.reference }}){% endif %}. Our team will confirm it shortly.</p>
+    {% if confirm %}<a class="btn btn-primary pay-btn" href="{{ confirm }}">Confirm to us on WhatsApp</a>{% endif %}
+  {% elif req.status == "paid" %}
+    <p class="pay-amount">✓ Paid</p>
+    <p>Your payment of <b>{{ req.amount|inr }}</b> has been received. Thank you.</p>
+  {% else %}
+    <p class="pay-amount">Link expired</p>
+    <p>This payment link is no longer valid. Please use the latest link we sent you, or contact us.</p>
+  {% endif %}
+  </section>
+  <p class="muted small pay-foot">Payments go directly to {{ upi_name }} by UPI.</p>
+</main>
+</body>
+</html>

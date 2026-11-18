@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}Testing{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Testing</h1>
+  <p class="muted">A test room, guest and stay to try payment links, invoices and WhatsApp messages on your own phone.</p></div></div>
+
+<section class="card">
+  <h2>Create a test stay</h2>
+  {% if not upi_ready %}<div class="alert">Payment links are off: add <b>UPI_ID</b> (and <b>UPI_NAME</b>) in Render → Environment.</div>
+  {% else %}<p class="muted small">Payments go to UPI ID <b>{{ upi_id }}</b>.</p>{% endif %}
+  <form method="post" class="form-grid">{% csrf_token %}
+    <div class="field"><label for="t-phone">Your WhatsApp number (test messages go here)</label>
+      <input id="t-phone" name="phone" type="tel" inputmode="tel" placeholder="+91 98765 43210" required></div>
+    <div class="field"><label for="t-amount">Stay total (₹)</label>
+      <input id="t-amount" name="amount" type="number" min="1" step="1" value="1" inputmode="decimal">
+      <small class="help">Keep it small (₹1) — a real UPI payment is made when you test.</small></div>
+    <div class="form-actions span-2"><button class="btn btn-primary">Create test stay</button></div>
+  </form>
+  <p class="muted small">Room <b>TEST</b>, guest <b>Test Guest</b>, Walk-in, checked in today until tomorrow.</p>
+</section>
+
+<section class="card">
+  <h2>Test stays</h2>
+  {% for s in stays %}
+    <p><a href="{% url 'stay_detail' s.pk %}"><b>{{ s.guest.name }}</b> · Room {{ s.room.number }} · {{ s.dates_label }}</a>
+      <small class="muted">{{ s.get_status_display }} · {{ s.total|inr }} · paid {{ s.amount_paid|inr }}</small></p>
+  {% empty %}<p class="muted">None.</p>{% endfor %}
+  {% if stays %}
+  <div class="alert">Test stays and their payments count in Revenue until deleted.</div>
+  <form method="post" data-confirm="Delete the test room, test guest and all test stays (with their payments and payment links)?">{% csrf_token %}
+    <input type="hidden" name="action" value="delete"><button class="btn btn-danger">Delete all test data</button></form>
+  {% endif %}
+</section>
+{% endblock %}

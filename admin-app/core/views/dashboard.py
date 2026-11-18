@@ -47,8 +47,11 @@ def dashboard(request):
     overdue_departures = [s for s in in_house if s.check_out and s.check_out < t]
     day_after = t + timedelta(days=2)
     upcoming = live.filter(status=Stay.Status.UPCOMING)
+    from .. import payments
     context = {
         "today": t,
+        "pay_verify": list(payments.to_verify()),
+        "test_stays": Stay.objects.filter(room__number="TEST").exists(),
         "arrivals": arrivals,
         "late_arrivals": late_arrivals,
         "arriving_count": len(arrivals) + len(late_arrivals),

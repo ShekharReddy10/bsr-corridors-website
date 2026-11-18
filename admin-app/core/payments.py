@@ -1,0 +1,101 @@
+"""UPI payment links — no payment gateway, no fees: the guest pays straight to the hotel's UPI ID (settings.UPI_ID).
+
+Staff send a link on WhatsApp (amount prefilled with the balance, can be changed). The guest's page has a "Pay with
+UPI" button (opens GPay / PhonePe / Paytm / BHIM with everything filled in) and a QR code. Without a gateway nobody
+tells us the money arrived, so the guest ticks "I have paid" (with the UPI reference, optional): the link closes, they
+confirm to us on WhatsApp, and the stay page asks staff to check the UPI app and record the payment.
+"""
+
+import re
+from decimal import Decimal
+from urllib.parse import quote, urlencode
+
+from django.conf import settings
+from django.core import signing
+from django.db import transaction
+from django.utils import timezone
+
+from .models import AuditLog, PaymentRequest, Stay
+
+SALT = "pay"
+
+
+def configured() -> bool:
+    return bool(settings.UPI_ID)
+
+
+def token(req: PaymentRequest) -> str:
+    return signing.Signer(salt=SALT).sign(str(req.pk))
+
+
+def for_token(value: str) -> PaymentRequest | None:
+    try:
+        pk = int(signing.Signer(salt=SALT).unsign(value))
+    except (signing.BadSignature, ValueError):
+        return None
+    return PaymentRequest.objects.filter(pk=pk).select_related("stay", "stay__guest", "stay__room").first()
+
+
+def link(req: PaymentRequest, base_url: str) -> str:
+    return f"{base_url.rstrip('/')}/pay/{token(req)}/"
+
+
+def upi_uri(req: PaymentRequest) -> str:
+    """upi://pay?… — opens the guest's UPI app with the payee, amount and note filled in."""
+    note = f"Room {req.stay.room.number} {settings.HOTEL_NAME}"[:50]
+    return "upi://pay?" + urlencode({"pa": settings.UPI_ID, "pn": settings.UPI_NAME, "am": f"{req.amount:.2f}",
+                                     "cu": "INR", "tn": note}, quote_via=quote)
+
+
+def qr_svg(req: PaymentRequest) -> str:
+    """The same UPI request as a QR code (inline SVG), for paying from another phone."""
+    import segno
+    return segno.make(upi_uri(req), error="m").svg_inline(scale=5, border=2, dark="#000", light="#fff")
+
+
+def create(stay: Stay, amount: Decimal, by: str = "") -> PaymentRequest:
+    """A new link for this stay; older links still waiting for payment stop working (only the latest is valid)."""
+    if amount <= 0:
+        raise ValueError("Enter an amount more than zero.")
+    with transaction.atomic():
+        stay.payment_requests.filter(status=PaymentRequest.Status.OPEN).update(status=PaymentRequest.Status.REPLACED)
+        req = PaymentRequest.objects.create(stay=stay, amount=amount, created_by=by)
+        AuditLog.record("payment_link", f"UPI payment link sent for ₹{amount:,.0f}", stay)
+    return req
+
+
+def claim(req: PaymentRequest, reference: str) -> bool:
+    """The guest ticked "I have paid". Returns False if the link was no longer open."""
+    reference = re.sub(r"[^0-9A-Za-z]", "", reference or "")[:40]
+    with transaction.atomic():
+        n = PaymentRequest.objects.filter(pk=req.pk, status=PaymentRequest.Status.OPEN).update(
+            status=PaymentRequest.Status.CLAIMED, reference=reference, claimed_at=timezone.now())
+        if n:
+            req.refresh_from_db()
+            AuditLog.record("payment_link", f"Guest says paid ₹{req.amount:,.0f} by UPI"
+                                            f"{f' (ref {reference})' if reference else ''} — to verify", req.stay)
+    return bool(n)
+
+
+def mark_paid(req: PaymentRequest) -> None:
+    PaymentRequest.objects.filter(pk=req.pk).update(status=PaymentRequest.Status.PAID)
+
+
+def not_received(req: PaymentRequest) -> None:
+    """Staff checked: the money didn't come — the link works again for the guest."""
+    PaymentRequest.objects.filter(pk=req.pk, status=PaymentRequest.Status.CLAIMED).update(
+        status=PaymentRequest.Status.OPEN, claimed_at=None)
+    AuditLog.record("payment_link", f"UPI payment of ₹{req.amount:,.0f} not received — link open again", req.stay)
+
+
+def to_verify():
+    """Links where the guest says they paid, waiting for staff to check the UPI app."""
+    return (PaymentRequest.objects.filter(status=PaymentRequest.Status.CLAIMED)
+            .select_related("stay", "stay__guest", "stay__room").order_by("claimed_at"))
+
+
+def hotel_whatsapp() -> str:
+    """The hotel's number for the guest's confirmation: the first number in hotel info "Contact"."""
+    from .whatsapp import hotel_info, wa_number
+    m = re.search(r"\+?\d[\d \-]{8,}\d", hotel_info().get("contact", ""))
+    return wa_number(m.group(0)) if m else ""

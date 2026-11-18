@@ -24,6 +24,15 @@
 </div>
 
 {% include "partials/check_flags.html" %}
+{% if pay_verify %}
+  <div class="alert">
+    <b>UPI payments to verify:</b> the guest says they paid — check your UPI / bank app, then record it on the stay:
+    {% for r in pay_verify %}<a href="{% url 'stay_detail' r.stay.pk %}#payment">{{ r.stay.guest.name }} ({{ r.stay.room.number }}) · {{ r.amount|inr }}{% if r.reference %} · ref {{ r.reference }}{% endif %}</a>{% if not forloop.last %}, {% endif %}{% endfor %}
+  </div>
+{% endif %}
+{% if test_stays %}
+  <div class="alert">Test data is present (Room TEST) and counts in revenue — <a href="{% url 'testing' %}">delete it on the Testing page</a> when you’re done.</div>
+{% endif %}
 {% if form_c_due %}
   <div class="alert">
     <b>Form C due:</b> file with the FRRO within 24 hours of check-in for

@@ -114,6 +114,9 @@ def send(request, pk):
         if not template:
             messages.error(request, "That message no longer exists.")
             return redirect("stay_detail", pk=pk)
+        if "{payment_link}" in template.body:  # needs an amount and a new link: sent from the Payment section
+            messages.info(request, "Use “Send payment link” in the Payment section to send a payment link.")
+            return redirect("stay_detail", pk=pk)
         if "{invoice_link}" in template.body or "{invoice_no}" in template.body:
             invoice.ensure(stay)  # departure / check-out details: make the invoice first, so the link goes with it
         name, text = template.name, whatsapp.render(template.body, whatsapp.context(stay, amount, request.build_absolute_uri("/")))

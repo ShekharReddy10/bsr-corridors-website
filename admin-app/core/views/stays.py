@@ -11,10 +11,10 @@ from django.utils.html import escape
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
-from .. import gdrive, invoice, checks, services
+from .. import gdrive, invoice, checks, payments, services
 from ..fields import mask
 from ..forms import ExtendForm, GuestForm, PaymentForm, ShortenForm, StayForm, other_guests_formset
-from ..models import AuditLog, Guest, MessageTemplate, Payment, Room, Stay
+from ..models import AuditLog, Guest, MessageTemplate, Payment, PaymentRequest, Room, Stay
 from .photos import locked as photos_locked, photo_rows
 
 
@@ -211,6 +211,9 @@ def stay_detail(request, pk):
         "shorten_form": ShortenForm(initial={"new_check_out": services.today()}),
         "today": services.today(),
         "swap_with": list(services.swap_candidates(stay)),
+        "pay_ready": payments.configured(),
+        "pay_requests": list(stay.payment_requests.all()[:5]),
+        "pay_verify": [r for r in stay.payment_requests.all() if r.status == PaymentRequest.Status.CLAIMED],
         "invoice_ok": invoice.eligible(stay) and not stay.is_void,
         "invoice_pending": invoice.pending(stay),
         "invoice_msgs": [t.pk for t in MessageTemplate.objects.all() if "{invoice_link}" in t.body or "{invoice_no}" in t.body],
@@ -286,6 +289,9 @@ def stay_action(request, pk, action):
                 c = form.cleaned_data
                 services.add_payment(stay, c["amount"], c["mode"], c["collected_by"], c["date"], c["note"])
                 messages.success(request, f"Payment of ₹{c['amount']:,.0f} recorded.")
+                req = stay.payment_requests.filter(pk=request.POST.get("pay_request") or 0).first()
+                if req:  # the guest's "I have paid", now checked in the UPI app
+                    payments.mark_paid(req)
                 if request.headers.get("X-Requested-With") == "fetch":  # stay page: WhatsApp opens with the thanks
                     t = _payment_message()
                     wa = (f"/stays/{stay.pk}/whatsapp/?t={t.pk}&amount={c['amount']:.0f}"
@@ -293,6 +299,10 @@ def stay_action(request, pk, action):
                     return JsonResponse({"ok": True, "wa": wa})
                 if not request.POST.get("next"):
                     return redirect(f"/stays/{stay.pk}/?paid={c['amount']:.0f}#payment")
+        elif action == "pay-not-received":
+            req = get_object_or_404(PaymentRequest, pk=request.POST.get("pay_request") or 0, stay=stay)
+            payments.not_received(req)
+            messages.info(request, "Marked as not received — the guest’s payment link works again.")
         elif action == "swap":
             other = get_object_or_404(Stay.objects.select_related("guest", "room"), pk=request.POST.get("other") or 0)
             services.swap_rooms(stay, other)

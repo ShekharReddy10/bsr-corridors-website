@@ -268,6 +268,34 @@ class Payment(models.Model):
         return f"{self.date:%d-%m-%Y} · ₹{self.amount:,.0f}"
 
 
+class PaymentRequest(models.Model):
+    """A UPI payment link sent to a guest (no gateway: the money goes straight to the hotel's UPI ID).
+
+    open → the guest pays and ticks "I've paid" (claimed: the link closes) → staff check the UPI app and record the
+    payment (paid), or mark it not received (open again). A newer link for the stay replaces older open ones."""
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Waiting for payment"
+        CLAIMED = "claimed", "Guest says paid — to verify"
+        PAID = "paid", "Paid"
+        REPLACED = "replaced", "Replaced by a newer link"
+
+    stay = models.ForeignKey(Stay, on_delete=models.CASCADE, related_name="payment_requests")
+    amount = models.DecimalField("Amount (₹)", max_digits=10, decimal_places=2)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN, db_index=True)
+    reference = models.CharField("UPI reference (UTR)", max_length=40, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.CharField(max_length=60, blank=True)
+    claimed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "payment_requests"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"₹{self.amount:,.0f} · {self.get_status_display()}"
+
+
 class StayGuest(models.Model):
     """Guest 2, 3, … on a stay (the main guest is Stay.guest). All fields optional."""
 

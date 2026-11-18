@@ -1738,3 +1738,96 @@ class LoginTests(TestCase):
                 call_command("ensure_admin", stdout=io.StringIO())
         satish.refresh_from_db()
         self.assertTrue(satish.is_active)
+
+
+class PaymentLinkTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        _, _, self.rooms = make_rooms()
+        self.client.force_login(get_user_model().objects.create_user("pay-admin", password="test-pass-123456"))
+
+    def _send(self, s, amount):
+        from urllib.parse import parse_qs, urlparse
+        r = self.client.post(f"/stays/{s.pk}/pay-link/", {"amount": amount})
+        return parse_qs(urlparse(r["Location"]).query)["text"][0]
+
+    @override_settings(UPI_ID="bsr@upi", UPI_NAME="BSR Corridors")
+    def test_payment_link_pay_claim_verify(self):
+        from urllib.parse import urlparse
+        from core.models import PaymentRequest
+        s = stay(make_guest(phone="98765 43210"), self.rooms["101"], -1, 2, status=Stay.Status.CHECKED_IN)
+        page = self.client.get(f"/stays/{s.pk}/").content.decode()
+        self.assertIn("Send UPI payment link", page)
+        self.assertIn('value="3000"', page)  # prefilled with the balance
+        text = self._send(s, "2500")  # changed amount
+        self.assertIn("₹2,500", text)
+        self.assertTrue(text.endswith("- BSR Corridors"))
+        link = next(w for w in text.split() if "/pay/" in w)
+        req = PaymentRequest.objects.get()
+        self.assertEqual((req.amount, req.status), (Decimal(2500), "open"))
+        # Guest's page: no login; UPI button with payee and amount; QR code.
+        self.client.logout()
+        path = urlparse(link).path
+        page = self.client.get(path).content.decode()
+        self.assertIn("upi://pay?pa=bsr%40upi&amp;pn=BSR%20Corridors&amp;am=2500.00&amp;cu=INR", page)
+        self.assertIn("<svg", page)
+        self.assertEqual(self.client.get(path[:-3] + "x1/").status_code, 404)
+        # "I have paid" closes the link and offers the WhatsApp confirmation.
+        self.client.post(path, {"paid": "1", "reference": "4123 4567 8901"})
+        req.refresh_from_db()
+        self.assertEqual((req.status, req.reference), ("claimed", "412345678901"))
+        page = self.client.get(path).content.decode()
+        self.assertNotIn("upi://pay", page)
+        self.assertIn("https://wa.me/917013684602?text=", page)
+        # Staff: shown to verify; recording it marks the link paid.
+        self.client.force_login(get_user_model().objects.get(username="pay-admin"))
+        self.assertContains(self.client.get("/"), "UPI payments to verify")
+        self.assertContains(self.client.get(f"/stays/{s.pk}/"), "Guest says they paid ₹2,500")
+        self.client.post(f"/stays/{s.pk}/payment/", {"amount": "2500", "mode": "upi", "pay_request": req.pk,
+                                                     "note": "UPI payment link"})
+        req.refresh_from_db()
+        s.refresh_from_db()
+        self.assertEqual((req.status, s.amount_paid), ("paid", Decimal(2500)))
+        self.assertNotContains(self.client.get("/"), "UPI payments to verify")
+
+    @override_settings(UPI_ID="bsr@upi")
+    def test_not_received_reopens_and_new_link_replaces_old(self):
+        from core.models import PaymentRequest
+        s = stay(make_guest(phone="98765 43210"), self.rooms["101"], -1, 2, status=Stay.Status.CHECKED_IN)
+        self._send(s, "1000")
+        first = PaymentRequest.objects.get()
+        first.status = "claimed"
+        first.save()
+        self.client.post(f"/stays/{s.pk}/pay-not-received/", {"pay_request": first.pk})
+        first.refresh_from_db()
+        self.assertEqual(first.status, "open")
+        self._send(s, "1200")
+        first.refresh_from_db()
+        self.assertEqual(first.status, "replaced")
+        self.client.logout()
+        from core import payments
+        self.assertContains(self.client.get(f"/pay/{payments.token(first)}/"), "Link expired")
+
+    @override_settings(UPI_ID="")
+    def test_payment_link_off_without_upi_id(self):
+        s = stay(make_guest(phone="98765 43210"), self.rooms["101"], -1, 2, status=Stay.Status.CHECKED_IN)
+        self.assertContains(self.client.get(f"/stays/{s.pk}/"), "add <b>UPI_ID</b>")
+        self.client.post(f"/stays/{s.pk}/pay-link/", {"amount": "100"})
+        self.assertFalse(s.payment_requests.exists())
+
+    def test_testing_page_creates_and_deletes_test_data(self):
+        self.assertContains(self.client.get("/testing/"), "Create test stay")
+        r = self.client.post("/testing/", {"phone": "+91 90000 99999", "amount": "1"})
+        s = Stay.objects.get(room__number="TEST")
+        self.assertRedirects(r, f"/stays/{s.pk}/", fetch_redirect_response=False)
+        self.assertEqual((s.guest.name, s.status, s.total_amount), ("Test Guest", "checked_in", Decimal(1)))
+        self.assertContains(self.client.get("/"), "Test data is present")
+        services.add_payment(s, Decimal(1), "upi")
+        self.client.post("/testing/", {"action": "delete"})
+        self.assertFalse(Stay.objects.filter(room__number="TEST").exists())
+        self.assertFalse(Room.objects.filter(number="TEST").exists())
+        self.assertFalse(Guest.objects.filter(name="Test Guest").exists())
+        # A real guest's number isn't taken over.
+        make_guest("Real", "+91 90000 11111")
+        self.client.post("/testing/", {"phone": "+91 90000 11111"})
+        self.assertFalse(Stay.objects.filter(room__number="TEST").exists())

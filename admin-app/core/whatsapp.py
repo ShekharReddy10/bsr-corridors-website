@@ -42,6 +42,7 @@ STAY_FIELDS = {
     "balance": "Balance due",
     "invoice_link": "Link to the guest’s invoice (PDF) — opens without a login, shows only their invoice",
     "invoice_no": "Invoice number, e.g. 261115-261118-101",
+    "payment_link": "UPI payment link (only in the “Payment link” message — sent from the stay’s Payment section)",
     "amount": "Amount just received (typed in next to the button; else the latest payment)",
     "host": "Host looking after the guest",
     "hotel": "Hotel name",

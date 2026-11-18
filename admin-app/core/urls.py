@@ -1,7 +1,7 @@
 from django.contrib.auth.views import LogoutView
 from django.urls import path, register_converter
 
-from .views import auth, calendar, dashboard, data, expenses, guests, invoices, photos, revenue, rooms, stays, users, whatsapp
+from .views import auth, calendar, dashboard, data, expenses, guests, invoices, pay, photos, revenue, rooms, stays, users, whatsapp
 
 
 class TwoDigits:
@@ -23,6 +23,9 @@ urlpatterns = [
     path("healthz/", auth.healthz, name="healthz"),
     path("invoice/<str:token>/", invoices.guest_invoice, name="guest_invoice"),
     path("stays/<int:pk>/invoice/", invoices.stay_invoice, name="stay_invoice"),
+    path("pay/<str:token>/", pay.guest_page, name="pay_page"),
+    path("stays/<int:pk>/pay-link/", pay.send_link, name="stay_pay_link"),
+    path("testing/", pay.testing, name="testing"),
     path("", dashboard.dashboard, name="dashboard"),
     path("checks/ok/", dashboard.confirm_check, name="confirm_check"),
     path("calendar/", calendar.tape_chart, name="calendar"),
