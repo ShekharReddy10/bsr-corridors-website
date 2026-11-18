@@ -19,14 +19,21 @@
   {% if open %}
     <p class="muted">Dear {{ first_name }}, payment for your stay in Room {{ stay.room.number }}</p>
     <p class="pay-amount">{{ req.amount|inr }}</p>
-    <a class="btn btn-primary pay-btn" href="{{ upi }}">Pay {{ req.amount|inr }} with UPI</a>
-    <p class="muted small">Opens Google Pay, PhonePe, Paytm, BHIM or your bank’s UPI app with the amount filled in.</p>
-    <details class="pay-qr">
-      <summary>Paying from another phone? Show QR code</summary>
-      <div class="qr">{{ qr|safe }}</div>
-      <p class="muted small">Scan with any UPI app.</p>
-    </details>
-    <p class="small">UPI ID: <b>{{ upi_id }}</b> ({{ upi_name }})</p>
+    <img class="pay-qr-img" src="{{ qr }}" alt="UPI QR code to pay {{ req.amount|inr }}" width="240" height="240">
+    <p class="small">Scan with any UPI app (Google Pay, PhonePe, Paytm, BHIM…)</p>
+    <a class="btn btn-primary pay-btn" href="{{ qr }}" download="{{ HOTEL_NAME }} payment {{ req.amount|floatformat:0 }}.png">Save QR code</a>
+    <ol class="pay-steps small">
+      <li>Tap <b>Save QR code</b> (or long-press the QR and save the image).</li>
+      <li>Open your UPI app and tap <b>Scan</b>.</li>
+      <li>Choose the <b>gallery / upload QR</b> option and pick the saved image.</li>
+      <li>Check the amount <b>{{ req.amount|inr }}</b> and pay.</li>
+    </ol>
+    <div class="pay-alt">
+      <p class="small">Or pay to UPI ID <b id="upi-id">{{ upi_id }}</b> ({{ upi_name }}) — amount <b>{{ req.amount|inr }}</b>
+        <button type="button" class="btn btn-ghost btn-sm" id="copy-upi">Copy UPI ID</button></p>
+      <a class="btn btn-outline pay-btn" href="{{ upi }}">Pay with UPI app</a>
+      <p class="muted small">If your app says “payment through a link is not allowed”, please use the QR code above.</p>
+    </div>
     <form method="post" class="pay-done">{% csrf_token %}
       <h2>After paying</h2>
       <label class="field">UPI reference / UTR (optional)
@@ -49,5 +56,17 @@
   </section>
   <p class="muted small pay-foot">Payments go directly to {{ upi_name }} by UPI.</p>
 </main>
+<script>
+  (function () {
+    var b = document.getElementById("copy-upi");
+    if (!b) return;
+    b.addEventListener("click", function () {
+      var id = document.getElementById("upi-id").textContent;
+      (navigator.clipboard ? navigator.clipboard.writeText(id) : Promise.reject()).then(
+        function () { b.textContent = "Copied ✓"; },
+        function () { window.prompt("Copy the UPI ID:", id); });
+    });
+  })();
+</script>
 </body>
 </html>

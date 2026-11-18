@@ -47,10 +47,12 @@ def upi_uri(req: PaymentRequest) -> str:
                                      "cu": "INR", "tn": note}, quote_via=quote)
 
 
-def qr_svg(req: PaymentRequest) -> str:
-    """The same UPI request as a QR code (inline SVG), for paying from another phone."""
+def qr_png(req: PaymentRequest) -> str:
+    """The same UPI request as a QR code (PNG data URI). Small merchants can only be paid by scanning a QR (UPI rules
+    block "pay by link" for them), so guests on the same phone save this image and open it from their UPI app's
+    scanner (gallery / upload QR)."""
     import segno
-    return segno.make(upi_uri(req), error="m").svg_inline(scale=5, border=2, dark="#000", light="#fff")
+    return segno.make(upi_uri(req), error="m").png_data_uri(scale=8, border=3)
 
 
 def create(stay: Stay, amount: Decimal, by: str = "") -> PaymentRequest:

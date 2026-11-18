@@ -513,6 +513,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .pay-card { text-align: center; }
 .pay-amount { font-size: 2.2rem; font-weight: 700; margin: 4px 0 16px; }
 .pay-btn { display: flex; justify-content: center; width: 100%; font-size: 1.05rem; padding: 14px; }
+.pay-qr-img { display: block; width: 240px; height: 240px; margin: 4px auto 6px; image-rendering: pixelated; border: 1px solid var(--line); border-radius: 8px; }
+.pay-steps { text-align: left; margin: 14px 0 6px; padding-left: 22px; display: grid; gap: 4px; }
+.pay-alt { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; display: grid; gap: 8px; }
+.pay-alt p { margin: 0; }
 .pay-qr { margin: 16px 0; }
 .pay-qr summary { cursor: pointer; color: var(--blue); }
 .pay-qr .qr { display: flex; justify-content: center; margin-top: 12px; }

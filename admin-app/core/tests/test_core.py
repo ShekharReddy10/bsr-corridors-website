@@ -1770,7 +1770,8 @@ class PaymentLinkTests(TestCase):
         path = urlparse(link).path
         page = self.client.get(path).content.decode()
         self.assertIn("upi://pay?pa=bsr%40upi&amp;pn=BSR%20Corridors&amp;am=2500.00&amp;cu=INR", page)
-        self.assertIn("<svg", page)
+        self.assertIn('src="data:image/png;base64,', page)
+        self.assertIn("Save QR code", page)
         self.assertEqual(self.client.get(path[:-3] + "x1/").status_code, 404)
         # "I have paid" closes the link and offers the WhatsApp confirmation.
         self.client.post(path, {"paid": "1", "reference": "4123 4567 8901"})

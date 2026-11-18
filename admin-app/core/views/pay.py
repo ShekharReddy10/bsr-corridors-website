@@ -69,7 +69,7 @@ def guest_page(request, token):
     open_ = req.status == PaymentRequest.Status.OPEN and not stay.is_void
     return render(request, "core/pay.html", {
         "req": req, "stay": stay, "open": open_, "confirm": confirm,
-        "upi": payments.upi_uri(req) if open_ else "", "qr": payments.qr_svg(req) if open_ else "",
+        "upi": payments.upi_uri(req) if open_ else "", "qr": payments.qr_png(req) if open_ else "",
         "upi_id": settings.UPI_ID, "upi_name": settings.UPI_NAME, "first_name": stay.guest.name.split()[0],
     })
 
