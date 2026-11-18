@@ -20,13 +20,12 @@ from .models import Payment, Stay
 from .services import today
 
 FONTS = Path(__file__).resolve().parent / "fonts"
-LOGO = Path(settings.BASE_DIR) / "static" / "img" / "icon.png"
+LOGO = Path(__file__).resolve().parent / "invoice_logo.png"  # black and white
 SALT = "invoice"
 PENTHOUSE = "601"
-ACCENT = (163, 120, 52)
-INK = (33, 37, 41)
-MUTED = (110, 117, 125)
-LINE = (222, 214, 200)
+BLACK = (0, 0, 0)
+GREY = (90, 90, 90)
+SHADE = (235, 235, 235)
 
 
 def room_code(room) -> str:
@@ -126,24 +125,55 @@ def build(stay: Stay) -> Invoice:
     return inv
 
 
+_ONES = ("", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve",
+         "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen")
+_TENS = ("", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety")
+
+
+def _words_below_100(n: int) -> str:
+    return _ONES[n] if n < 20 else f"{_TENS[n // 10]} {_ONES[n % 10]}".strip()
+
+
+def in_words(amount) -> str:
+    """4500 → 'Rupees Four Thousand Five Hundred Only' (Indian system: lakh, crore)."""
+    n = int(Decimal(amount or 0).quantize(Decimal("1")))
+    if n <= 0:
+        return "Rupees Zero Only"
+    parts = []
+    for size, name in ((10**7, "Crore"), (10**5, "Lakh"), (1000, "Thousand"), (100, "Hundred")):
+        if n >= size:
+            count = n // size
+            parts.append(f"{in_words(count)[7:-5] if count >= 100 else _words_below_100(count)} {name}")
+            n %= size
+    if n:
+        parts.append(("and " if parts else "") + _words_below_100(n))
+    return f"Rupees {' '.join(parts)} Only"
+
+
 class _PDF(FPDF):
+    """Typewriter-style invoice: FreeMono (Courier-like), black on white, ruled boxes."""
+
     def __init__(self):
         super().__init__(format="A4")
-        self.add_font("Noto", "", str(FONTS / "NotoSans-Regular.ttf"))
-        self.add_font("Noto", "B", str(FONTS / "NotoSans-Bold.ttf"))
-        self.set_margins(16, 16, 16)
-        self.set_auto_page_break(True, 18)
+        self.add_font("Mono", "", str(FONTS / "FreeMono.ttf"))
+        self.add_font("Mono", "B", str(FONTS / "FreeMonoBold.ttf"))
+        self.set_margins(14, 12, 14)
+        self.set_auto_page_break(True, 16)
+        self.set_text_color(*BLACK)
+        self.set_draw_color(*BLACK)
 
-    def text_at(self, x, y, w, h, txt, size=9.5, style="", color=INK, align="L"):
+    def put(self, x, y, w, h, txt, size=9.5, style="", align="L", color=BLACK):
         self.set_xy(x, y)
-        self.set_font("Noto", style, size)
+        self.set_font("Mono", style, size)
+        while size > 6 and self.get_string_width(txt) > w:  # long names shrink to fit their box
+            size -= 0.5
+            self.set_font("Mono", style, size)
         self.set_text_color(*color)
         self.cell(w, h, txt, align=align)
 
-    def rule(self, y, color=LINE, width=0.3):
-        self.set_draw_color(*color)
+    def hline(self, y, width=0.2, x1=None, x2=None):
         self.set_line_width(width)
-        self.line(self.l_margin, y, self.w - self.r_margin, y)
+        self.line(x1 if x1 is not None else self.l_margin, y, x2 if x2 is not None else self.w - self.r_margin, y)
 
 
 def pdf(stay: Stay) -> bytes:
@@ -158,121 +188,152 @@ def pdf(stay: Stay) -> bytes:
     left, right = p.l_margin, p.w - p.r_margin
     width = right - left
 
-    # Header: hotel on the left, invoice number and date on the right.
+    # Letterhead, centred: logo, name, address, phone.
+    y = 12
     if LOGO.exists():
-        p.image(str(LOGO), x=left, y=16, w=17)
-    p.text_at(left + 21, 16, 100, 8, settings.HOTEL_NAME.upper(), size=17, style="B", color=ACCENT)
-    y = 25
+        p.image(str(LOGO), x=(p.w - 18) / 2, y=y, h=20)
+        y += 22
+    p.put(left, y, width, 8, settings.HOTEL_NAME.upper(), size=18, style="B", align="C")
+    y += 8
     address = [ln.strip() for ln in info.get("location", "").splitlines() if ln.strip() and "://" not in ln]
-    for ln in address + ([info["contact"]] if info.get("contact") else []):
-        p.set_xy(left + 21, y)
-        p.set_font("Noto", "", 8.5)
-        p.set_text_color(*MUTED)
-        p.multi_cell(105, 4.2, ln, align="L")
+    for ln in address:
+        p.set_xy(left + 15, y)
+        p.set_font("Mono", "", 9)
+        p.multi_cell(width - 30, 4.2, ln, align="C")
         y = p.get_y()
-    p.text_at(right - 70, 16, 70, 9, "INVOICE", size=20, style="B", align="R")
-    p.text_at(right - 70, 26, 70, 5, f"No: {inv.number}", size=9.5, style="B", align="R")
-    p.text_at(right - 70, 31, 70, 5, f"Date: {inv.date:%d-%m-%Y}", size=9.5, align="R")
-    y = max(y, 38) + 4
-    p.rule(y, ACCENT, 0.6)
+    if info.get("contact"):
+        p.put(left, y, width, 4.5, f"Phone: {info['contact']}", size=9, align="C")
+        y += 4.5
+    y += 2.5
+    p.hline(y, 0.6)
+    p.hline(y + 0.9, 0.2)
 
-    # Billed to / stay.
-    y += 5
-    col = left + width / 2 + 4
-    p.text_at(left, y, 80, 5, "BILLED TO", size=8, style="B", color=MUTED)
-    p.text_at(col, y, 80, 5, "STAY", size=8, style="B", color=MUTED)
-    billed = [(guest.name, "B")] + [(v, "") for v in (guest.phone, getattr(guest, "address", "")) if v]
-    rooms = ", ".join(dict.fromkeys(f"Room {s.room.number}" for s in inv.lines_stays))
+    # Title and invoice number / date.
+    y += 3
+    p.put(left, y, width, 7, "I N V O I C E", size=14, style="B", align="C")
+    y += 9
+    p.put(left, y, width / 2, 5, f"Invoice No : {inv.number}", style="B")
+    p.put(left + width / 2, y, width / 2, 5, f"Date : {inv.date:%d-%m-%Y}", style="B", align="R")
+    y += 7
+
+    # Two boxes: billed to, stay details.
+    rooms = ", ".join(dict.fromkeys(s.room.number for s in inv.lines_stays))
     end = inv.lines_stays[-1].check_out
     nights = sum(s.nights for s in inv.lines_stays)
-    source = first.get_source_display() + (f" · Ref {first.source_ref}" if first.source_ref else "")
-    stay_rows = [(f"{rooms} · {inv.stay.room.room_type.name}", "B"),
-                 (f"Check-in: {first.check_in:%a %d-%m-%Y}", ""),
-                 (f"Check-out: {end:%a %d-%m-%Y}" if end else "Check-out: ongoing (monthly)", ""),
-                 (f"Guests: {first.num_guests} · Nights: {nights}", ""),
-                 (f"Booked via: {source}", "")]
-    yy = y + 5.5
-    for text, style in billed:
-        p.set_xy(left, yy)
-        p.set_font("Noto", style, 9.5)
-        p.set_text_color(*INK)
-        p.multi_cell(width / 2 - 6, 4.8, text, align="L")
-        yy = p.get_y()
-    y2 = y + 5.5
-    for text, style in stay_rows:
-        p.text_at(col, y2, width / 2 - 4, 4.8, text, style=style)
-        y2 += 4.8
-    y = max(yy, y2) + 5
+    source = first.get_source_display() + (f" (Ref {first.source_ref})" if first.source_ref else "")
+    billed = [("Name", guest.name), ("Phone", guest.phone), ("Address", guest.address)]
+    stay_rows = [("Room", f"{rooms} - {inv.stay.room.room_type.name}"),
+                 ("Check-in", f"{first.check_in:%d-%m-%Y} ({first.check_in:%a})"),
+                 ("Check-out", f"{end:%d-%m-%Y} ({end:%a})" if end else "Ongoing (monthly)"),
+                 ("Guests", f"{first.num_guests}    Nights: {nights}"),
+                 ("Booked via", source)]
+    half = width / 2
 
-    # Lines.
-    cols = [("Description", width * 0.52, "L"), ("Qty", width * 0.14, "R"), ("Rate", width * 0.16, "R"),
-            ("Amount", width * 0.18, "R")]
-    p.set_fill_color(247, 242, 233)
-    p.rect(left, y, width, 7.5, style="F")
-    x = left
-    for title, w, align in cols:
-        p.text_at(x + 2 if align == "L" else x, y + 1.2, w - 2, 5, title, size=8.5, style="B", color=MUTED, align=align)
-        x += w
-    y += 9
-    for line in inv.lines:
-        x = left
-        p.text_at(x + 2, y, cols[0][1] - 2, 5, line.description, style="B")
-        p.text_at(x + 2, y + 5, cols[0][1] - 2, 4.5, line.detail, size=8.5, color=MUTED)
-        x += cols[0][1]
-        for txt, (_, w, align) in zip([line.qty, line.rate, money(line.amount)], cols[1:]):
-            p.text_at(x, y, w - 2, 5, txt, align=align)
-            x += w
+    def box(x, title, rows, label_w):
+        yy = y + 1.5
+        p.put(x + 2, yy, half - 4, 5, title, size=9, style="B")
+        yy += 6
+        for label, value in rows:
+            if not value:
+                continue
+            p.put(x + 2, yy, label_w, 4.6, f"{label}", size=9)
+            p.put(x + 2 + label_w, yy, 3, 4.6, ":", size=9)
+            p.set_xy(x + 5 + label_w, yy)
+            p.set_font("Mono", "", 9)
+            p.multi_cell(half - label_w - 7, 4.6, str(value), align="L")
+            yy = p.get_y()
+        return yy
+
+    bottom = max(box(left, "BILLED TO", billed, 17), box(left + half, "STAY DETAILS", stay_rows, 21)) + 2
+    p.set_line_width(0.3)
+    p.rect(left, y, half, bottom - y)
+    p.rect(left + half, y, half, bottom - y)
+    y = bottom + 5
+
+    # Items table, ruled.
+    cols = [("S.No", 13, "C"), ("Description", width - 13 - 28 - 30 - 33, "L"), ("Qty", 28, "C"), ("Rate", 30, "R"),
+            ("Amount", 33, "R")]
+    xs = [left]
+    for _, w, _ in cols:
+        xs.append(xs[-1] + w)
+    p.set_fill_color(*SHADE)
+    p.set_line_width(0.3)
+    p.rect(left, y, width, 7, style="DF")
+    for (title, w, align), x in zip(cols, xs):
+        p.put(x + 1.5, y + 1, w - 3, 5, title, size=9.5, style="B", align=align)
+    top, y = y, y + 7
+    for n, line in enumerate(inv.lines, 1):
+        p.put(xs[0] + 1.5, y + 1.5, cols[0][1] - 3, 5, str(n), align="C")
+        p.put(xs[1] + 1.5, y + 1.5, cols[1][1] - 3, 5, line.description, style="B")
+        p.put(xs[1] + 1.5, y + 6, cols[1][1] - 3, 4.5, line.detail, size=8.5)
+        p.put(xs[2] + 1.5, y + 1.5, cols[2][1] - 3, 5, line.qty, align="C")
+        p.put(xs[3] + 1.5, y + 1.5, cols[3][1] - 3, 5, line.rate, align="R")
+        p.put(xs[4] + 1.5, y + 1.5, cols[4][1] - 3, 5, money(line.amount), align="R")
         y += 12
-        p.rule(y - 2)
+    y = max(y, top + 7 + 30)  # a few empty ruled lines' worth of space, like a printed form
+    p.rect(left, top, width, y - top)
+    for x in xs[1:-1]:
+        p.line(x, top, x, y)
 
-    # Totals.
-    y += 2
-    tx, tw = left + width * 0.55, width * 0.45 - 2
-    for label, value, style, color in [("Total", money(inv.total), "B", INK),
-                                       ("Paid", money(inv.paid), "", INK),
-                                       ("Balance due", money(max(inv.balance, 0)), "B",
-                                        (176, 42, 42) if inv.balance > 0 else INK)]:
-        p.text_at(tx, y, tw / 2, 6, label, size=10, style=style)
-        p.text_at(tx + tw / 2, y, tw / 2, 6, value, size=10, style=style, color=color, align="R")
-        y += 6.5
-    if inv.balance <= 0 and inv.total > 0:
-        p.text_at(tx, y + 1, tw, 6, "PAID IN FULL", size=10.5, style="B", color=(30, 120, 70), align="R")
-        y += 8
-    if inv.deposit:
-        p.text_at(left, y + 1, width, 5, f"Refundable security deposit held: {money(inv.deposit)} "
-                                         f"(not included in the total).", size=8.5, color=MUTED)
+    # Totals, boxed on the right under Rate/Amount.
+    tx = xs[3]
+    rows = [("Total", money(inv.total), "B"), ("Paid", money(inv.paid), ""),
+            ("Balance Due", money(max(inv.balance, 0)), "B")]
+    for label, value, style in rows:
+        p.rect(tx, y, right - tx, 7)
+        p.put(tx + 1.5, y + 1, xs[4] - tx - 3, 5, label, style=style)
+        p.put(xs[4] + 1.5, y + 1, cols[4][1] - 3, 5, value, style=style, align="R")
         y += 7
-
-    # Payments.
-    if inv.payments:
-        y += 4
-        p.rule(y)
-        y += 3
-        p.text_at(left, y, 80, 5, "PAYMENTS RECEIVED", size=8, style="B", color=MUTED)
+    p.line(xs[4], y - 21, xs[4], y)
+    # Amount in words, beside the totals.
+    p.set_xy(left, y - 19)
+    p.set_font("Mono", "", 9)
+    p.multi_cell(tx - left - 4, 4.6, f"Amount in words:\n{in_words(inv.total)}", align="L")
+    if inv.balance <= 0 < inv.total:
+        p.put(left, y - 6, tx - left - 4, 5, "*** PAID IN FULL ***", size=10, style="B")
+    y += 4
+    if inv.deposit:
+        p.put(left, y, width, 5, f"Note: Refundable security deposit of {money(inv.deposit)} held "
+                                 f"(not included in the total).", size=8.5)
         y += 6
-        for pay in inv.payments:
-            if y > p.h - 40:
-                p.add_page()
-                y = p.t_margin
-            p.text_at(left, y, 35, 5, f"{pay.date:%d-%m-%Y}")
-            p.text_at(left + 35, y, 40, 5, pay.get_mode_display() if pay.mode else "")
-            p.text_at(left + 75, y, 30, 5, money(pay.amount), align="R")
-            y += 5.5
 
-    # Footer.
-    y = max(y + 8, p.h - 42)
-    if y > p.h - 30:
+    # Payments received.
+    if inv.payments:
+        y += 2
+        p.put(left, y, width, 5, "PAYMENTS RECEIVED", size=9, style="B")
+        y += 6
+        pw = [30, 45, 35]
+        p.set_fill_color(*SHADE)
+        p.rect(left, y, sum(pw), 6, style="DF")
+        for title, w, x, align in zip(("Date", "Mode", "Amount"), pw, (left, left + 30, left + 75), "LLR"):
+            p.put(x + 1.5, y + 0.6, w - 3, 5, title, size=9, style="B", align=align)
+        y0, y = y, y + 6
+        for pay in inv.payments:
+            if y > p.h - 45:
+                p.add_page()
+                y0 = y = p.t_margin
+            p.put(left + 1.5, y + 0.6, 27, 5, f"{pay.date:%d-%m-%Y}", size=9)
+            p.put(left + 31.5, y + 0.6, 42, 5, pay.get_mode_display() if pay.mode else "-", size=9)
+            p.put(left + 76.5, y + 0.6, 32, 5, money(pay.amount), size=9, align="R")
+            y += 6
+        p.rect(left, y0, sum(pw), y - y0)
+        p.line(left + 30, y0, left + 30, y)
+        p.line(left + 75, y0, left + 75, y)
+
+    # Footer: thanks and signatory.
+    if y + 10 > p.h - 52:
         p.add_page()
-        y = p.t_margin
-    p.rule(y, ACCENT, 0.6)
-    p.set_xy(left, y + 4)
-    p.set_font("Noto", "", 9.5)
-    p.set_text_color(*INK)
-    p.multi_cell(width, 5, "Thank you for staying with us. We look forward to welcoming you again.", align="C")
-    p.set_x(left)
-    p.set_font("Noto", "", 8)
-    p.set_text_color(*MUTED)
-    p.multi_cell(width, 4.5, "This is a computer-generated invoice and does not require a signature.", align="C")
+    y = p.h - 52
+    p.set_auto_page_break(False)
+    p.put(right - 70, y, 70, 5, f"For {settings.HOTEL_NAME}", style="B", align="R")
+    p.put(right - 70, y + 14, 70, 5, "Authorised Signatory", size=9, align="R")
+    y += 24
+    p.hline(y, 0.2)
+    p.hline(y + 0.9, 0.6)
+    p.put(left, y + 3, width, 5, "Thank you for staying with us. We look forward to welcoming you again.", size=9,
+          align="C")
+    p.put(left, y + 8, width, 5, "This is a computer-generated invoice and does not require a signature.", size=8,
+          align="C", color=GREY)
     return bytes(p.output())
 
 
