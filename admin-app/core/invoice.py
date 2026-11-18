@@ -7,6 +7,7 @@ check-in date (YYMMDD) - check-out date (YYMMDD) - room number (3 digits; the pe
 Guests open their invoice through a signed link (no login), which only ever shows that one invoice.
 """
 
+import logging
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -356,21 +357,40 @@ def drive_link(stay: Stay) -> str:
     return AppSetting.get(f"{_drive_key(stay)}_link")
 
 
+def generated_at(stay: Stay) -> str:
+    """When the invoice in Drive was last made ("" if never)."""
+    from .models import AppSetting
+    return AppSetting.get(f"{_drive_key(stay)}_at")
+
+
 def save_to_drive(stay: Stay) -> str:
-    """Save this stay's invoice in Drive (replacing the earlier copy); returns the Drive link."""
+    """Generate this stay's invoice and save it in Drive, updating the existing file; returns the Drive link."""
+    from django.utils import timezone
     from . import gdrive
-    name = f"{number(stay)} {stay.guest.name}.pdf".replace("/", " ")
-    return gdrive.save_invoice(pdf(stay), name, _drive_key(stay))
+    from .models import AppSetting
+    no = number(stay)
+    link = gdrive.save_invoice(pdf(stay), f"{no} {stay.guest.name}.pdf".replace("/", " "), _drive_key(stay), no)
+    AppSetting.put(f"{_drive_key(stay)}_at", f"{timezone.localtime():%d-%m-%Y %I:%M %p}")
+    return link
+
+
+def remove_from_drive(stay: Stay) -> None:
+    from . import gdrive
+    if gdrive.is_configured() and not [s for s in stay.chain() if not s.is_void]:
+        try:
+            gdrive.delete_invoice(_drive_key(stay))
+        except Exception:
+            logging.getLogger(__name__).exception("Removing invoice from Drive failed")
 
 
 def sync_to_drive(request, stay: Stay) -> None:
-    """After check-out, or a change to a checked-out stay: keep its invoice in Drive up to date. Never blocks the
-    action itself — if Drive fails, the nightly run saves it."""
-    import logging
+    """At check-out, or after a change to a stay whose invoice was already generated: keep the invoice in Drive up to
+    date (same file). Never blocks the action itself — if Drive fails, the nightly run saves it."""
     from django.contrib import messages
     from . import gdrive
-    chain = _live_chain(stay)
-    if chain[-1].status != Stay.Status.CHECKED_OUT or not gdrive.is_configured():
+    if stay.is_void or not gdrive.is_configured():
+        return
+    if _live_chain(stay)[-1].status != Stay.Status.CHECKED_OUT and not generated_at(stay):
         return
     try:
         save_to_drive(stay)

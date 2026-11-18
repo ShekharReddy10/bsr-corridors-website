@@ -1112,7 +1112,7 @@ class InvoiceTests(TestCase):
         s = stay(make_guest(phone="98765 43210"), self.rooms["101"], -2, 2, status=Stay.Status.CHECKED_IN)
         calls = []
 
-        def fake_save(data, name, key):
+        def fake_save(data, name, key, number):
             calls.append((name, key))
             AppSetting.put(f"{key}_id", "file1")
             AppSetting.put(f"{key}_link", "https://drive.google.com/file/d/file1/view")
@@ -1133,6 +1133,85 @@ class InvoiceTests(TestCase):
             self.assertEqual(invoice.save_missing_to_drive(), 1)
             self.assertEqual(calls[-1][1], f"invoice_{other.pk}")
             self.assertEqual(invoice.save_missing_to_drive(), 0)
+
+
+    def test_generate_invoice_keeps_one_file_per_number(self):
+        import re
+        from unittest import mock
+        from core import gdrive, invoice
+
+        class Call:
+            def __init__(self, fn):
+                self.fn = fn
+
+            def execute(self):
+                return self.fn()
+
+        class FakeFiles:
+            def __init__(self):
+                self.files, self.n = {}, 0
+
+            def _new(self, body):
+                self.n += 1
+                fid = f"f{self.n}"
+                self.files[fid] = {"id": fid, "name": body["name"], "parents": body.get("parents", []), "trashed": False}
+                return {"id": fid, "webViewLink": f"https://drive/{fid}"}
+
+            def create(self, body, media_body=None, fields=None):
+                return Call(lambda: self._new(body))
+
+            def update(self, fileId, body=None, media_body=None, fields=None):
+                def run():
+                    self.files[fileId]["name"] = body["name"]
+                    return {"id": fileId, "webViewLink": f"https://drive/{fileId}"}
+                return Call(run)
+
+            def get(self, fileId, fields=None):
+                def run():
+                    if fileId not in self.files:
+                        raise KeyError(fileId)
+                    return self.files[fileId]
+                return Call(run)
+
+            def delete(self, fileId):
+                return Call(lambda: self.files.pop(fileId))
+
+            def list(self, q, **kw):
+                parent = re.search(r"'([^']+)' in parents", q).group(1)
+                part = re.search(r"name contains '([^']+)'", q)
+                return Call(lambda: {"files": [f for f in self.files.values() if parent in f["parents"]
+                                               and (not part or part.group(1) in f["name"])]})
+
+        drive = FakeFiles()
+        svc = mock.Mock()
+        svc.files.return_value = drive
+        s = stay(make_guest(phone="98765 43210"), self.rooms["101"], -2, 2, status=Stay.Status.CHECKED_IN)
+        with mock.patch.object(gdrive, "is_configured", return_value=True), \
+                mock.patch.object(gdrive, "_service", return_value=svc):
+            page = self.client.get(f"/stays/{s.pk}/").content.decode()
+            self.assertIn("Generate invoice", page)
+            self.client.post(f"/stays/{s.pk}/make-invoice/")
+            pdfs = lambda: sorted(f["name"] for f in drive.files.values() if f["name"].endswith(".pdf"))  # noqa: E731
+            self.assertEqual(pdfs(), [f"{invoice.number(s)} Ravi Kumar.pdf"])
+            self.assertIn("Update invoice", self.client.get(f"/stays/{s.pk}/").content.decode())
+            # Generate again and after a payment: still one file, same number.
+            self.client.post(f"/stays/{s.pk}/make-invoice/")
+            self.client.post(f"/stays/{s.pk}/payment/", {"amount": "500", "mode": "cash"})
+            self.assertEqual(len(pdfs()), 1)
+            # Dates change → the number changes → the same file is renamed, not a second one.
+            s.refresh_from_db()
+            services.shorten(s, s.check_out - timedelta(days=1))
+            self.client.post(f"/stays/{s.pk}/make-invoice/")
+            self.assertEqual(pdfs(), [f"{invoice.number(s)} Ravi Kumar.pdf"])
+            # A stray copy with the same number (e.g. from before a restore) is removed on the next save.
+            folder = AppSetting.get("gdrive_invoices")
+            drive._new({"name": f"{invoice.number(s)} old copy.pdf", "parents": [folder]})
+            AppSetting.objects.filter(key=f"invoice_{s.pk}_id").delete()
+            self.client.post(f"/stays/{s.pk}/make-invoice/")
+            self.assertEqual(len(pdfs()), 1)
+            # Cancelled: no invoice any more.
+            self.client.post(f"/stays/{s.pk}/cancel/")
+            self.assertEqual(pdfs(), [])
 
 
 class SwapRoomTests(TestCase):

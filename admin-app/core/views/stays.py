@@ -201,6 +201,8 @@ def stay_detail(request, pk):
         "swap_with": list(services.swap_candidates(stay)),
         "invoice_no": invoice.number(stay),
         "invoice_drive": invoice.drive_link(stay),
+        "invoice_at": invoice.generated_at(stay),
+        "drive_ready": gdrive.is_configured(),
         "wa_templates": MessageTemplate.objects.all(),
         "last_payment": stay.payments.order_by("-date", "-pk").first(),
         "just_paid": int(request.GET["paid"]) if request.GET.get("paid", "").isdigit() else None,
@@ -233,6 +235,7 @@ def stay_action(request, pk, action):
             return redirect(f"/stays/{stay.pk}/?departed=1")
         elif action == "cancel":
             services.cancel(stay)
+            invoice.remove_from_drive(stay)
             messages.success(request, "Stay cancelled. The room is free again.")
             if stay.amount_paid:
                 messages.info(request, f"₹{stay.amount_paid:,.0f} was paid on this booking — it is treated as refunded "
@@ -246,6 +249,7 @@ def stay_action(request, pk, action):
         elif action == "transfer":
             room = stay.room
             services.transfer_out(stay, request.POST.get("hotel", ""), request.POST.get("reason", ""))
+            invoice.remove_from_drive(stay)
             messages.success(request, f"{stay.guest.name} transferred to {stay.transferred_to}. {room} is free again.")
         elif action == "undo-cancel":
             was = "Transferred" if stay.status == Stay.Status.TRANSFERRED else "Cancelled"
@@ -272,15 +276,21 @@ def stay_action(request, pk, action):
             services.swap_rooms(stay, other)
             messages.success(request, f"Rooms swapped: {stay.guest.name} is now in {stay.room}, "
                                       f"{other.guest.name} in {other.room}.")
-        elif action == "invoice-drive":
-            if gdrive.is_configured():
+        elif action == "make-invoice":
+            if stay.is_void:
+                messages.error(request, "A cancelled or transferred stay has no invoice.")
+            elif not gdrive.is_configured():
+                messages.error(request, "Google Drive isn’t connected yet (see Backups) — use View PDF or Download.")
+            else:
+                again = bool(invoice.generated_at(stay))
                 try:
                     invoice.save_to_drive(stay)
-                    messages.success(request, "Invoice saved in Google Drive (Invoices folder).")
+                    AuditLog.record("invoice", f"Invoice {invoice.number(stay)} {'updated' if again else 'generated'}",
+                                    stay)
+                    messages.success(request, f"Invoice {invoice.number(stay)} "
+                                              f"{'updated (same file)' if again else 'generated'} in Google Drive.")
                 except Exception:
                     messages.error(request, "Couldn’t save the invoice to Google Drive. Please try again.")
-            else:
-                messages.error(request, "Google Drive isn’t connected yet (see Backups).")
         elif action == "shorten":
             form = ShortenForm(request.POST)
             if form.is_valid():

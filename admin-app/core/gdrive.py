@@ -202,17 +202,33 @@ def delete_file(file_id: str) -> None:
 # ── Guest invoices ──
 
 
-def save_invoice(data: bytes, name: str, key: str) -> str:
-    """Save (or replace) one stay's invoice PDF in the "Invoices" folder; returns its Drive link.
-    `key` remembers the file, so later changes update the same file instead of adding another."""
+def save_invoice(data: bytes, name: str, key: str, number: str) -> str:
+    """Save one stay's invoice PDF in the "Invoices" folder; returns its Drive link.
+    Always one file per invoice: the stay's remembered file is updated (and renamed if its number changed); failing
+    that, a file already carrying this number is reused. Any other file with the same number is removed, so no two
+    invoices in the folder ever share a number."""
     svc = _service()
     root, _, _ = _folders(svc)
     folder = _folder(svc, "gdrive_invoices", "Invoices", root)
+    same_number = _list(svc, f"'{folder}' in parents and trashed=false and name contains '{number}'")
     existing = AppSetting.get(f"{key}_id")
-    f = _upload(svc, data, name, "application/pdf", folder, file_id=existing if _exists(svc, existing) else "")
+    if not _exists(svc, existing):
+        existing = same_number[0]["id"] if same_number else ""
+    f = _upload(svc, data, name, "application/pdf", folder, file_id=existing)
+    for other in same_number:
+        if other["id"] != f["id"]:
+            svc.files().delete(fileId=other["id"]).execute()
     AppSetting.put(f"{key}_id", f["id"])
     AppSetting.put(f"{key}_link", f.get("webViewLink", ""))
     return f.get("webViewLink", "")
+
+
+def delete_invoice(key: str) -> None:
+    """A cancelled / transferred stay has no invoice: remove its file."""
+    file_id = AppSetting.get(f"{key}_id")
+    if file_id:
+        delete_file(file_id)
+        AppSetting.objects.filter(key__in=[f"{key}_id", f"{key}_link", f"{key}_at"]).delete()
 
 
 # ── Monthly report ──
