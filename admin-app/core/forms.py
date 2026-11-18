@@ -119,7 +119,9 @@ class StayForm(forms.ModelForm):
         if self.instance.host and self.instance.host not in names:
             names.append(self.instance.host)
         self.fields["host"].widget = forms.Select(choices=[("", "—"), *((n, n) for n in names)])
-        self.fields["host"].help_text = "Optional — shown under the guest’s name in the calendar"
+        self.fields["host"].help_text = ("Required for online bookings (Airbnb, Booking.com, …) — shown under the "
+                                         "guest’s name in the calendar")
+        self.hosts = names
         self.fields["total_amount"].help_text = "Agreed price for the whole stay (monthly: rent added so far)"
         self.fields["check_out"].required = False
         # Only room and dates are essential; empty amounts count as ₹0, stay type defaults to Daily.
@@ -164,6 +166,8 @@ class StayForm(forms.ModelForm):
             self.add_error("num_guests", f"{room.room_type.name} allows up to {room.room_type.max_guests} guests.")
         if room and room.status == Room.Status.MAINTENANCE and (not self.instance.pk or self.instance.room_id != room.pk):
             self.add_error("room", "This room is under maintenance.")
+        if data.get("source") not in Stay.DIRECT_SOURCES and not data.get("host") and self.hosts:
+            self.add_error("host", "Choose the host — required for online bookings (Airbnb, Booking.com, …).")
         direct_from = data.get("direct_from")
         if data.get("source") in Stay.DIRECT_SOURCES or not direct_from:
             data["direct_from"], data["direct_amount"] = None, Decimal(0)  # the whole stay is ours / nothing extended

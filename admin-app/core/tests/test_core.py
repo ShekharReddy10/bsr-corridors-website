@@ -272,7 +272,7 @@ class ViewTests(TestCase):
             "g-id_type": "aadhaar", "g-id_number": "1234 1234 1234",
             "s-room": self.rooms["101"].pk, "s-check_in": T.isoformat(), "s-check_out": (T + timedelta(days=2)).isoformat(),
             "s-num_guests": 2, "s-total_amount": "3000", "s-amount_paid": "1000", "s-payment_mode": "upi",
-            "s-source": "airbnb", "s-source_ref": "HMABC123",
+            "s-source": "airbnb", "s-source_ref": "HMABC123", "s-host": services.host_names()[0],
             "o-TOTAL_FORMS": "2", "o-INITIAL_FORMS": "0", "o-MIN_NUM_FORMS": "0", "o-MAX_NUM_FORMS": "9",
             "o-0-id_type": "aadhaar", "o-1-id_type": "aadhaar",
         }
@@ -460,7 +460,7 @@ class ViewTests(TestCase):
 
     def _quick(self, name, room, start, nights=None, **over):
         data = {"g-name": name, "g-nationality": "Indian", "g-id_type": "aadhaar",
-                "s-source": "airbnb", "s-kind": "daily", "s-room": room.pk, "s-check_in": (T + timedelta(days=start)).isoformat(),
+                "s-source": "airbnb", "s-host": services.host_names()[0], "s-kind": "daily", "s-room": room.pk, "s-check_in": (T + timedelta(days=start)).isoformat(),
                 "s-check_out": (T + timedelta(days=start + nights)).isoformat() if nights else "",
                 "s-num_guests": 1, "s-total_amount": "2000", "s-amount_paid": "500", "o-TOTAL_FORMS": "0", "o-INITIAL_FORMS": "0"}
         data.update(over)
@@ -485,7 +485,8 @@ class ViewTests(TestCase):
 
     def _quick_data(self, stay):
         return {"g-guest_id": stay.guest_id, "g-name": stay.guest.name, "g-nationality": "Indian", "g-id_type": "aadhaar",
-                "s-source": stay.source, "s-kind": stay.kind, "s-room": stay.room_id, "s-check_in": stay.check_in.isoformat(),
+                "s-source": stay.source, "s-host": stay.host or services.host_names()[0], "s-kind": stay.kind,
+                "s-room": stay.room_id, "s-check_in": stay.check_in.isoformat(),
                 "s-check_out": stay.check_out.isoformat() if stay.check_out else "", "s-num_guests": 1,
                 "s-total_amount": str(stay.total_amount), "s-amount_paid": str(stay.amount_paid),
                 "o-TOTAL_FORMS": "0", "o-INITIAL_FORMS": "0"}
@@ -1192,6 +1193,18 @@ class InvoiceTests(TestCase):
         inv = invoice.build(s)
         self.assertEqual((inv.total, inv.paid, inv.lines[0].qty), (Decimal(3000), Decimal(2000), "2 nights"))
 
+    def test_payment_opens_payment_done_message(self):
+        s = stay(make_guest(phone="98765 43210"), self.rooms["101"], -1, 2, status=Stay.Status.CHECKED_IN)
+        self.assertIn("data-pay-wa", self.client.get(f"/stays/{s.pk}/").content.decode())
+        r = self.client.post(f"/stays/{s.pk}/payment/", {"amount": "1200", "mode": "upi"},
+                             HTTP_X_REQUESTED_WITH="fetch")
+        t = MessageTemplate.objects.get(name="Payment done")
+        self.assertEqual(r.json(), {"ok": True, "wa": f"/stays/{s.pk}/whatsapp/?t={t.pk}&amount=1200"})
+        s.refresh_from_db()
+        self.assertEqual(s.amount_paid, Decimal(1200))
+        self.assertEqual(self.client.post(f"/stays/{s.pk}/payment/", {"amount": "0"},
+                                          HTTP_X_REQUESTED_WITH="fetch").json()["ok"], False)
+
     def test_invoice_made_only_by_button_or_check_out(self):
         from unittest import mock
         from core import gdrive, invoice
@@ -1376,6 +1389,22 @@ class TypoCheckTests(TestCase):
             "s-num_guests": 1, "s-total_amount": "30000", "s-amount_paid": "0", "s-source": "walk_in", "s-kind": "daily",
             "o-TOTAL_FORMS": "0", "o-INITIAL_FORMS": "0", "o-MIN_NUM_FORMS": "0", "o-MAX_NUM_FORMS": "9"}, follow=True)
         self.assertContains(r, "Please double-check: ₹15,000 a night")
+
+    def test_host_required_for_online_bookings(self):
+        data = {
+            "g-phone": "+91 90000 00019", "g-name": "Online", "g-nationality": "Indian", "g-id_type": "aadhaar",
+            "s-room": self.rooms["101"].pk, "s-check_in": T.isoformat(), "s-check_out": (T + timedelta(days=2)).isoformat(),
+            "s-num_guests": 1, "s-total_amount": "3000", "s-amount_paid": "0", "s-source": "airbnb", "s-kind": "daily",
+            "o-TOTAL_FORMS": "0", "o-INITIAL_FORMS": "0", "o-MIN_NUM_FORMS": "0", "o-MAX_NUM_FORMS": "9"}
+        r = self.client.post("/stays/new/", data)
+        self.assertContains(r, "required for online bookings")
+        self.assertFalse(Stay.objects.filter(guest__name="Online").exists())
+        self.client.post("/stays/new/", {**data, "s-host": services.host_names()[0]})
+        self.assertTrue(Stay.objects.filter(guest__name="Online").exists())
+        # Walk-in: still optional.
+        self.client.post("/stays/new/", {**data, "g-phone": "+91 90000 00020", "g-name": "Walker",
+                                         "s-source": "walk_in", "s-room": self.rooms["102"].pk})
+        self.assertTrue(Stay.objects.filter(guest__name="Walker").exists())
 
     def test_expenses_not_checked(self):
         for i in range(5):

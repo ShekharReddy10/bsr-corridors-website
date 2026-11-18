@@ -178,6 +178,13 @@ def _save_other_guests(stay: Stay, forms, wanted: int) -> None:
     stay.other_guests.exclude(pk__in=kept).delete()
 
 
+def _payment_message():
+    """The thank-you message for a payment: the one named Payment done, else any with {amount}."""
+    with_amount = [t for t in MessageTemplate.objects.all() if "{amount}" in t.body]
+    return next((t for t in with_amount if t.name.strip().lower() == "payment done"),
+                with_amount[0] if with_amount else None)
+
+
 def _invoice_message():
     """The WhatsApp message sent with the "WhatsApp invoice" button: the one named Invoice, else any with the link."""
     with_link = [t for t in MessageTemplate.objects.all() if "{invoice_link}" in t.body]
@@ -273,10 +280,17 @@ def stay_action(request, pk, action):
             form = PaymentForm(request.POST)
             if not form.is_valid():
                 messages.error(request, "Enter a valid payment amount.")
+                if request.headers.get("X-Requested-With") == "fetch":
+                    return JsonResponse({"ok": False, "wa": ""})
             else:
                 c = form.cleaned_data
                 services.add_payment(stay, c["amount"], c["mode"], c["collected_by"], c["date"], c["note"])
                 messages.success(request, f"Payment of ₹{c['amount']:,.0f} recorded.")
+                if request.headers.get("X-Requested-With") == "fetch":  # stay page: WhatsApp opens with the thanks
+                    t = _payment_message()
+                    wa = (f"/stays/{stay.pk}/whatsapp/?t={t.pk}&amount={c['amount']:.0f}"
+                          if t and stay.guest.phone else "")
+                    return JsonResponse({"ok": True, "wa": wa})
                 if not request.POST.get("next"):
                     return redirect(f"/stays/{stay.pk}/?paid={c['amount']:.0f}#payment")
         elif action == "swap":

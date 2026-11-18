@@ -14,6 +14,26 @@
     if (e.target.dataset && e.target.dataset.busy) busy(e.target.dataset.busy, false);  // the page itself moves on to the result
   });
 
+  // Record payment (stay page): record it, then open the "Payment done" thanks in WhatsApp with the amount. The
+  // WhatsApp tab is opened in the tap itself (browsers block it later) and pointed at the message once the payment
+  // is saved, so the message shows the new paid / balance. Without JS the form posts normally.
+  document.addEventListener("submit", (e) => {
+    const form = e.target;
+    if (!form.matches || !form.matches("form[data-pay-wa]") || e.defaultPrevented) return;
+    e.preventDefault();
+    const win = window.open("", "whatsapp");
+    busy("Recording the payment…", false);
+    fetch(form.action, { method: "POST", body: new FormData(form), headers: { "X-Requested-With": "fetch" } })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.wa && win) win.location.href = d.wa;
+        else if (win) win.close();
+        location.href = location.pathname + "#payment";
+        location.reload();
+      })
+      .catch(() => { if (win) win.close(); form.removeAttribute("data-pay-wa"); form.submit(); });
+  });
+
   // "Generating the invoice…": shown while Check out / a message with the invoice link makes the invoice (a few
   // seconds — it's saved in Google Drive). A message opens WhatsApp in another tab/app, so this page then reloads
   // to show the invoice as generated.
@@ -222,7 +242,17 @@
   const source = f("s-source");
   const direct = $("#direct-fields");
   if (source && direct) {
-    const syncSource = () => { direct.hidden = ["walk_in", "direct", ""].includes(source.value); };
+    // Online bookings need a host: mark the Host label required.
+    const hostLabel = form.querySelector('label[for="id_s-host"]');
+    const star = document.createElement("span");
+    star.className = "req";
+    star.setAttribute("aria-hidden", "true");
+    star.textContent = " *";
+    const syncSource = () => {
+      const online = !["walk_in", "direct", ""].includes(source.value);
+      direct.hidden = !online;
+      if (hostLabel) { if (online) hostLabel.append(star); else star.remove(); }
+    };
     source.addEventListener("change", syncSource);
     syncSource();
   }

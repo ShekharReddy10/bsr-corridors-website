@@ -106,7 +106,7 @@
       <dt>Guests</dt><dd>{{ stay.num_guests }}</dd>
     </dl>
     {% if not stay.is_void %}
-    <form method="post" action="{% url 'stay_action' stay.pk 'payment' %}" class="pay-form">{% csrf_token %}
+    <form method="post" action="{% url 'stay_action' stay.pk 'payment' %}" class="pay-form"{% if g.phone %} data-pay-wa{% endif %}>{% csrf_token %}
       <input name="amount" type="number" min="1" step="1" inputmode="decimal" placeholder="Amount ₹" required aria-label="Payment amount"
              {% if stay.balance > 0 %}value="{{ stay.balance|floatformat:0 }}"{% endif %}>
       <select name="mode" aria-label="Payment mode">{% for v, l in payment_form.fields.mode.choices %}<option value="{{ v }}" {% if v == stay.payment_mode %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
