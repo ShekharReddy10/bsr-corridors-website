@@ -274,3 +274,55 @@ def pdf(stay: Stay) -> bytes:
     p.set_text_color(*MUTED)
     p.multi_cell(width, 4.5, "This is a computer-generated invoice and does not require a signature.", align="C")
     return bytes(p.output())
+
+
+# ── Copy in Google Drive ("Invoices" folder) ──
+
+
+def _drive_key(stay: Stay) -> str:
+    return f"invoice_{stay.root.pk}"
+
+
+def drive_link(stay: Stay) -> str:
+    from .models import AppSetting
+    return AppSetting.get(f"{_drive_key(stay)}_link")
+
+
+def save_to_drive(stay: Stay) -> str:
+    """Save this stay's invoice in Drive (replacing the earlier copy); returns the Drive link."""
+    from . import gdrive
+    name = f"{number(stay)} {stay.guest.name}.pdf".replace("/", " ")
+    return gdrive.save_invoice(pdf(stay), name, _drive_key(stay))
+
+
+def sync_to_drive(request, stay: Stay) -> None:
+    """After check-out, or a change to a checked-out stay: keep its invoice in Drive up to date. Never blocks the
+    action itself — if Drive fails, the nightly run saves it."""
+    import logging
+    from django.contrib import messages
+    from . import gdrive
+    chain = _live_chain(stay)
+    if chain[-1].status != Stay.Status.CHECKED_OUT or not gdrive.is_configured():
+        return
+    try:
+        save_to_drive(stay)
+    except Exception:
+        logging.getLogger(__name__).exception("Invoice to Drive failed")
+        messages.warning(request, "The invoice couldn’t be saved to Google Drive just now — it will be saved tonight.")
+
+
+def save_missing_to_drive(days: int = 60) -> int:
+    """Nightly: checked-out stays of the last `days` days whose invoice isn't in Drive yet."""
+    from datetime import timedelta
+    from .models import AppSetting
+    saved = set(AppSetting.objects.filter(key__startswith="invoice_", key__endswith="_id").values_list("key", flat=True))
+    n = 0
+    for s in (Stay.objects.filter(status=Stay.Status.CHECKED_OUT, check_out__gte=today() - timedelta(days=days))
+              .select_related("guest", "room", "room__room_type", "linked_to")):
+        if s.continuations.filter(status__in=[Stay.Status.CHECKED_IN, Stay.Status.UPCOMING]).exists():
+            continue  # moved rooms and still staying
+        if f"{_drive_key(s)}_id" not in saved:
+            save_to_drive(s)
+            saved.add(f"{_drive_key(s)}_id")
+            n += 1
+    return n

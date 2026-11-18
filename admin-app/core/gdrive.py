@@ -73,7 +73,8 @@ def _upload(svc, data: bytes, name: str, mimetype: str, folder: str, *, as_sheet
 
     media = MediaIoBaseUpload(io.BytesIO(data), mimetype=mimetype, resumable=False)
     if file_id:
-        return svc.files().update(fileId=file_id, media_body=media, fields="id,webViewLink").execute()
+        return svc.files().update(fileId=file_id, body={"name": name}, media_body=media,
+                                  fields="id,webViewLink").execute()
     body = {"name": name, "parents": [folder], **({"mimeType": SHEET} if as_sheet else {})}
     return svc.files().create(body=body, media_body=media, fields="id,webViewLink").execute()
 
@@ -196,6 +197,22 @@ def delete_file(file_id: str) -> None:
         _service().files().delete(fileId=file_id).execute()
     except Exception:  # already gone, or Drive unreachable: the link is removed either way
         log.warning("Could not delete Drive file %s", file_id)
+
+
+# ── Guest invoices ──
+
+
+def save_invoice(data: bytes, name: str, key: str) -> str:
+    """Save (or replace) one stay's invoice PDF in the "Invoices" folder; returns its Drive link.
+    `key` remembers the file, so later changes update the same file instead of adding another."""
+    svc = _service()
+    root, _, _ = _folders(svc)
+    folder = _folder(svc, "gdrive_invoices", "Invoices", root)
+    existing = AppSetting.get(f"{key}_id")
+    f = _upload(svc, data, name, "application/pdf", folder, file_id=existing if _exists(svc, existing) else "")
+    AppSetting.put(f"{key}_id", f["id"])
+    AppSetting.put(f"{key}_link", f.get("webViewLink", ""))
+    return f.get("webViewLink", "")
 
 
 # ── Monthly report ──

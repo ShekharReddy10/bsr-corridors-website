@@ -11,7 +11,7 @@ from django.utils.html import escape
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
-from .. import invoice, checks, services
+from .. import gdrive, invoice, checks, services
 from ..fields import mask
 from ..forms import ExtendForm, GuestForm, PaymentForm, ShortenForm, StayForm, other_guests_formset
 from ..models import AuditLog, Guest, MessageTemplate, Payment, Room, Stay
@@ -122,6 +122,7 @@ def stay_form(request, pk=None):
                     if checking_in and new.status == Stay.Status.UPCOMING:
                         services.check_in(new)
                 messages.success(request, f"{guest.name} checked in to {new.room}." if checking_in else f"Stay for {guest.name} saved.")
+                invoice.sync_to_drive(request, new)
                 for b, room in moved:
                     messages.info(request, f"{b.guest.name} ({b.dates_label}) moved to {room}.")
                 for reason in checks.check_stay(new):
@@ -199,6 +200,7 @@ def stay_detail(request, pk):
         "today": services.today(),
         "swap_with": list(services.swap_candidates(stay)),
         "invoice_no": invoice.number(stay),
+        "invoice_drive": invoice.drive_link(stay),
         "wa_templates": MessageTemplate.objects.all(),
         "last_payment": stay.payments.order_by("-date", "-pk").first(),
         "just_paid": int(request.GET["paid"]) if request.GET.get("paid", "").isdigit() else None,
@@ -227,6 +229,7 @@ def stay_action(request, pk, action):
         elif action == "check-out":
             services.check_out(stay)
             messages.success(request, f"{stay.guest.name} checked out of {stay.room}.")
+            invoice.sync_to_drive(request, stay)
             return redirect(f"/stays/{stay.pk}/?departed=1")
         elif action == "cancel":
             services.cancel(stay)
@@ -261,6 +264,7 @@ def stay_action(request, pk, action):
                 c = form.cleaned_data
                 services.add_payment(stay, c["amount"], c["mode"], c["collected_by"], c["date"], c["note"])
                 messages.success(request, f"Payment of ₹{c['amount']:,.0f} recorded.")
+                invoice.sync_to_drive(request, stay)
                 if not request.POST.get("next"):
                     return redirect(f"/stays/{stay.pk}/?paid={c['amount']:.0f}#payment")
         elif action == "swap":
@@ -268,6 +272,15 @@ def stay_action(request, pk, action):
             services.swap_rooms(stay, other)
             messages.success(request, f"Rooms swapped: {stay.guest.name} is now in {stay.room}, "
                                       f"{other.guest.name} in {other.room}.")
+        elif action == "invoice-drive":
+            if gdrive.is_configured():
+                try:
+                    invoice.save_to_drive(stay)
+                    messages.success(request, "Invoice saved in Google Drive (Invoices folder).")
+                except Exception:
+                    messages.error(request, "Couldn’t save the invoice to Google Drive. Please try again.")
+            else:
+                messages.error(request, "Google Drive isn’t connected yet (see Backups).")
         elif action == "shorten":
             form = ShortenForm(request.POST)
             if form.is_valid():
@@ -357,6 +370,6 @@ def extend(request, pk):
 @require_POST
 def payment_delete(request, pk, payment_pk):
     payment = get_object_or_404(Payment.objects.select_related("stay"), pk=payment_pk, stay_id=pk)
-    services.delete_payment(payment)
+    invoice.sync_to_drive(request, services.delete_payment(payment))
     messages.success(request, f"Payment of ₹{payment.amount:,.0f} from {payment.date:%d-%m-%Y} deleted.")
     return redirect("stay_detail", pk=pk)

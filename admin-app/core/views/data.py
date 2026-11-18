@@ -9,7 +9,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from .. import gdrive, services
+from .. import invoice, gdrive, services
 from ..exports import build_workbook
 from ..forms import DateRangeForm
 from ..models import AppSetting, AuditLog, BackupRun, Guest, Stay
@@ -64,6 +64,10 @@ def backup_hook(request):
         try:
             gdrive.save_last_months_report_if_missing(today())
         except Exception:  # the backup itself succeeded; the report is retried the next night
+            pass
+        try:
+            invoice.save_missing_to_drive()
+        except Exception:  # retried the next night
             pass
     return JsonResponse({"ok": run.ok, "message": run.message}, status=200 if run.ok else 500)
 

@@ -121,6 +121,8 @@
       <span class="inline-form">
         <a class="btn btn-outline btn-sm" href="{% url 'stay_invoice' stay.pk %}" target="_blank" rel="noopener">View PDF</a>
         <a class="btn btn-ghost btn-sm" href="{% url 'stay_invoice' stay.pk %}?download=1">Download</a>
+        {% if invoice_drive %}<a class="btn btn-ghost btn-sm" href="{{ invoice_drive }}" target="_blank" rel="noopener">In Drive</a>{% endif %}
+        {% if stay.status == "checked_out" %}<form method="post" action="{% url 'stay_action' stay.pk 'invoice-drive' %}" class="inline-form">{% csrf_token %}<button class="btn btn-ghost btn-sm">{% if invoice_drive %}Update in Drive{% else %}Save to Drive{% endif %}</button></form>{% endif %}
         <button type="button" class="btn btn-ghost btn-sm" hidden data-share-pdf="{% url 'stay_invoice' stay.pk %}" data-filename="Invoice {{ invoice_no }}.pdf" data-title="Invoice {{ invoice_no }} — {{ HOTEL_NAME }}">Share</button>
       </span>
     </div>

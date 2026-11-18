@@ -1106,6 +1106,35 @@ class InvoiceTests(TestCase):
         self.assertEqual(self.client.get(f"/stays/{s.pk}/invoice/").status_code, 302)  # staff link needs login
 
 
+    def test_invoice_saved_in_drive_at_check_out_and_kept_up_to_date(self):
+        from unittest import mock
+        from core import gdrive, invoice
+        s = stay(make_guest(phone="98765 43210"), self.rooms["101"], -2, 2, status=Stay.Status.CHECKED_IN)
+        calls = []
+
+        def fake_save(data, name, key):
+            calls.append((name, key))
+            AppSetting.put(f"{key}_id", "file1")
+            AppSetting.put(f"{key}_link", "https://drive.google.com/file/d/file1/view")
+            return "https://drive.google.com/file/d/file1/view"
+
+        with mock.patch.object(gdrive, "is_configured", return_value=True), \
+                mock.patch.object(gdrive, "save_invoice", side_effect=fake_save):
+            self.client.post(f"/stays/{s.pk}/payment/", {"amount": "1000", "mode": "upi"})
+            self.assertEqual(calls, [])  # not checked out yet: nothing in Drive
+            self.client.post(f"/stays/{s.pk}/check-out/")
+            self.assertEqual(calls, [(f"{invoice.number(s)} Ravi Kumar.pdf", f"invoice_{s.pk}")])
+            self.client.post(f"/stays/{s.pk}/payment/", {"amount": "2000", "mode": "cash"})  # same file, updated
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(calls[1][1], f"invoice_{s.pk}")
+            self.assertContains(self.client.get(f"/stays/{s.pk}/"), "https://drive.google.com/file/d/file1/view")
+            # Nightly: catches up checked-out stays not in Drive yet (only those).
+            other = stay(make_guest("B", "+91 90000 00002"), self.rooms["102"], -3, 2, status=Stay.Status.CHECKED_OUT)
+            self.assertEqual(invoice.save_missing_to_drive(), 1)
+            self.assertEqual(calls[-1][1], f"invoice_{other.pk}")
+            self.assertEqual(invoice.save_missing_to_drive(), 0)
+
+
 class SwapRoomTests(TestCase):
     def setUp(self):
         cache.clear()
