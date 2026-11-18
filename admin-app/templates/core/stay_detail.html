@@ -115,6 +115,16 @@
       <button class="btn btn-primary btn-sm">Record payment</button>
     </form>
     {% endif %}
+    {% if not stay.is_void %}
+    <div class="invoice-line">
+      <span><b>Invoice</b> <small class="muted">{{ invoice_no }}{% if stay.status != "checked_out" %} · draft until check-out{% endif %}</small></span>
+      <span class="inline-form">
+        <a class="btn btn-outline btn-sm" href="{% url 'stay_invoice' stay.pk %}" target="_blank" rel="noopener">View PDF</a>
+        <a class="btn btn-ghost btn-sm" href="{% url 'stay_invoice' stay.pk %}?download=1">Download</a>
+        <button type="button" class="btn btn-ghost btn-sm" hidden data-share-pdf="{% url 'stay_invoice' stay.pk %}" data-filename="Invoice {{ invoice_no }}.pdf" data-title="Invoice {{ invoice_no }} — {{ HOTEL_NAME }}">Share</button>
+      </span>
+    </div>
+    {% endif %}
     {% if payments %}
     <details class="payments"{% if payments|length <= 5 %} open{% endif %}>
       <summary><b>Payments</b> <span class="muted small">({{ payments|length }})</span></summary>

@@ -40,6 +40,8 @@ STAY_FIELDS = {
     "total": "Total amount",
     "paid": "Amount paid",
     "balance": "Balance due",
+    "invoice_link": "Link to the guest’s invoice (PDF) — opens without a login, shows only their invoice",
+    "invoice_no": "Invoice number, e.g. 261115-261118-101",
     "amount": "Amount just received (typed in next to the button; else the latest payment)",
     "host": "Host looking after the guest",
     "hotel": "Hotel name",
@@ -68,7 +70,9 @@ def floor(room) -> str:
     return digits[:-2] if len(digits) > 2 else ""
 
 
-def context(stay: Stay, amount=None) -> dict[str, str]:
+def context(stay: Stay, amount=None, base_url: str = "") -> dict[str, str]:
+    """base_url: the site address (https://…/), for links in the message."""
+    from . import invoice
     if amount is None:
         last = stay.payments.order_by("-date", "-pk").first() if stay.pk else None
         amount = last.amount if last else stay.amount_paid
@@ -85,6 +89,8 @@ def context(stay: Stay, amount=None) -> dict[str, str]:
         "amount": _money(amount or 0),
         "host": stay.host,
         "hotel": settings.HOTEL_NAME,
+        "invoice_no": invoice.number(stay) if stay.pk else "",
+        "invoice_link": f"{base_url.rstrip('/')}/invoice/{invoice.token(stay)}/" if stay.pk else "",
     }
     # Hotel info may use stay placeholders too, e.g. a Wi-Fi name "BSR {floor}".
     return {**{k: render(v, ctx) for k, v in hotel_info().items()}, **ctx}

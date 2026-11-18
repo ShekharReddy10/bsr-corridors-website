@@ -388,6 +388,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .swap-room form { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .swap-room label { font-size: .85rem; font-weight: 600; flex-basis: 100%; }
 .swap-room select { flex: 0 1 420px; min-width: 0; max-width: 100%; }
+.invoice-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line, #e6e0d6); }
 .wa-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .wa-amount { display: inline-flex; gap: 0; align-items: stretch; }
 .wa-amount input { width: 84px; min-height: 0; padding: 4px 8px; border-radius: 8px 0 0 8px; border-right: 0; }

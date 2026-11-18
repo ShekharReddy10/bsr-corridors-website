@@ -26,6 +26,12 @@ def inr(value):
 
 
 @register.filter
+def invoice_no(stay):
+    from ..invoice import number
+    return number(stay)
+
+
+@register.filter
 def inr_short(value):
     """Chart axes: 150000 → '₹1.5L', 45000 → '₹45K', 2.5 crore → '₹2.5Cr'."""
     try:

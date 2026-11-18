@@ -286,3 +286,29 @@
   });
   phone.addEventListener("blur", lookup);
 })();
+
+// Share invoice PDF (phones): the share sheet sends the file itself, e.g. to the guest on WhatsApp.
+// The PDF is fetched when the page loads, because phones only allow sharing straight after the tap.
+(function () {
+  var buttons = document.querySelectorAll("[data-share-pdf]");
+  if (!buttons.length || !navigator.canShare) return;
+  var probe;
+  try { probe = new File([""], "x.pdf", { type: "application/pdf" }); } catch (e) { return; }
+  if (!navigator.canShare({ files: [probe] })) return;
+  buttons.forEach(function (btn) {
+    var file = null;
+    fetch(btn.dataset.sharePdf, { credentials: "same-origin" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.blob(); })
+      .then(function (blob) {
+        file = new File([blob], btn.dataset.filename, { type: "application/pdf" });
+        btn.hidden = false;
+      })
+      .catch(function () {});
+    btn.addEventListener("click", function () {
+      if (!file) return;
+      navigator.share({ files: [file], title: btn.dataset.title }).catch(function (e) {
+        if (e && e.name !== "AbortError") alert("Couldn’t share the invoice. Use Download instead.");
+      });
+    });
+  });
+})();

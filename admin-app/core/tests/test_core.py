@@ -1072,6 +1072,40 @@ class HostSettlementWhatsAppTests(TestCase):
         self.assertIn("receipt of ₹1,200", text)
 
 
+class InvoiceTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        _, _, self.rooms = make_rooms()
+        self.client.force_login(get_user_model().objects.create_user("inv-admin", password="test-pass-123456"))
+
+    def test_invoice_number_pdf_and_guest_link(self):
+        from urllib.parse import parse_qs, urlparse
+        from core import invoice
+        s = Stay(guest=make_guest(phone="98765 43210"), room=self.rooms["101"], check_in=date(2026, 11, 15),
+                 check_out=date(2026, 11, 18), total_amount=Decimal(4500), source="walk_in")
+        services.save_stay(s, action="create", summary="test")
+        self.assertEqual(invoice.number(s), "261115-261118-101")
+        pt = RoomType.objects.create(name="Penthouse", max_guests=4)
+        self.assertEqual(invoice.room_code(Room.objects.create(number="PH", room_type=pt)), "601")
+        services.add_payment(s, Decimal(4500), "upi")
+        r = self.client.get(f"/stays/{s.pk}/invoice/")
+        self.assertEqual((r.status_code, r["Content-Type"]), (200, "application/pdf"))
+        self.assertTrue(r.content.startswith(b"%PDF"))
+        self.assertIn('filename="Invoice 261115-261118-101.pdf"', r["Content-Disposition"])
+        self.assertContains(self.client.get(f"/stays/{s.pk}/"), "261115-261118-101")
+        # The check-out message carries the guest's link; it opens without logging in, only for that stay.
+        services.check_out(s)
+        text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/?t=checkout")["Location"]).query)["text"][0]
+        link = next(w for w in text.split() if "/invoice/" in w)
+        self.assertTrue(link.startswith("http://testserver/invoice/"))
+        self.assertIn("Your invoice (", text)
+        self.client.logout()
+        path = urlparse(link).path
+        self.assertEqual(self.client.get(path)["Content-Type"], "application/pdf")
+        self.assertEqual(self.client.get(path[:-3] + "x1/").status_code, 404)  # altered link
+        self.assertEqual(self.client.get(f"/stays/{s.pk}/invoice/").status_code, 302)  # staff link needs login
+
+
 class SwapRoomTests(TestCase):
     def setUp(self):
         cache.clear()

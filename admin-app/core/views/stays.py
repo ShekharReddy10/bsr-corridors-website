@@ -11,7 +11,7 @@ from django.utils.html import escape
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
-from .. import checks, services
+from .. import invoice, checks, services
 from ..fields import mask
 from ..forms import ExtendForm, GuestForm, PaymentForm, ShortenForm, StayForm, other_guests_formset
 from ..models import AuditLog, Guest, MessageTemplate, Payment, Room, Stay
@@ -198,6 +198,7 @@ def stay_detail(request, pk):
         "shorten_form": ShortenForm(initial={"new_check_out": services.today()}),
         "today": services.today(),
         "swap_with": list(services.swap_candidates(stay)),
+        "invoice_no": invoice.number(stay),
         "wa_templates": MessageTemplate.objects.all(),
         "last_payment": stay.payments.order_by("-date", "-pk").first(),
         "just_paid": int(request.GET["paid"]) if request.GET.get("paid", "").isdigit() else None,

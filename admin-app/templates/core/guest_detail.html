@@ -42,7 +42,8 @@
     <div class="stay-line">
       <a class="stay-line-main" href="{% url 'stay_detail' s.pk %}"><span class="room-badge">{{ s.room.number }}</span>
         <span><b>{{ s.dates_label }}</b>
-        <small>{{ s.get_status_display }}{% if s.transferred_to %} · sent to {{ s.transferred_to }}{% endif %} · {{ s.get_source_display }} · {{ s.total|inr }} · paid {{ s.amount_paid|inr }}{% if s.balance > 0 and not s.is_void %} · <span class="warn">{{ s.balance|inr }} due</span>{% endif %}</small></span></a>
+        <small>{{ s.get_status_display }}{% if s.transferred_to %} · sent to {{ s.transferred_to }}{% endif %} · {{ s.get_source_display }} · {{ s.total|inr }} · paid {{ s.amount_paid|inr }}{% if s.balance > 0 and not s.is_void %} · <span class="warn">{{ s.balance|inr }} due</span>{% endif %}{% if s.status == "checked_out" %} · Invoice {{ s|invoice_no }}{% endif %}</small></span></a>
+      {% if s.status == "checked_out" %}<a class="btn btn-ghost btn-sm" href="{% url 'stay_invoice' s.pk %}" target="_blank" rel="noopener">Invoice</a>{% endif %}
     </div>
   {% empty %}<p class="muted">No stays.</p>{% endfor %}
 </section>
