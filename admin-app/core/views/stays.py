@@ -179,6 +179,12 @@ def _save_other_guests(stay: Stay, forms, wanted: int) -> None:
     stay.other_guests.exclude(pk__in=kept).delete()
 
 
+def _invoice_message():
+    """The WhatsApp message sent with the "WhatsApp invoice" button: the one named Invoice, else any with the link."""
+    with_link = [t for t in MessageTemplate.objects.all() if "{invoice_link}" in t.body]
+    return next((t for t in with_link if t.name.strip().lower() == "invoice"), with_link[0] if with_link else None)
+
+
 def stay_detail(request, pk):
     stay = get_object_or_404(Stay.objects.select_related("guest", "room", "room__room_type", "linked_to"), pk=pk)
     chain = stay.chain()
@@ -202,6 +208,7 @@ def stay_detail(request, pk):
         "invoice_no": invoice.number(stay),
         "invoice_drive": invoice.drive_link(stay),
         "invoice_at": invoice.generated_at(stay),
+        "wa_invoice": _invoice_message(),
         "drive_ready": gdrive.is_configured(),
         "wa_templates": MessageTemplate.objects.all(),
         "last_payment": stay.payments.order_by("-date", "-pk").first(),

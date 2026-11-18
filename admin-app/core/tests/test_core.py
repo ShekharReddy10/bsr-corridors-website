@@ -1104,6 +1104,15 @@ class InvoiceTests(TestCase):
         self.assertEqual(self.client.get(path)["Content-Type"], "application/pdf")
         self.assertEqual(self.client.get(path[:-3] + "x1/").status_code, 404)  # altered link
         self.assertEqual(self.client.get(f"/stays/{s.pk}/invoice/").status_code, 302)  # staff link needs login
+        self.client.force_login(get_user_model().objects.get(username="inv-admin"))
+        # "WhatsApp invoice" button, and the link in the Check-out details message.
+        msg = MessageTemplate.objects.get(name="Invoice")
+        self.assertContains(self.client.get(f"/stays/{s.pk}/"), f"/stays/{s.pk}/whatsapp/?t={msg.pk}")
+        for name in ("Invoice", "Check-out details"):
+            t = MessageTemplate.objects.get(name=name)
+            text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/?t={t.pk}")["Location"]).query)["text"][0]
+            self.assertIn("261115-261118-101", text)
+            self.assertIn("http://testserver/invoice/", text)
 
 
     def test_invoice_saved_in_drive_at_check_out_and_kept_up_to_date(self):

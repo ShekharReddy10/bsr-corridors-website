@@ -1,4 +1,5 @@
 /* BSR Corridors admin — phone, tablet and desktop */
+[hidden] { display: none !important; }  /* even on .btn etc., which set display */
 :root {
   --ink: #1f2a30;
   --ink-soft: #5a6a72;

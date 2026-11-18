@@ -123,7 +123,8 @@
         <a class="btn btn-outline btn-sm" href="{% url 'stay_invoice' stay.pk %}" target="_blank" rel="noopener">View PDF</a>
         <a class="btn btn-ghost btn-sm" href="{% url 'stay_invoice' stay.pk %}?download=1">Download</a>
         {% if invoice_drive %}<a class="btn btn-ghost btn-sm" href="{{ invoice_drive }}" target="_blank" rel="noopener">In Drive</a>{% endif %}
-        <button type="button" class="btn btn-ghost btn-sm" hidden data-share-pdf="{% url 'stay_invoice' stay.pk %}" data-filename="Invoice {{ invoice_no }}.pdf" data-title="Invoice {{ invoice_no }} — {{ HOTEL_NAME }}">Share</button>
+        {% if g.phone and wa_invoice %}<a class="btn btn-outline btn-sm" href="{% url 'stay_whatsapp' stay.pk %}?t={{ wa_invoice.pk }}" target="whatsapp">WhatsApp invoice</a>{% endif %}
+        <button type="button" class="btn btn-ghost btn-sm" hidden data-share-pdf="{% url 'stay_invoice' stay.pk %}" data-filename="Invoice {{ invoice_no }}.pdf" data-title="Invoice {{ invoice_no }} — {{ HOTEL_NAME }}">Share PDF</button>
       </span>
     </div>
     {% endif %}
