@@ -10,7 +10,7 @@ from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from .. import whatsapp
+from .. import invoice, whatsapp
 from ..forms import MessageTemplateForm
 from ..models import AuditLog, MessageTemplate, Stay
 
@@ -114,6 +114,8 @@ def send(request, pk):
         if not template:
             messages.error(request, "That message no longer exists.")
             return redirect("stay_detail", pk=pk)
+        if "{invoice_link}" in template.body or "{invoice_no}" in template.body:
+            invoice.ensure(stay)  # departure / check-out details: make the invoice first, so the link goes with it
         name, text = template.name, whatsapp.render(template.body, whatsapp.context(stay, amount, request.build_absolute_uri("/")))
     else:
         text = whatsapp.render(request.GET.get("text", ""), whatsapp.context(stay, amount, request.build_absolute_uri("/")))  # {guest}, {room}, … allowed

@@ -205,6 +205,8 @@ def stay_detail(request, pk):
         "today": services.today(),
         "swap_with": list(services.swap_candidates(stay)),
         "invoice_ok": invoice.eligible(stay) and not stay.is_void,
+        "invoice_pending": invoice.pending(stay),
+        "invoice_msgs": [t.pk for t in MessageTemplate.objects.all() if "{invoice_link}" in t.body or "{invoice_no}" in t.body],
         "invoice_no": invoice.number(stay),
         "invoice_drive": invoice.drive_link(stay),
         "invoice_at": invoice.generated_at(stay),

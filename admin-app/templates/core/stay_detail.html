@@ -16,7 +16,7 @@
   {% if stay.status == 'upcoming' %}
     <form method="post" action="{% url 'stay_action' stay.pk 'check-in' %}"{% if wa_welcome and g.has_contact_details %} data-wa-open="{% url 'stay_whatsapp' stay.pk %}?t=checkin"{% endif %}>{% csrf_token %}<button class="btn btn-primary">Check in{% if wa_welcome and g.has_contact_details %} &amp; send welcome{% endif %}</button></form>
   {% elif stay.status == 'checked_in' %}
-    <form method="post" action="{% url 'stay_action' stay.pk 'check-out' %}" data-confirm="{% if today < stay.check_out and today > stay.check_in %}Guest is booked until {{ stay.check_out|date:'d-m-Y' }}. Check out today (early checkout)?{% elif stay.check_out and today > stay.check_out %}Guest was booked only until {{ stay.check_out|date:'d-m-Y' }}. If they stayed the extra nights, tap Cancel and use Extend first so those nights are charged. Check out anyway?{% endif %}"{% if wa_departure and g.phone %} data-wa-open="{% url 'stay_whatsapp' stay.pk %}?t=checkout"{% endif %}>{% csrf_token %}<button class="btn btn-primary">Check out{% if wa_departure and g.phone %} &amp; send message{% endif %}</button></form>
+    <form method="post" action="{% url 'stay_action' stay.pk 'check-out' %}" data-confirm="{% if today < stay.check_out and today > stay.check_in %}Guest is booked until {{ stay.check_out|date:'d-m-Y' }}. Check out today (early checkout)?{% elif stay.check_out and today > stay.check_out %}Guest was booked only until {{ stay.check_out|date:'d-m-Y' }}. If they stayed the extra nights, tap Cancel and use Extend first so those nights are charged. Check out anyway?{% endif %}"{% if wa_departure and g.phone %} data-wa-open="{% url 'stay_whatsapp' stay.pk %}?t=checkout"{% endif %}{% if invoice_pending %} data-busy="Checking out and generating the invoice…"{% endif %}>{% csrf_token %}<button class="btn btn-primary">Check out{% if wa_departure and g.phone %} &amp; send message{% endif %}</button></form>
     <form method="post" action="{% url 'stay_action' stay.pk 'undo-check-in' %}" data-confirm="Undo check-in? The stay goes back to upcoming.">{% csrf_token %}<button class="btn btn-ghost">Undo check-in</button></form>
   {% elif stay.status == 'checked_out' %}
     <form method="post" action="{% url 'stay_action' stay.pk 'undo-check-out' %}" class="inline-form" data-confirm="Undo check-out? {{ g.name }} goes back to checked in.">{% csrf_token %}
@@ -54,7 +54,7 @@
 {% endif %}
 {% if just_checked_out and wa_departure and g.phone %}
   <div class="alert">Checked out. <b>Departure message</b> didn’t open in WhatsApp?
-    <a class="btn btn-sm btn-primary" href="{% url 'stay_whatsapp' stay.pk %}?t=checkout" target="whatsapp">Send departure message</a></div>
+    <a class="btn btn-sm btn-primary" href="{% url 'stay_whatsapp' stay.pk %}?t=checkout" target="whatsapp"{% if invoice_pending %} data-busy="Generating the invoice…"{% endif %}>Send departure message</a></div>
 {% endif %}
 
 {% if stay.form_c_due %}
@@ -124,7 +124,9 @@
         <a class="btn btn-outline btn-sm" href="{% url 'stay_invoice' stay.pk %}" target="_blank" rel="noopener">View PDF</a>
         <a class="btn btn-ghost btn-sm" href="{% url 'stay_invoice' stay.pk %}?download=1">Download</a>
         {% if invoice_drive %}<a class="btn btn-ghost btn-sm" href="{{ invoice_drive }}" target="_blank" rel="noopener">In Drive</a>{% endif %}
-        {% if g.phone and wa_invoice %}<a class="btn btn-outline btn-sm" href="{% url 'stay_whatsapp' stay.pk %}?t={{ wa_invoice.pk }}" target="whatsapp">WhatsApp invoice</a>{% endif %}
+        {% endif %}
+        {% if g.phone and wa_invoice %}<a class="btn btn-outline btn-sm" href="{% url 'stay_whatsapp' stay.pk %}?t={{ wa_invoice.pk }}" target="whatsapp"{% if not invoice_at %} data-busy="Generating the invoice…"{% endif %}>WhatsApp invoice</a>{% endif %}
+        {% if invoice_at %}
         <button type="button" class="btn btn-ghost btn-sm" hidden data-share-pdf="{% url 'stay_invoice' stay.pk %}" data-filename="Invoice {{ invoice_no }}.pdf" data-title="Invoice {{ invoice_no }} — {{ HOTEL_NAME }}">Share PDF</button>
         {% endif %}
       </span>
@@ -165,7 +167,7 @@
     <form method="get" action="{% url 'stay_whatsapp' stay.pk %}" target="whatsapp" class="wa-amount"><input type="hidden" name="t" value="{{ t.pk }}">
       <input name="amount" type="number" min="1" step="1" inputmode="decimal" placeholder="₹" aria-label="Amount received" required value="{% if last_payment %}{{ last_payment.amount|floatformat:0 }}{% endif %}">
       <button class="btn btn-outline btn-sm">{{ t.name }}</button></form>
-    {% else %}<a class="btn btn-outline btn-sm" href="{% url 'stay_whatsapp' stay.pk %}?t={{ t.pk }}" target="whatsapp">{{ t.name }}</a>{% endif %}{% endfor %}
+    {% else %}<a class="btn btn-outline btn-sm" href="{% url 'stay_whatsapp' stay.pk %}?t={{ t.pk }}" target="whatsapp"{% if invoice_pending and t.pk in invoice_msgs %} data-busy="Generating the invoice…"{% endif %}>{{ t.name }}</a>{% endif %}{% endfor %}
     <a class="btn btn-ghost btn-sm" href="{% url 'stay_whatsapp' stay.pk %}" target="whatsapp">Open chat</a>
   </div>
   <form method="get" action="{% url 'stay_whatsapp' stay.pk %}" target="whatsapp" class="wa-custom">

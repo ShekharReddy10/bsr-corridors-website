@@ -426,23 +426,49 @@ def has_invoice(stay: Stay) -> bool:
     return bool(generated_at(stay)) and eligible(stay)
 
 
-def generate(stay: Stay) -> str:
+def generate(stay: Stay, only_if_missing: bool = False) -> str:
     """Generate (or update) this stay's invoice, saving it in Drive in the same file.
-    Returns "saved", "no-drive" (Drive not connected, so it's not saved there) or "failed" (Drive error)."""
+    Returns "saved", "no-drive" (Drive not connected, so it's not saved there), "failed" (Drive error), or "exists"
+    (only_if_missing, and it was already generated).
+
+    One at a time per stay: Check out opens the departure message in the same tap, so the check-out and the message
+    can both get here at once — the second waits for the first, so there's never a second file."""
+    from django.db import transaction
     from django.utils import timezone
     from . import gdrive
     from .models import AppSetting
-    data = pdf(stay)  # raises ValueError if the stay has no invoice
-    AppSetting.put(f"{_drive_key(stay)}_at", f"{timezone.localtime():%d-%m-%Y %I:%M %p}")
-    if not gdrive.is_configured():
-        return "no-drive"
-    no = number(stay)
-    try:
-        gdrive.save_invoice(data, f"{no} {stay.guest.name}.pdf".replace("/", " "), _drive_key(stay), no)
-    except Exception:
-        logging.getLogger(__name__).exception("Invoice to Drive failed")
-        return "failed"
-    return "saved"
+    with transaction.atomic():
+        Stay.objects.select_for_update().filter(pk=stay.root.pk).first()
+        if only_if_missing and generated_at(stay):
+            return "exists"
+        data = pdf(stay)  # raises ValueError if the stay has no invoice
+        AppSetting.put(f"{_drive_key(stay)}_at", f"{timezone.localtime():%d-%m-%Y %I:%M %p}")
+        if not gdrive.is_configured():
+            return "no-drive"
+        no = number(stay)
+        try:
+            gdrive.save_invoice(data, f"{no} {stay.guest.name}.pdf".replace("/", " "), _drive_key(stay), no)
+        except Exception:
+            logging.getLogger(__name__).exception("Invoice to Drive failed")
+            return "failed"
+        return "saved"
+
+
+def pending(stay: Stay) -> bool:
+    """The stay has an invoice to make, not generated yet."""
+    return not stay.is_void and not generated_at(stay) and eligible(stay)
+
+
+def ensure(stay: Stay) -> bool:
+    """Before sending a message with the invoice link (departure / check-out details): generate the invoice if the
+    stay has one and it isn't generated yet. Returns True if one was generated now."""
+    from .models import AuditLog
+    if stay.is_void or not eligible(stay):
+        return False
+    if generate(stay, only_if_missing=True) == "exists":
+        return False
+    AuditLog.record("invoice", f"Invoice {number(stay)} generated (sent with the WhatsApp message)", stay)
+    return True
 
 
 def forget(stay: Stay) -> None:
@@ -471,7 +497,10 @@ def on_check_out(request, stay: Stay) -> None:
     from django.contrib import messages
     if not eligible(stay) or _live_chain(stay)[-1].status != Stay.Status.CHECKED_OUT:
         return
-    result = generate(stay)
+    again = bool(generated_at(stay))
+    result = generate(stay)  # the dates may have changed (early check-out): always brought up to date
+    from .models import AuditLog
+    AuditLog.record("invoice", f"Invoice {number(stay)} {'updated' if again else 'generated'} at check-out", stay)
     if result == "failed":
         messages.warning(request, "The invoice was generated but couldn’t be saved to Google Drive just now — "
                                   "use Update invoice on the stay page to try again.")

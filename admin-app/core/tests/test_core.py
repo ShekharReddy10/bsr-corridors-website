@@ -1089,15 +1089,22 @@ class InvoiceTests(TestCase):
         pt = RoomType.objects.create(name="Penthouse", max_guests=4)
         self.assertEqual(invoice.room_code(Room.objects.create(number="PH", room_type=pt)), "601")
         services.add_payment(s, Decimal(4500), "upi")
-        # Not generated yet: only the Generate button, no PDF, and no invoice part in the messages.
+        # Not generated yet: Generate button, no PDF; Check out and the invoice messages show the loader.
         page = self.client.get(f"/stays/{s.pk}/").content.decode()
         self.assertIn("Generate invoice", page)
         self.assertNotIn("View PDF", page)
+        self.assertIn('data-busy="Checking out and generating the invoice…"', page)
         self.assertEqual(self.client.get(f"/stays/{s.pk}/invoice/").status_code, 404)
+        # A message without the invoice link doesn't make one.
+        t = MessageTemplate.objects.get(name="Payment reminder")
+        self.client.get(f"/stays/{s.pk}/whatsapp/?t={t.pk}")
+        self.assertFalse(invoice.generated_at(s))
+        # Sending Check-out details makes it first, and the message carries the link.
         t = MessageTemplate.objects.get(name="Check-out details")
         text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/?t={t.pk}")["Location"]).query)["text"][0]
-        self.assertNotIn("invoice", text.lower())
-        self.assertIn("Balance due", text)
+        self.assertTrue(invoice.generated_at(s))
+        self.assertIn("Your invoice (261115-261118-101):\nhttp://testserver/invoice/", text)
+        self.assertNotIn("data-busy", self.client.get(f"/stays/{s.pk}/").content.decode())
         # Check-out generates it; the departure message then carries the guest's link.
         self.client.post(f"/stays/{s.pk}/check-out/")
         self.assertTrue(invoice.has_invoice(s))
@@ -1140,6 +1147,7 @@ class InvoiceTests(TestCase):
         self.assertFalse(invoice.has_invoice(s))
         text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/?t=checkout")["Location"]).query)["text"][0]
         self.assertNotIn("invoice", text.lower())
+        self.assertFalse(invoice.generated_at(s))
         self.assertEqual(self.client.get(f"/invoice/{invoice.token(s)}/").status_code, 404)
 
     def test_platform_booking_extended_through_platform_has_no_invoice(self):

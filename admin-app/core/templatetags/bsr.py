@@ -26,6 +26,13 @@ def inr(value):
 
 
 @register.filter
+def invoice_pending(stay):
+    """The stay has an invoice to make that isn't generated yet (it's made at check-out / with the message)."""
+    from ..invoice import pending
+    return pending(stay)
+
+
+@register.filter
 def invoice_no(stay):
     """The invoice number if the stay has a generated invoice, else ""."""
     from ..invoice import has_invoice, number

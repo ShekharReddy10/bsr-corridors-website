@@ -11,6 +11,29 @@
     // tab (reused for every message, so WhatsApp Web isn't opened twice), while the form still goes through.
     const wa = e.target.dataset && e.target.dataset.waOpen;
     if (wa) window.open(wa, "whatsapp");
+    if (e.target.dataset && e.target.dataset.busy) busy(e.target.dataset.busy, false);  // the page itself moves on to the result
+  });
+
+  // "Generating the invoice…": shown while Check out / a message with the invoice link makes the invoice (a few
+  // seconds — it's saved in Google Drive). A message opens WhatsApp in another tab/app, so this page then reloads
+  // to show the invoice as generated.
+  let busyEl;
+  function busy(text, reloadAfter) {
+    if (!busyEl) {
+      busyEl = document.createElement("div");
+      busyEl.className = "busy-overlay";
+      busyEl.setAttribute("role", "status");
+      busyEl.innerHTML = '<div class="busy-box"><span class="busy-spin" aria-hidden="true"></span><span class="busy-text"></span></div>';
+      document.body.append(busyEl);
+    }
+    busyEl.querySelector(".busy-text").textContent = text;
+    busyEl.hidden = false;
+    if (reloadAfter) setTimeout(() => location.reload(), 6000);
+  }
+  window.addEventListener("pageshow", () => { if (busyEl) busyEl.hidden = true; });  // back button
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest && e.target.closest("a[data-busy]");
+    if (a) busy(a.dataset.busy, a.target === "whatsapp");
   });
 
   // Keep the server awake while this page is open: Render's free plan puts it to sleep after 15 minutes without

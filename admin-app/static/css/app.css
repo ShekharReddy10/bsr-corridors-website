@@ -497,3 +497,9 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .user-actions[open] { flex-basis: 100%; }
 .sidebar-logout { display: grid; gap: 4px; text-align: center; }
 .sidebar-logout small { color: #9aa6ab; }
+
+/* "Generating the invoice…" loader */
+.busy-overlay { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: rgba(0, 0, 0, .35); }
+.busy-box { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-radius: 12px; background: var(--card, #fff); color: var(--ink, #222); box-shadow: 0 8px 30px rgba(0, 0, 0, .25); font-weight: 600; max-width: calc(100vw - 32px); }
+.busy-spin { width: 22px; height: 22px; flex: none; border-radius: 50%; border: 3px solid rgba(0, 0, 0, .15); border-top-color: var(--gold, #b8893f); animation: busy-spin .8s linear infinite; }
+@keyframes busy-spin { to { transform: rotate(360deg); } }
