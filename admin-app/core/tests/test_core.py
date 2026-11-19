@@ -1845,3 +1845,32 @@ class ShortLinkTests(TestCase):
         self.assertEqual(shorten("http://other/pay/12:abc/"), a)  # same page → same short link
         self.assertNotEqual(shorten("https://x/pay/13:def/"), a)
         self.assertEqual(self.client.get("/s/" + a.rsplit("/", 1)[1])["Location"], "/pay/12:abc/")
+
+
+class WhatsAppOpenTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        _, _, self.rooms = make_rooms()
+        self.client.force_login(get_user_model().objects.create_user("wa-admin", password="test-pass-123456"))
+
+    def test_phone_opens_app_computer_opens_web_and_script_gets_text(self):
+        s = stay(make_guest(phone="98765 43210"), self.rooms["101"], -1, 2, status=Stay.Status.CHECKED_IN)
+        t = MessageTemplate.objects.get(name="Location")
+        r = self.client.get(f"/stays/{s.pk}/whatsapp/?t={t.pk}", HTTP_USER_AGENT="Mozilla/5.0 (Linux; Android 14) Mobile")
+        self.assertTrue(r["Location"].startswith("whatsapp://send?phone=919876543210&text="))
+        r = self.client.get(f"/stays/{s.pk}/whatsapp/?t={t.pk}", HTTP_USER_AGENT="Mozilla/5.0 (Windows NT 10.0)")
+        self.assertTrue(r["Location"].startswith("https://web.whatsapp.com/send?phone=919876543210&text="))
+        d = self.client.get(f"/stays/{s.pk}/whatsapp/?t={t.pk}", HTTP_USER_AGENT="Mozilla/5.0 (Windows NT 10.0)",
+                            HTTP_X_REQUESTED_WITH="fetch").json()
+        self.assertTrue(d["url"].startswith("https://web.whatsapp.com/send?"))
+        self.assertTrue(d["text"].startswith("Dear Ravi Kumar,"))
+        self.assertTrue(d["text"].endswith("- BSR Corridors"))
+
+    def test_caretaker_button_after_check_in(self):
+        s = stay(make_guest(phone="98765 43210"), self.rooms["101"], 0, 2, status=Stay.Status.UPCOMING)
+        self.client.post(f"/stays/{s.pk}/check-in/")
+        self.assertNotContains(self.client.get(f"/stays/{s.pk}/?welcome=1"), "Send caretaker")
+        t = MessageTemplate.objects.create(name="Caretaker contact", body="Dear {guest}, caretaker: Amirul.")
+        page = self.client.get(f"/stays/{s.pk}/?welcome=1").content.decode()
+        self.assertIn(f"/stays/{s.pk}/whatsapp/?t={t.pk}", page)
+        self.assertIn("Send caretaker contact", page)

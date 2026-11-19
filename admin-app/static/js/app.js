@@ -179,6 +179,58 @@
     input.form.submit();
   }));
 
+  // WhatsApp on a computer: get the message first, copy it, then open WhatsApp Web in the one "whatsapp" tab. If
+  // WhatsApp Web is already open (or installed as an app) it sometimes doesn't fill the message in — then Ctrl+V.
+  // Phones open the WhatsApp app directly, as before (links work without JS too).
+  const MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+  let toastEl, toastTimer;
+  function toast(html) {
+    if (!toastEl) {
+      toastEl = document.createElement("div");
+      toastEl.className = "wa-toast";
+      toastEl.setAttribute("role", "status");
+      document.body.append(toastEl);
+    }
+    toastEl.innerHTML = html;
+    toastEl.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toastEl.hidden = true; }, 9000);
+  }
+  function openWhatsApp(url, init, fallback, after) {
+    fetch(url, Object.assign({ headers: { "X-Requested-With": "fetch" }, credentials: "same-origin" }, init))
+      .then((r) => ((r.headers.get("content-type") || "").includes("json") ? r.json() : Promise.reject(r)))
+      .then((d) => {
+        const go = () => {
+          const win = window.open(d.url, "whatsapp");
+          if (!win) toast(`<a class="btn btn-primary btn-sm" href="${d.url}" target="whatsapp">Open WhatsApp</a>`);
+        };
+        const copied = d.text && navigator.clipboard ? navigator.clipboard.writeText(d.text) : Promise.reject();
+        copied.then(() => { toast("Message copied — if WhatsApp doesn’t fill it in, press <b>Ctrl+V</b> in the chat."); go(); }, go)
+          .then(() => { if (after) setTimeout(after, 1500); });
+      })
+      .catch(fallback);
+  }
+  if (!MOBILE) {
+    document.addEventListener("click", (e) => {
+      const a = e.target.closest && e.target.closest('a[target="whatsapp"]');
+      if (!a || !/\/stays\/\d+\/whatsapp\//.test(a.pathname) || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      e.preventDefault();
+      openWhatsApp(a.href, {}, () => window.open(a.href, "whatsapp"));
+    });
+    document.addEventListener("submit", (e) => {
+      const form = e.target;
+      if (e.defaultPrevented || form.target !== "whatsapp") return;
+      e.preventDefault();
+      if (form.method.toLowerCase() === "post") {
+        // Then reload, e.g. for the "Payment links" list on the stay page.
+        openWhatsApp(form.action, { method: "POST", body: new FormData(form) }, () => location.reload(), () => location.reload());
+      } else {
+        const url = form.action + "?" + new URLSearchParams(new FormData(form)).toString();
+        openWhatsApp(url, {}, () => window.open(url, "whatsapp"));
+      }
+    });
+  }
+
   // Message all in-house guests: "Send to next guest" opens the next chat; each opened chat is ticked off.
   const bulk = $("#wa-bulk");
   if (bulk) {

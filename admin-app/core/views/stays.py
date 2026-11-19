@@ -221,6 +221,8 @@ def stay_detail(request, pk):
         "invoice_drive": invoice.drive_link(stay),
         "invoice_at": invoice.generated_at(stay),
         "wa_invoice": _invoice_message(),
+        # After check-in: the caretaker's contact as a second message (the WhatsApp message named "Caretaker …").
+        "wa_caretaker": next((t for t in MessageTemplate.objects.all() if "caretaker" in t.name.lower()), None),
         "drive_ready": gdrive.is_configured(),
         "wa_templates": MessageTemplate.objects.all(),
         "last_payment": stay.payments.order_by("-date", "-pk").first(),

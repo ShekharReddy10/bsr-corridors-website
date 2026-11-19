@@ -13,7 +13,7 @@ from django.views.decorators.http import require_POST
 from .. import invoice, payments, services, whatsapp
 from ..shortlinks import shorten
 from ..models import AuditLog, Guest, MessageTemplate, PaymentRequest, Room, RoomType, Stay
-from .whatsapp import MOBILE, AppRedirect
+from .whatsapp import open_chat
 
 TEST_ROOM = "TEST"
 TEST_TYPE = "Test room (delete after testing)"
@@ -48,8 +48,7 @@ def send_link(request, pk):
     ctx = {**whatsapp.context(stay, amount, request.build_absolute_uri("/")),
            "payment_link": shorten(payments.link(req, request.build_absolute_uri("/")))}
     text = whatsapp.with_footer(whatsapp.render(template.body, ctx))
-    mobile = bool(MOBILE.search(request.headers.get("User-Agent", "")))
-    return AppRedirect(whatsapp.link(stay.guest.phone, text, mobile))
+    return open_chat(request, stay.guest.phone, text)
 
 
 def guest_page(request, token):

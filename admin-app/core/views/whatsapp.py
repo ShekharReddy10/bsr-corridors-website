@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.db import transaction
-from django.http import HttpResponseRedirect
+from django.http import HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -19,6 +19,17 @@ MOBILE = re.compile(r"Android|iPhone|iPad|iPod|Mobile", re.I)
 
 class AppRedirect(HttpResponseRedirect):
     allowed_schemes = ["https", "whatsapp"]
+
+
+def open_chat(request, phone: str, text: str):
+    """Open the chat with the message filled in: the WhatsApp app on a phone, WhatsApp Web on a computer.
+    From a computer's page script (X-Requested-With: fetch) it answers {url, text} instead, so the page can also copy
+    the message — when WhatsApp Web is already open (or installed as an app) it sometimes doesn't fill it in."""
+    mobile = bool(MOBILE.search(request.headers.get("User-Agent", "")))
+    url = whatsapp.link(phone, text, mobile)
+    if request.headers.get("X-Requested-With") == "fetch":
+        return JsonResponse({"url": url, "text": text})
+    return AppRedirect(url)
 
 
 # ?t=checkin / ?t=checkout → the message that opens at check-in / check-out.
@@ -125,5 +136,4 @@ def send(request, pk):
         name = "custom message" if text else "chat"
     text = whatsapp.with_footer(text)
     AuditLog.record("whatsapp", f"WhatsApp {name} opened for {stay.guest.name}", stay)
-    mobile = bool(MOBILE.search(request.headers.get("User-Agent", "")))
-    return AppRedirect(whatsapp.link(stay.guest.phone, text, mobile))
+    return open_chat(request, stay.guest.phone, text)

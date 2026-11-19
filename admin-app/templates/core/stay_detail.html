@@ -48,9 +48,10 @@
 
 {% include "partials/transfer_form.html" %}
 
-{% if just_checked_in and wa_welcome and g.phone %}
-  <div class="alert">Checked in. <b>Welcome message</b> didn’t open in WhatsApp?
-    <a class="btn btn-sm btn-primary" href="{% url 'stay_whatsapp' stay.pk %}?t=checkin" target="whatsapp">Send welcome message</a></div>
+{% if just_checked_in and g.phone and wa_welcome or just_checked_in and g.phone and wa_caretaker %}
+  <div class="alert">Checked in.{% if wa_welcome %} <b>Welcome message</b> didn’t open in WhatsApp?
+    <a class="btn btn-sm btn-primary" href="{% url 'stay_whatsapp' stay.pk %}?t=checkin" target="whatsapp">Send welcome message</a>{% endif %}
+    {% if wa_caretaker %}<a class="btn btn-sm btn-outline" href="{% url 'stay_whatsapp' stay.pk %}?t={{ wa_caretaker.pk }}" target="whatsapp">Send {{ wa_caretaker.name|lower }}</a>{% endif %}</div>
 {% endif %}
 {% if just_checked_out and wa_departure and g.phone %}
   <div class="alert">Checked out. <b>Departure message</b> didn’t open in WhatsApp?
