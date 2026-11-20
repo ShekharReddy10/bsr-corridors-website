@@ -3,6 +3,7 @@
 import io
 from datetime import date
 
+from django.contrib.auth import get_user_model
 from django.core import serializers
 from django.db.models import Q
 from openpyxl import Workbook
@@ -10,7 +11,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from . import revenue
-from .models import AuditLog, Expense, Guest, MaintenanceLog, MessageTemplate, Payment, IdPhoto, RecurringExpense, Room, RoomType, Settlement, Stay, StayGuest, StayIdPhoto
+from .models import AppSetting, AuditLog, Expense, Guest, MaintenanceLog, MessageTemplate, Payment, IdPhoto, RecurringExpense, PaymentRequest, Room, RoomType, Settlement, ShortLink, Stay, StayGuest, StayIdPhoto
 
 HEADER_FILL = PatternFill("solid", fgColor="1F2A30")
 HEADER_FONT = Font(bold=True, color="FFFFFF")
@@ -138,13 +139,17 @@ def build_workbook(start: date | None = None, end: date | None = None, full_ids:
     return buf.getvalue()
 
 
-BACKUP_MODELS = [RoomType, Room, Guest, Stay, StayGuest, IdPhoto, StayIdPhoto, Payment, RecurringExpense, Expense, MaintenanceLog, Settlement, MessageTemplate, AuditLog]
+BACKUP_MODELS = [RoomType, Room, Guest, Stay, StayGuest, IdPhoto, StayIdPhoto, Payment, PaymentRequest, RecurringExpense,
+                 Expense, MaintenanceLog, Settlement, MessageTemplate, AuditLog,
+                 AppSetting,  # hotel info for messages (Wi-Fi, rules, contact…), hosts, partners, revenue password hash
+                 ShortLink]  # links already sent to guests keep working after a restore
 
 
 def backup_json() -> bytes:
     """Full backup in Django fixture format (restore with `manage.py loaddata`).
 
-    ID numbers stay encrypted — restoring needs the same FIELD_ENCRYPTION_KEY.
+    ID numbers stay encrypted — restoring needs the same FIELD_ENCRYPTION_KEY. Logins are included (passwords only as
+    Django's one-way hashes), so staff can sign in after a restore.
     """
-    objects = [obj for model in BACKUP_MODELS for obj in model.objects.order_by("pk")]
+    objects = [obj for model in [get_user_model(), *BACKUP_MODELS] for obj in model.objects.order_by("pk")]
     return serializers.serialize("json", objects, indent=1).encode()
