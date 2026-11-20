@@ -621,6 +621,38 @@ class BackupRetentionTests(TestCase):
             call_command("restore_backup", path, yes=True, stdout=io.StringIO())
         self.assertEqual(Guest.objects.get().id_number, "123412341234")
 
+    def test_backup_keeps_settings_links_logins_and_payment_links(self):
+        import gzip, tempfile, os
+        from django.core.management import call_command
+        from core.models import PaymentRequest, ShortLink
+        _, _, rooms = make_rooms()
+        s = stay(make_guest(), rooms["101"], 0, 2)
+        User = get_user_model()
+        User.objects.create_user("desk", password="desk-password-1")
+        AppSetting.put("hotel_info_wifi_password", "secret-wifi")
+        ShortLink.objects.create(code="Ab3dE9x", path="/pay/x/")
+        PaymentRequest.objects.create(stay=s, amount=Decimal("500"))
+        data = gzip.compress(backup_json())
+        # A fresh database: only the admin login (made on deploy, with a different ID) exists.
+        PaymentRequest.objects.all().delete()
+        ShortLink.objects.all().delete()
+        AppSetting.objects.all().delete()
+        User.objects.all().delete()
+        User.objects.create_superuser("admin", password="admin-password-1")
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "backup.json.gz")
+            open(path, "wb").write(data)
+            call_command("restore_backup", path, yes=True, stdout=io.StringIO())
+        self.assertEqual(AppSetting.get("hotel_info_wifi_password"), "secret-wifi")
+        self.assertTrue(ShortLink.objects.filter(code="Ab3dE9x").exists())
+        self.assertEqual(PaymentRequest.objects.get().amount, Decimal("500"))
+        self.assertTrue(User.objects.get(username="desk").check_password("desk-password-1"))
+        self.assertEqual(User.objects.filter(username="admin").count(), 1)
+        # New records after a restore don't clash with restored IDs.
+        ShortLink.objects.create(code="New1234", path="/pay/y/")
+        from core.models import Payment
+        Payment.objects.create(stay=Stay.objects.get(), amount=Decimal("1"))
+
 
 def got(s, t):
     from core import revenue
