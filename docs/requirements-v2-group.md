@@ -233,7 +233,7 @@ both have a `stays` table without the two ever mixing.
 
 ```
 Supabase project (free, 500 MB)
-├── schema "cluster"   → users, permissions, cluster items, encrypted configuration
+├── cluster tables     → cluster items, roles, encrypted configuration (new tables next to the logins)
 ├── schema "public"    → BSR Corridors (hotel): its current tables, untouched
 ├── schema "bsrpg1"    → BSR Ladies PG: floors, rooms, beds, residents, tenancies, …
 └── schema "bsrcl1"    → BSR Co-live: …
@@ -259,7 +259,7 @@ Supabase project (free, 500 MB)
 
 Render's environment variables need a redeploy to change and the app can't add them itself. So each cluster item's
 settings (Drive access, UPI ID, WhatsApp details, its own database link if it has one) are entered **in the app**,
-stored **encrypted** in the cluster schema, and only these stay in Render: the database link, the **master
+stored **encrypted** in the cluster tables, and only these stay in Render: the database link, the **master
 encryption key**, and the admin login.
 
 > **The master encryption key protects every cluster item's secrets and ID numbers.** Lose it and they can't be
@@ -472,7 +472,7 @@ Money (revenue, profit, settlements) appears **only inside each cluster item**, 
 ## 12. Backups and restore
 
 - Each cluster item is backed up **every night to its own Google Drive** (7 daily, 4 weekly, 12 monthly), as today.
-- The cluster schema (users, permissions, encrypted configuration) is backed up to the **admin's** Google Drive.
+- The cluster tables (users, permissions, encrypted configuration) is backed up to the **admin's** Google Drive.
 - **Restore one cluster item** without touching the others.
 - The backups page shows the last result for every cluster item; a failure shows an alert on the cluster home page.
 - The nightly GitHub Action triggers all backups, one cluster item after another.
@@ -499,7 +499,7 @@ whole build:
 ### 13.2 BSR Corridors' data stays where it is
 
 - BSR Corridors' tables **stay in their current place** (the database's `public` schema). **No data is moved or
-  renamed.** v2 only **adds** a new `cluster` schema next to them and new schemas for new cluster items.
+  renamed.** v2 only **adds** new cluster tables (`cluster_items`, `cluster_memberships`) next to them, and new schemas for new cluster items.
 - Its rooms, guests, stays, payments, expenses, history, backups and Google Drive files are untouched.
 - Its Render settings (Drive, UPI, short link base, revenue password) are read as they are; they are copied into the
   cluster settings only at switch-over, and the old ones keep working as a fallback.
@@ -509,7 +509,7 @@ whole build:
 The live app changes **once**, after all v2 phases you want are finished, tested on the copy, and approved by you:
 
 1. Full backup to Google Drive, checked.
-2. Merge `v2-cluster` into `main`; Render deploys. The only database changes are **additions** (the cluster schema
+2. Merge `v2-cluster` into `main`; Render deploys. The only database changes are **additions** (the cluster tables
    and new tables); no existing table is dropped or rewritten.
 3. Check: every count and total (rooms, guests, stays, payments, expenses, revenue per month) matches the backup.
 4. **Old links keep working:** the existing admin address, invoice, payment and short links already sent to guests.
