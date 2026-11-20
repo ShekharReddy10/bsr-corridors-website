@@ -5,10 +5,11 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
 from django.db.models import Sum
 from django.utils import timezone
 
+from .db import atomic
 from .models import AppSetting, AuditLog, Payment, Room, Stay
 
 HOSTS_KEY = "hosts"
@@ -73,14 +74,14 @@ def _lock_room(room: Room) -> None:
 
 def save_stay(stay: Stay, *, action: str, summary: str) -> Stay:
     """Save a stay only if its room is free for all its nights. Raises StayConflict."""
-    with transaction.atomic():
+    with atomic():
         _lock_room(stay.room)
         if not stay.is_void:
             clash = conflicts(stay.room, stay.check_in, stay.check_out, exclude_ids=[stay.pk])
             if clash.exists():
                 raise StayConflict(clash)
         try:
-            with transaction.atomic():
+            with atomic():
                 stay.save()
         except IntegrityError as exc:  # Postgres exclusion constraint caught a race
             raise StayConflict([]) from exc
@@ -222,7 +223,7 @@ def swap_rooms(a: Stay, b: Stay) -> None:
     Raises StayConflict if either room is taken by a third stay for some of the other guest's nights."""
     if a.pk == b.pk or a.room_id == b.room_id or not (a.is_active and b.is_active):
         raise ValueError("These two stays can’t swap rooms.")
-    with transaction.atomic():
+    with atomic():
         for room in sorted([a.room, b.room], key=lambda r: r.pk):
             _lock_room(room)
         clash = (list(conflicts(b.room, a.check_in, a.check_out, exclude_ids=[a.pk, b.pk]))
@@ -300,7 +301,7 @@ def extend_in_place(stay: Stay, new_check_out: date, amount=Decimal(0), paid=Dec
 def extend_with_moves(stay: Stay, new_check_out: date, moves: list, amount=Decimal(0), paid=Decimal(0), mode="",
                       direct=False) -> Stay:
     """Move future bookings out of the guest's room (to rooms of the same type), then extend in place."""
-    with transaction.atomic():
+    with atomic():
         for b, room in moves:
             old = b.room
             b.room = room
@@ -311,7 +312,7 @@ def extend_with_moves(stay: Stay, new_check_out: date, moves: list, amount=Decim
 def extend_split(stay: Stay, new_check_out: date, room: Room, amount=Decimal(0), paid=Decimal(0), mode="",
                  direct=False) -> Stay:
     """Keep the current room until its check-out, then continue in `room` for the extra nights."""
-    with transaction.atomic():
+    with atomic():
         continuation = Stay(
             guest=stay.guest,
             room=room,
@@ -343,7 +344,7 @@ def extend_move(stay: Stay, new_check_out: date, room: Room, move_start: date,
     """Move the guest to `room` from `move_start` until the new check-out."""
     if move_start >= stay.check_out:
         return extend_split(stay, new_check_out, room, amount, paid, mode, direct)
-    with transaction.atomic():
+    with atomic():
         if move_start <= stay.check_in:
             old_room = stay.room
             stay.room = room
@@ -479,7 +480,7 @@ def add_payment(stay: Stay, amount: Decimal, mode: str, collected_by: str = "", 
 def delete_payment(payment: Payment) -> Stay:
     """Remove a payment entered by mistake; the stay's paid amount goes down with it."""
     stay = payment.stay
-    with transaction.atomic():
+    with atomic():
         payment.delete()
         stay.amount_paid = stay.payments.aggregate(s=Sum("amount"))["s"] or Decimal(0)
         return save_stay(stay, action="payment",

@@ -1,11 +1,14 @@
 from django.contrib import messages
-from django.db import transaction
+
 from django.db.models import Count
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
+from cluster.current import local
+
+from ..db import atomic
 from ..forms import MaintenanceLogForm, RoomForm, RoomTypeForm
 from ..models import AuditLog, Expense, MaintenanceLog, Room, RoomType
 from ..services import today
@@ -39,7 +42,7 @@ def edit(request, kind, pk=None):
         "form": form,
         "title": f"{'Edit' if obj else 'Add'} {label}",
         "back": "rooms",
-        "delete_url": f"/rooms/{kind}/{obj.pk}/delete/" if obj else "",
+        "delete_url": local(f"/rooms/{kind}/{obj.pk}/delete/") if obj else "",
     })
 
 
@@ -70,7 +73,7 @@ def room_log(request, pk):
         entry = form.save(commit=False)
         entry.room = room
         entry.done = entry.kind == MaintenanceLog.Kind.REPAIR
-        with transaction.atomic():
+        with atomic():
             entry.save()
             if entry.kind == MaintenanceLog.Kind.SERVICE:  # a new service replaces the earlier "next due" reminders
                 room.maintenance.filter(kind=MaintenanceLog.Kind.SERVICE, done=False).exclude(pk=entry.pk).update(done=True)

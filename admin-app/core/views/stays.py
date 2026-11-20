@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from django.contrib import messages
 from django.core.paginator import Paginator
-from django.db import transaction
+
 from django.db.models import Q
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -11,6 +11,9 @@ from django.utils.html import escape
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
+from cluster.current import local
+
+from ..db import atomic
 from .. import gdrive, invoice, checks, payments, services
 from ..fields import mask
 from ..forms import ExtendForm, GuestForm, PaymentForm, ShortenForm, StayForm, other_guests_formset
@@ -109,7 +112,7 @@ def stay_form(request, pk=None):
         if gform.is_valid() and sform.is_valid() and others_ok:
             new_guest, moved = gform.instance.pk is None, []
             try:
-                with transaction.atomic():
+                with atomic():
                     guest = gform.save()
                     new = sform.save(commit=False)
                     new.guest = guest
@@ -127,7 +130,7 @@ def stay_form(request, pk=None):
                 for reason in checks.check_stay(new):
                     messages.warning(request, f"Please double-check: {reason}")
                 if checking_in:
-                    return redirect(f"/stays/{new.pk}/?welcome=1")
+                    return redirect(local(f"/stays/{new.pk}/?welcome=1"))
                 return redirect("stay_detail", pk=new.pk)
             except services.StayConflict as exc:
                 c = sform.cleaned_data
@@ -242,10 +245,10 @@ def stay_action(request, pk, action):
         if action == "check-in":
             if not stay.guest.has_contact_details:
                 messages.info(request, f"Add {stay.guest.name}’s phone and address to check in.")
-                return redirect(f"/stays/{stay.pk}/edit/?checkin=1")
+                return redirect(local(f"/stays/{stay.pk}/edit/?checkin=1"))
             services.check_in(stay)
             messages.success(request, f"{stay.guest.name} checked in to {stay.room}.")
-            return redirect(f"/stays/{stay.pk}/?welcome=1")
+            return redirect(local(f"/stays/{stay.pk}/?welcome=1"))
         elif action == "add-rent":
             services.add_month_rent(stay)
             messages.success(request, f"Added a month’s rent ₹{stay.monthly_rent:,.0f}. Total is now ₹{stay.total:,.0f}.")
@@ -253,7 +256,7 @@ def stay_action(request, pk, action):
             services.check_out(stay)
             messages.success(request, f"{stay.guest.name} checked out of {stay.room}.")
             invoice.on_check_out(request, stay)
-            return redirect(f"/stays/{stay.pk}/?departed=1")
+            return redirect(local(f"/stays/{stay.pk}/?departed=1"))
         elif action == "cancel":
             services.cancel(stay)
             invoice.remove_from_drive(stay)
@@ -296,11 +299,11 @@ def stay_action(request, pk, action):
                     payments.mark_paid(req)
                 if request.headers.get("X-Requested-With") == "fetch":  # stay page: WhatsApp opens with the thanks
                     t = _payment_message()
-                    wa = (f"/stays/{stay.pk}/whatsapp/?t={t.pk}&amount={c['amount']:.0f}"
+                    wa = (local(f"/stays/{stay.pk}/whatsapp/?t={t.pk}&amount={c['amount']:.0f}")
                           if t and stay.guest.phone else "")
                     return JsonResponse({"ok": True, "wa": wa})
                 if not request.POST.get("next"):
-                    return redirect(f"/stays/{stay.pk}/?paid={c['amount']:.0f}#payment")
+                    return redirect(local(f"/stays/{stay.pk}/?paid={c['amount']:.0f}#payment"))
         elif action == "pay-not-received":
             req = get_object_or_404(PaymentRequest, pk=request.POST.get("pay_request") or 0, stay=stay)
             payments.not_received(req)

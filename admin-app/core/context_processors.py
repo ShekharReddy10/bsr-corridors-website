@@ -2,6 +2,8 @@ from functools import cache
 
 from django.conf import settings
 
+from cluster.current import name as hotel_name
+
 from .models import MessageTemplate
 
 
@@ -20,5 +22,13 @@ def app(request):
         """Messages shown as one-tap buttons in the Today page lists: {"departing": template, "balance": …}."""
         return {t.shortcut: t for t in MessageTemplate.objects.exclude(shortcut="")}
 
-    return {"HOTEL_NAME": settings.HOTEL_NAME, "wa_welcome": wa_welcome, "wa_departure": wa_departure,
-            "wa_buttons": wa_buttons}
+    @cache
+    def my_items():
+        """For the switcher in the header (S19): the other cluster items this person may open."""
+        from cluster.views import items_for
+        return [i for i in items_for(request.user) if not i.archived] if request.user.is_authenticated else []
+
+    item = getattr(request, "item", None)
+    return {"HOTEL_NAME": hotel_name(), "wa_welcome": wa_welcome, "wa_departure": wa_departure,
+            "wa_buttons": wa_buttons, "item": item, "caps": getattr(request, "caps", set()),
+            "theme": item.colors if item else None, "my_items": my_items, "CLUSTER_NAME": settings.CLUSTER_NAME}

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}No access{% endblock %}
+{% block content %}
+<section class="card no-access">
+  <h1>{% if page %}You can’t use this page{% else %}No access{% endif %}</h1>
+  <p class="muted">{% if page %}Your role at {{ item.name }} doesn’t include this page. Ask the main admin if you need it.{% else %}You don’t have access to {{ item.name }}. Ask the main admin to give you access.{% endif %}</p>
+  <p><a class="btn btn-primary" href="{% if page %}{{ item.prefix }}{% else %}{% url 'cluster_home' %}{% endif %}">{% if page %}Back to {{ item.name }}{% else %}Go to {{ CLUSTER_NAME }}{% endif %}</a></p>
+</section>
+{% endblock %}

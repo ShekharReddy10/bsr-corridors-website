@@ -16,6 +16,15 @@ from core.models import AppSetting, AuditLog, Expense, Guest, MessageTemplate, R
 T = services.today()
 
 
+
+def staff(username, password="test-pass-123456"):
+    """A login with full access to BSR Corridors — what every existing login gets when the cluster arrives."""
+    from cluster.models import Item, Membership
+    user = get_user_model().objects.create_user(username, password=password)
+    Membership.objects.create(user=user, item=Item.objects.get(is_default=True), role=Membership.Role.OWNER,
+                              money_access=True, see_full_ids=True, can_delete=True)
+    return user
+
 def make_rooms():
     ac = RoomType.objects.create(name="Luxury AC", is_ac=True, max_guests=2)
     non = RoomType.objects.create(name="Luxury Non-AC", is_ac=False, max_guests=2)
@@ -258,7 +267,7 @@ class ExportTests(TestCase):
 class ViewTests(TestCase):
     def setUp(self):
         cache.clear()
-        self.user = get_user_model().objects.create_user("test-admin", password="test-pass-123456")
+        self.user = staff("test-admin", password="test-pass-123456")
         self.client.force_login(self.user)
         self.ac, _, self.rooms = make_rooms()
 
@@ -568,7 +577,7 @@ class ViewTests(TestCase):
 class SecurityTests(TestCase):
     def setUp(self):
         cache.clear()
-        get_user_model().objects.create_user("test-admin", password="test-pass-123456")
+        staff("test-admin", password="test-pass-123456")
 
     def test_login_required(self):
         self.assertRedirects(self.client.get("/stays/"), "/login/?next=/stays/", fetch_redirect_response=False)
@@ -576,7 +585,9 @@ class SecurityTests(TestCase):
 
     def test_login_and_lockout(self):
         r = self.client.post("/login/", {"username": "test-admin", "password": "test-pass-123456"})
-        self.assertRedirects(r, "/", fetch_redirect_response=False)
+        self.assertRedirects(r, "/cluster/", fetch_redirect_response=False)
+        # Only BSR Corridors: straight in, to the same Today page as before.
+        self.assertRedirects(self.client.get("/cluster/"), "/", fetch_redirect_response=False)
         self.client.logout()
         for _ in range(5):
             self.assertContains(self.client.post("/login/", {"username": "test-admin", "password": "wrong"}),
@@ -663,7 +674,7 @@ class RevenueTests(TestCase):
     def setUp(self):
         cache.clear()
         _, _, self.rooms = make_rooms()
-        self.client.force_login(get_user_model().objects.create_user("rev-admin", password="test-pass-123456"))
+        self.client.force_login(staff("rev-admin", password="test-pass-123456"))
 
     def _unlock(self):
         self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
@@ -847,7 +858,7 @@ class ExpenseTests(TestCase):
     def setUp(self):
         cache.clear()
         _, _, self.rooms = make_rooms()
-        self.client.force_login(get_user_model().objects.create_user("exp-admin", password="test-pass-123456"))
+        self.client.force_login(staff("exp-admin", password="test-pass-123456"))
 
     def test_expenses_need_revenue_password_then_come_back(self):
         r = self.client.get("/expenses/new/")
@@ -901,7 +912,7 @@ class HostSettlementWhatsAppTests(TestCase):
     def setUp(self):
         cache.clear()
         _, _, self.rooms = make_rooms()
-        self.client.force_login(get_user_model().objects.create_user("x-admin", password="test-pass-123456"))
+        self.client.force_login(staff("x-admin", password="test-pass-123456"))
 
     def test_host_shown_in_calendar_and_list_editable(self):
         self.assertEqual(services.host_names(), ["Shekhar", "Mounika", "Satish"])
@@ -1109,7 +1120,7 @@ class InvoiceTests(TestCase):
     def setUp(self):
         cache.clear()
         _, _, self.rooms = make_rooms()
-        self.client.force_login(get_user_model().objects.create_user("inv-admin", password="test-pass-123456"))
+        self.client.force_login(staff("inv-admin", password="test-pass-123456"))
 
     def test_invoice_number_pdf_and_guest_link(self):
         from urllib.parse import parse_qs, urlparse
@@ -1353,7 +1364,7 @@ class SwapRoomTests(TestCase):
     def setUp(self):
         cache.clear()
         _, _, self.rooms = make_rooms()
-        self.client.force_login(get_user_model().objects.create_user("swap-admin", password="test-pass-123456"))
+        self.client.force_login(staff("swap-admin", password="test-pass-123456"))
 
     def test_swap_rooms_of_two_bookings(self):
         a = stay(make_guest("A", "+91 90000 00001"), self.rooms["101"], 1, 3, amount_paid=Decimal(1000))
@@ -1381,7 +1392,7 @@ class TypoCheckTests(TestCase):
     def setUp(self):
         cache.clear()
         _, _, self.rooms = make_rooms()
-        self.client.force_login(get_user_model().objects.create_user("chk-admin", password="test-pass-123456"))
+        self.client.force_login(staff("chk-admin", password="test-pass-123456"))
         # Usual price: ₹1,500 a night (the stay() helper), five past stays.
         for i in range(5):
             stay(make_guest(f"P{i}", f"+91 90000 1000{i}"), self.rooms["103"], -40 - i * 3, 2,
@@ -1450,7 +1461,7 @@ class PaymentHistoryTests(TestCase):
     def setUp(self):
         cache.clear()
         _, _, self.rooms = make_rooms()
-        self.client.force_login(get_user_model().objects.create_user("pay-admin", password="test-pass-123456"))
+        self.client.force_login(staff("pay-admin", password="test-pass-123456"))
 
     def test_every_way_of_paying_leaves_a_dated_entry(self):
         from core import revenue
@@ -1490,7 +1501,7 @@ class PaymentHistoryTests(TestCase):
 class RecurringExpenseTests(TestCase):
     def setUp(self):
         cache.clear()
-        self.client.force_login(get_user_model().objects.create_user("rec-admin", password="test-pass-123456"))
+        self.client.force_login(staff("rec-admin", password="test-pass-123456"))
         self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
 
     def test_added_once_a_month_on_its_day(self):
@@ -1523,7 +1534,7 @@ class PhotoTests(TestCase):
     def setUp(self):
         cache.clear()
         _, _, self.rooms = make_rooms()
-        self.client.force_login(get_user_model().objects.create_user("photo-admin", password="test-pass-123456"))
+        self.client.force_login(staff("photo-admin", password="test-pass-123456"))
 
     def _jpeg(self, size=(3000, 2000)):
         from django.core.files.uploadedfile import SimpleUploadedFile
@@ -1674,7 +1685,7 @@ class MonthlyReportTests(TestCase):
     def setUp(self):
         cache.clear()
         _, _, self.rooms = make_rooms()
-        self.client.force_login(get_user_model().objects.create_user("rep-admin", password="test-pass-123456"))
+        self.client.force_login(staff("rep-admin", password="test-pass-123456"))
         self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
 
     def test_share_summary_and_save_report(self):
@@ -1706,7 +1717,7 @@ class MaintenanceTests(TestCase):
     def setUp(self):
         cache.clear()
         _, _, self.rooms = make_rooms()
-        self.client.force_login(get_user_model().objects.create_user("mnt-admin", password="test-pass-123456"))
+        self.client.force_login(staff("mnt-admin", password="test-pass-123456"))
 
     def test_service_due_problem_open_and_cost_to_expenses(self):
         from core.models import MaintenanceLog
@@ -1738,31 +1749,37 @@ class LoginTests(TestCase):
 
     def test_admin_adds_login_and_log_shows_who(self):
         from django.core.management import call_command
-        r = self.client.post("/settings/users/", {"action": "add", "name": "Satish", "username": "Satish",
+        r = self.client.post("/cluster/users/", {"action": "add", "name": "Satish", "username": "Satish",
                                                    "password": "satish-pass-1", "confirm": "satish-pass-1"}, follow=True)
         self.assertContains(r, "Login created for Satish")
         satish = get_user_model().objects.get(username="satish")
-        self.assertEqual(self.client.post("/settings/users/", {"action": "add", "name": "X", "username": "x",
+        self.assertEqual(self.client.post("/cluster/users/", {"action": "add", "name": "X", "username": "x",
                                                                "password": "short", "confirm": "short"}).status_code, 302)
         self.assertFalse(get_user_model().objects.filter(username="x").exists())
 
         other = self.client_class()
         self.assertTrue(other.login(username="satish", password="satish-pass-1"))
+        # A new login opens nothing until the admin gives access.
+        self.assertEqual(other.get("/stays/").status_code, 403)
+        from cluster.models import Item, Membership
+        bsr = Item.objects.get(is_default=True)
+        self.client.post("/cluster/users/", {"action": "access", "user": satish.pk, f"role-{bsr.pk}": "owner"})
+        self.assertEqual(Membership.objects.get(user=satish).role, "owner")
         other.post("/settings/", {"action": "hosts", "hosts": "Shekhar, Mounika, Satish"})
         self.assertEqual(AuditLog.objects.filter(action="settings").latest("at").by, "Satish")
         self.assertContains(other.get("/settings/"), "<b>Satish:</b>")
         # Only the main admin manages logins.
-        self.assertRedirects(other.get("/settings/users/"), "/settings/", fetch_redirect_response=False)
+        self.assertRedirects(other.get("/cluster/users/"), "/cluster/", fetch_redirect_response=False)
         # Own password change keeps you signed in.
         other.post("/settings/password/", {"current": "satish-pass-1", "password": "satish-pass-2", "confirm": "satish-pass-2"})
         self.assertEqual(other.get("/").status_code, 200)
         satish.refresh_from_db()
         self.assertTrue(satish.check_password("satish-pass-2"))
         # Switch off; deploys no longer switch other logins off.
-        self.client.post("/settings/users/", {"action": "toggle", "user": satish.pk})
+        self.client.post("/cluster/users/", {"action": "toggle", "user": satish.pk})
         satish.refresh_from_db()
         self.assertFalse(satish.is_active)
-        self.client.post("/settings/users/", {"action": "toggle", "user": satish.pk})
+        self.client.post("/cluster/users/", {"action": "toggle", "user": satish.pk})
         with override_settings():
             import os
             from unittest import mock
@@ -1776,7 +1793,7 @@ class PaymentLinkTests(TestCase):
     def setUp(self):
         cache.clear()
         _, _, self.rooms = make_rooms()
-        self.client.force_login(get_user_model().objects.create_user("pay-admin", password="test-pass-123456"))
+        self.client.force_login(staff("pay-admin", password="test-pass-123456"))
 
     def _send(self, s, amount):
         from urllib.parse import parse_qs, urlparse
@@ -1883,7 +1900,7 @@ class WhatsAppOpenTests(TestCase):
     def setUp(self):
         cache.clear()
         _, _, self.rooms = make_rooms()
-        self.client.force_login(get_user_model().objects.create_user("wa-admin", password="test-pass-123456"))
+        self.client.force_login(staff("wa-admin", password="test-pass-123456"))
 
     def test_phone_opens_app_computer_opens_web_and_script_gets_text(self):
         s = stay(make_guest(phone="98765 43210"), self.rooms["101"], -1, 2, status=Stay.Status.CHECKED_IN)

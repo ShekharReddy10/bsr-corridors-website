@@ -10,18 +10,20 @@ import re
 from decimal import Decimal
 from urllib.parse import quote, urlencode
 
-from django.conf import settings
 from django.core import signing
-from django.db import transaction
+
 from django.utils import timezone
 
+from cluster.current import name as hotel_name, upi as payments_upi
+
+from .db import atomic
 from .models import AuditLog, PaymentRequest, Stay
 
 SALT = "pay"
 
 
 def configured() -> bool:
-    return bool(settings.UPI_ID)
+    return bool(payments_upi()[0])
 
 
 def token(req: PaymentRequest) -> str:
@@ -42,8 +44,8 @@ def link(req: PaymentRequest, base_url: str) -> str:
 
 def upi_uri(req: PaymentRequest) -> str:
     """upi://pay?… — opens the guest's UPI app with the payee, amount and note filled in."""
-    note = f"Room {req.stay.room.number} {settings.HOTEL_NAME}"[:50]
-    return "upi://pay?" + urlencode({"pa": settings.UPI_ID, "pn": settings.UPI_NAME, "am": f"{req.amount:.2f}",
+    note = f"Room {req.stay.room.number} {hotel_name()}"[:50]
+    return "upi://pay?" + urlencode({"pa": payments_upi()[0], "pn": payments_upi()[1], "am": f"{req.amount:.2f}",
                                      "cu": "INR", "tn": note}, quote_via=quote)
 
 
@@ -59,7 +61,7 @@ def create(stay: Stay, amount: Decimal, by: str = "") -> PaymentRequest:
     """A new link for this stay; older links still waiting for payment stop working (only the latest is valid)."""
     if amount <= 0:
         raise ValueError("Enter an amount more than zero.")
-    with transaction.atomic():
+    with atomic():
         stay.payment_requests.filter(status=PaymentRequest.Status.OPEN).update(status=PaymentRequest.Status.REPLACED)
         req = PaymentRequest.objects.create(stay=stay, amount=amount, created_by=by)
         AuditLog.record("payment_link", f"UPI payment link sent for ₹{amount:,.0f}", stay)
@@ -69,7 +71,7 @@ def create(stay: Stay, amount: Decimal, by: str = "") -> PaymentRequest:
 def claim(req: PaymentRequest, reference: str) -> bool:
     """The guest ticked "I have paid". Returns False if the link was no longer open."""
     reference = re.sub(r"[^0-9A-Za-z]", "", reference or "")[:40]
-    with transaction.atomic():
+    with atomic():
         n = PaymentRequest.objects.filter(pk=req.pk, status=PaymentRequest.Status.OPEN).update(
             status=PaymentRequest.Status.CLAIMED, reference=reference, claimed_at=timezone.now())
         if n:

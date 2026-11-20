@@ -12,6 +12,9 @@ from datetime import date, datetime, timedelta
 from django.conf import settings
 from django.utils import timezone
 
+from cluster import current as cluster_current
+from cluster.current import name as hotel_name
+
 from .exports import backup_json, build_workbook
 from .models import AppSetting, BackupRun
 
@@ -28,6 +31,9 @@ class DriveNotConfigured(Exception):
 
 
 def is_configured() -> bool:
+    # Other cluster items connect their own Drive in phase 2; until then none (never BSR Corridors' Drive).
+    if not cluster_current.is_default():
+        return False
     return bool(settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET and settings.GOOGLE_REFRESH_TOKEN)
 
 
@@ -138,7 +144,7 @@ def run_backup() -> BackupRun:
         pruned = _prune(svc, backups) + _prune_exports(svc, exports)
 
         sheet_id = AppSetting.get("gdrive_register_sheet")
-        sheet = _upload(svc, build_workbook(), f"{settings.HOTEL_NAME} — Guest register", XLSX, root,
+        sheet = _upload(svc, build_workbook(), f"{hotel_name()} — Guest register", XLSX, root,
                         as_sheet=True, file_id=sheet_id if _exists(svc, sheet_id) else "")
         AppSetting.put("gdrive_register_sheet", sheet["id"])
 
@@ -247,7 +253,7 @@ def save_monthly_report(month: date) -> str:
     folder = _folder(svc, "gdrive_reports", "Monthly reports", root)
     nxt = (month.replace(day=28) + timedelta(days=4)).replace(day=1)
     existing = AppSetting.get(f"report_id_{month:%Y-%m}")
-    f = _upload(svc, build_workbook(month, nxt - timedelta(days=1)), f"{settings.HOTEL_NAME} — {month:%B %Y} report",
+    f = _upload(svc, build_workbook(month, nxt - timedelta(days=1)), f"{hotel_name()} — {month:%B %Y} report",
                 XLSX, folder, as_sheet=True, file_id=existing if _exists(svc, existing) else "")
     AppSetting.put(f"report_id_{month:%Y-%m}", f["id"])
     AppSetting.put(f"report_{month:%Y-%m}", f.get("webViewLink", ""))

@@ -14,7 +14,10 @@ class LoginRequiredMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        if not request.user.is_authenticated and not request.path.startswith(PUBLIC_PREFIXES):
+        path = request.path
+        if path.startswith("/p/"):  # a cluster item's guest links are public too: /p/<code>/pay/…
+            path = "/" + path[3:].partition("/")[2]
+        if not request.user.is_authenticated and not path.startswith(PUBLIC_PREFIXES):
             return redirect(f"/login/?next={quote(request.get_full_path())}")
         return self.get_response(request)
 

@@ -23,6 +23,9 @@ from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
+from cluster import current as cluster_current
+from cluster.current import local, name as hotel_name
+
 from .. import gdrive, revenue
 from ..forms import SettlementForm
 from ..models import AppSetting, AuditLog, Expense, Settlement
@@ -35,12 +38,24 @@ UNLOCK_SECONDS = 30 * 60
 MIN_LENGTH = 6
 
 
+def _env_password() -> str:
+    """REVENUE_PASSWORD in Render resets BSR Corridors' money password only; other cluster items: the admin resets it."""
+    item = cluster_current.get()
+    return os.environ.get("REVENUE_PASSWORD", "") if item is None or item.is_default else ""
+
+
+def _session_key() -> str:
+    """Unlocking one cluster item's money pages doesn't unlock another's."""
+    item = cluster_current.get()
+    return SESSION_KEY if item is None or item.is_default else f"{SESSION_KEY}:{item.code}"
+
+
 def _has_password() -> bool:
-    return bool(os.environ.get("REVENUE_PASSWORD") or AppSetting.get(HASH_KEY))
+    return bool(_env_password() or AppSetting.get(HASH_KEY))
 
 
 def _password_ok(password: str) -> bool:
-    env = os.environ.get("REVENUE_PASSWORD", "")
+    env = _env_password()
     if env:
         return hmac.compare_digest(password.encode(), env.encode())
     stored = AppSetting.get(HASH_KEY)
@@ -48,11 +63,12 @@ def _password_ok(password: str) -> bool:
 
 
 def _unlocked(request) -> bool:
-    return request.session.get(SESSION_KEY, 0) > time.time()
+    return request.session.get(_session_key(), 0) > time.time()
 
 
 def _fail_key(request) -> str:
-    return f"revenue-fail:{_client_ip(request)}"
+    item = cluster_current.get()
+    return f"revenue-fail:{_client_ip(request)}" + ("" if item is None or item.is_default else f":{item.code}")
 
 
 def revenue_unlocked(view):
@@ -60,7 +76,7 @@ def revenue_unlocked(view):
     @wraps(view)
     def wrapper(request, *args, **kwargs):
         if not _unlocked(request):
-            return redirect(f"/revenue/?next={quote(request.get_full_path())}")
+            return redirect(local("/revenue/") + f"?next={quote(request.get_full_path())}")
         return view(request, *args, **kwargs)
     return wrapper
 
@@ -84,7 +100,7 @@ def revenue_page(request, year=None, month_no=None):
             else:
                 AppSetting.put(HASH_KEY, make_password(password))
                 AuditLog.record("revenue_password", "Revenue password set")
-                request.session[SESSION_KEY] = time.time() + UNLOCK_SECONDS
+                request.session[_session_key()] = time.time() + UNLOCK_SECONDS
                 messages.success(request, "Revenue password set.")
                 return _after_unlock(request)
             return redirect(request.get_full_path())
@@ -93,7 +109,7 @@ def revenue_page(request, year=None, month_no=None):
             messages.error(request, f"Too many wrong passwords. Try again in {settings.LOGIN_LOCKOUT_SECONDS // 60} minutes.")
         elif _password_ok(password):
             cache.delete(key)
-            request.session[SESSION_KEY] = time.time() + UNLOCK_SECONDS
+            request.session[_session_key()] = time.time() + UNLOCK_SECONDS
             return _after_unlock(request)
         else:
             cache.set(key, cache.get(key, 0) + 1, settings.LOGIN_LOCKOUT_SECONDS)
@@ -169,7 +185,7 @@ def _month_url(month) -> str:
 
 @require_POST
 def revenue_lock(request):
-    request.session.pop(SESSION_KEY, None)
+    request.session.pop(_session_key(), None)
     return redirect("dashboard")
 
 
@@ -225,7 +241,7 @@ def settlement_delete(request, pk):
 def _summary_text(month, r, b, collected: dict, link: str) -> str:
     def inr(v):
         return f"₹{v:,.0f}"
-    lines = [f"{settings.HOTEL_NAME} — {month:%B %Y}", "",
+    lines = [f"{hotel_name()} — {month:%B %Y}", "",
              f"Received: {inr(b.received)}", f"Expenses: {inr(b.expenses)}", f"Profit: {inr(b.profit)}",
              f"Settled: {inr(b.settled)} · Left: {inr(b.left)}"]
     if collected["total"]:

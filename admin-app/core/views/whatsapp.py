@@ -5,11 +5,14 @@ from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode
 
 from django.contrib import messages
-from django.db import transaction
+
 from django.http import HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+from cluster.current import local
+
+from ..db import atomic
 from .. import invoice, whatsapp
 from ..forms import MessageTemplateForm
 from ..models import AuditLog, MessageTemplate, Stay
@@ -54,7 +57,7 @@ def template_edit(request, pk=None):
     obj = get_object_or_404(MessageTemplate, pk=pk) if pk else None
     form = MessageTemplateForm(request.POST or None, instance=obj)
     if request.method == "POST" and form.is_valid():
-        with transaction.atomic():
+        with atomic():
             saved = form.save()
             # Only one message opens at check-in, and one at check-out.
             if saved.on_check_in:
@@ -70,7 +73,7 @@ def template_edit(request, pk=None):
         "form": form,
         "title": f"{'Edit' if obj else 'Add'} WhatsApp message",
         "back": "whatsapp",
-        "delete_url": f"/whatsapp/messages/{obj.pk}/delete/" if obj else "",
+        "delete_url": local(f"/whatsapp/messages/{obj.pk}/delete/") if obj else "",
     })
 
 

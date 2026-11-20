@@ -7,6 +7,8 @@ from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+from cluster.current import local
+
 from .. import gdrive, revenue, services
 from ..forms import ExpenseForm, RecurringExpenseForm
 from ..models import AuditLog, Expense, RecurringExpense
@@ -106,10 +108,10 @@ def recurring_form(request, pk=None):
         messages.success(request, f"Monthly expense “{saved.reason}” saved — it is added on day {saved.day} of each month.")
         for e in services.add_recurring_expenses():
             messages.info(request, f"Added this month’s: {e.reason} ₹{e.amount:,.0f}.")
-        return redirect("/expenses/#recurring")
+        return redirect(local("/expenses/#recurring"))
     return render(request, "core/simple_form.html", {
         "form": form, "title": f"{'Edit' if obj else 'Add'} monthly fixed expense", "back": "expense_list",
-        "delete_url": f"/expenses/monthly/{obj.pk}/delete/" if obj else "",
+        "delete_url": local(f"/expenses/monthly/{obj.pk}/delete/") if obj else "",
     })
 
 
@@ -120,4 +122,4 @@ def recurring_delete(request, pk):
     AuditLog.record("expense", f"Deleted monthly fixed expense: {obj} (expenses already added are kept)")
     obj.delete()
     messages.success(request, "Monthly expense removed. Expenses already added are kept.")
-    return redirect("/expenses/#recurring")
+    return redirect(local("/expenses/#recurring"))

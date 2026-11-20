@@ -19,9 +19,10 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from django.conf import settings
 from django.core import signing
 from fpdf import FPDF
+
+from cluster.current import name as hotel_name
 
 from .models import Stay
 from .services import today
@@ -249,7 +250,7 @@ def pdf(stay: Stay) -> bytes:
     if LOGO.exists():
         p.image(str(LOGO), x=(p.w - 18) / 2, y=y, h=20)
         y += 22
-    p.put(left, y, width, 8, settings.HOTEL_NAME.upper(), size=18, style="B", align="C")
+    p.put(left, y, width, 8, hotel_name().upper(), size=18, style="B", align="C")
     y += 8
     address = [ln.strip() for ln in info.get("location", "").splitlines() if ln.strip() and "://" not in ln]
     for ln in address:
@@ -387,7 +388,7 @@ def pdf(stay: Stay) -> bytes:
         p.add_page()
     y = p.h - 52
     p.set_auto_page_break(False)
-    p.put(right - 80, y, 80, 5, f"For {settings.HOTEL_NAME}", style="B", align="R")
+    p.put(right - 80, y, 80, 5, f"For {hotel_name()}", style="B", align="R")
     p.put(right - 80, y + 6, 80, 4.5, "Electronically generated", size=8.5, align="R")
     p.put(right - 80, y + 10.5, 80, 4.5, "(no signature required)", size=8.5, align="R")
     p.put(right - 80, y + 16, 80, 5, "Authorised Signatory", size=9, style="B", align="R")
@@ -433,11 +434,11 @@ def generate(stay: Stay, only_if_missing: bool = False) -> str:
 
     One at a time per stay: Check out opens the departure message in the same tap, so the check-out and the message
     can both get here at once — the second waits for the first, so there's never a second file."""
-    from django.db import transaction
+    from .db import atomic
     from django.utils import timezone
     from . import gdrive
     from .models import AppSetting
-    with transaction.atomic():
+    with atomic():
         Stay.objects.select_for_update().filter(pk=stay.root.pk).first()
         if only_if_missing and generated_at(stay):
             return "exists"

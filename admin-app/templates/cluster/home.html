@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Cluster items{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ cluster_name }}</h1><p class="muted">{% if user.is_superuser %}All cluster items.{% else %}The cluster items you can open.{% endif %} Today at a glance — money is inside each item.</p></div>
+  {% if user.is_superuser %}<span class="btn btn-outline" aria-disabled="true" title="Coming in phase 2">+ Add cluster item <small>(phase 2)</small></span>{% endif %}
+</div>
+
+{% if cards %}
+<div class="item-grid">
+  {% for c in cards %}{% with i=c.item s=c.snap %}
+  <div class="item-card{% if i.archived %} is-archived{% endif %}" style="--i: {{ forloop.counter0 }}; --c-accent: {{ i.colors.0 }}; --c-dark: {{ i.colors.2 }};">
+    <a class="item-card-link" href="{{ i.prefix }}" style="color: inherit; text-decoration: none;">
+      <div class="item-card-top">
+        <span class="kind-badge">{{ i.get_kind_display }}{% if i.archived %} · archived{% endif %}</span>
+        <h2>{{ i.name }}</h2>
+        {% if i.address %}<small>{{ i.address|truncatechars:60 }}</small>{% endif %}
+      </div>
+      <div class="item-card-body">
+        {% if s.error %}
+          <p class="item-alert">Can’t read this item’s data right now — it may be updating.</p>
+        {% elif s %}
+          <div class="occupancy" title="{{ s.taken }} of {{ s.total }} {{ s.units }} taken tonight"><i style="--pct: {% widthratio s.taken s.total|default:1 100 %}%"></i></div>
+          <div class="item-stats">
+            <div><b>{{ s.taken }}/{{ s.total }}</b><span>{{ s.units }} tonight</span></div>
+            <div><b>{{ s.arriving }}</b><span>arriving today</span></div>
+            <div><b>{{ s.departing }}</b><span>leaving today</span></div>
+          </div>
+          {% if s.verify %}<p class="item-alert">{{ s.verify }} UPI payment{{ s.verify|pluralize }} to verify</p>{% endif %}
+        {% endif %}
+      </div>
+    </a>
+    {% if user.is_superuser %}<div class="item-card-foot"><a class="btn btn-ghost btn-sm" href="{% url 'item_theme' i.code %}">Theme</a></div>{% endif %}
+  </div>
+  {% endwith %}{% endfor %}
+</div>
+{% else %}
+<section class="card empty"><h2>No cluster items yet</h2><p class="muted">Ask the main admin to give you access to a hotel, PG or co-living.</p></section>
+{% endif %}
+{% endblock %}

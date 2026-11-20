@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Theme · {{ obj.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Theme for {{ obj.name }}</h1><p class="muted">Each cluster item has its own colours, so you always know which one you’re in. Pick one to preview it.</p></div>
+  <a class="btn btn-ghost" href="{% url 'cluster_home' %}">Back</a>
+</div>
+
+<form method="post" class="card" data-theme-picker>{% csrf_token %}
+  <div class="theme-grid" role="radiogroup" aria-label="Theme">
+    {% for key, label, accent, accent_dark, dark in themes %}
+    <label class="theme-choice" data-accent="{{ accent }}" data-dark="{{ dark }}">
+      <input type="radio" name="theme" value="{{ key }}" {% if key == obj.theme %}checked{% endif %}>
+      <span class="theme-dots"><i style="background: {{ dark }}"></i><i style="background: {{ accent }}"></i></span>
+      <span>{{ label }}</span>
+    </label>
+    {% endfor %}
+  </div>
+
+  <h2 style="margin-top: 20px">Preview</h2>
+  <div class="theme-preview" data-preview style="--p-accent: {{ obj.colors.0 }}; --p-dark: {{ obj.colors.2 }};">
+    <div class="tp-side"><b>{{ obj.name }}</b><span class="on">Today</span><span>Calendar</span><span>Stays</span><span>Guests</span></div>
+    <div class="tp-main">
+      <strong>Room 201</strong>
+      <div class="tp-beds"><i class="on"></i><i class="on"></i><i></i></div>
+      <span class="muted small">2 of 3 beds taken</span>
+      <span class="btn btn-sm">+ New stay</span>
+    </div>
+  </div>
+  <div class="form-actions"><button class="btn btn-primary">Save theme</button></div>
+</form>
+{% endblock %}

@@ -10,6 +10,8 @@ from django.shortcuts import get_object_or_404, redirect
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
+from cluster.current import local
+
 from .. import gdrive, photos
 from ..middleware import current_user_name
 from ..models import AuditLog, Expense, IdPhoto, Stay, StayIdPhoto
@@ -153,7 +155,7 @@ def id_photos_upload(request, pk):
                                     f"{', '.join(already)}", stay=stay)
             messages.info(request, f"Already saved for this guest, so not stored again — ticked for this stay: "
                                    f"{', '.join(already)}.")
-    return _back(request, f"/stays/{pk}/")
+    return _back(request, local(f"/stays/{pk}/"))
 
 
 @require_POST
@@ -168,7 +170,7 @@ def id_photos_use(request, pk):
         messages.success(request, f"{len(added)} saved photo{'s' if len(added) > 1 else ''} ticked for this stay.")
     else:
         messages.error(request, "Tick at least one photo.")
-    return _back(request, f"/stays/{pk}/")
+    return _back(request, local(f"/stays/{pk}/"))
 
 
 @require_POST
@@ -182,7 +184,7 @@ def id_photo_unuse(request, pk, photo_pk):
         link.delete()
         AuditLog.record("stay", f"Unticked ID photo for this stay: {link.photo.name}", stay=stay)
         messages.success(request, "Photo unticked for this stay (still saved for the guest).")
-    return _back(request, f"/stays/{pk}/")
+    return _back(request, local(f"/stays/{pk}/"))
 
 
 @require_POST
@@ -201,7 +203,7 @@ def id_photo_person(request, pk, photo_pk):
         p.person = person
         p.save(update_fields=["person"])
         messages.success(request, f"Photo is now {person}’s ID.")
-    return _back(request, f"/stays/{pk}/")
+    return _back(request, local(f"/stays/{pk}/"))
 
 
 @require_POST
@@ -212,9 +214,9 @@ def id_photo_delete(request, pk):
     if used_on:
         messages.error(request, f"{p.name} can’t be deleted — it’s the ID record for checked-out stay"
                                 f"{'s' if len(used_on) > 1 else ''} {', '.join(f'#{s.pk}' for s in used_on)}.")
-        return _back(request, f"/guests/{p.guest_id}/")
+        return _back(request, local(f"/guests/{p.guest_id}/"))
     gdrive.delete_file(p.file_id)
     p.delete()
     AuditLog.record("guest", f"Deleted ID photo {p.name}")
     messages.success(request, "ID photo deleted.")
-    return _back(request, f"/guests/{p.guest_id}/")
+    return _back(request, local(f"/guests/{p.guest_id}/"))

@@ -3,12 +3,13 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib import messages
-from django.db import transaction
+
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from ..db import atomic
 from .. import invoice, gdrive, services
 from ..exports import build_workbook
 from ..forms import DateRangeForm
@@ -89,7 +90,7 @@ def settings_page(request):
             messages.error(request, "Type PURGE and choose at least 1 year to delete old records.")
         else:
             cutoff = today() - timedelta(days=365 * int(years))
-            with transaction.atomic():
+            with atomic():
                 old = Stay.objects.filter(check_out__lt=cutoff).exclude(status__in=[Stay.Status.UPCOMING, Stay.Status.CHECKED_IN])
                 count = old.count()
                 old.delete()

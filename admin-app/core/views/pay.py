@@ -4,11 +4,12 @@ from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from urllib.parse import quote
 
-from django.conf import settings
 from django.contrib import messages
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
+
+from cluster.current import name as hotel_name, upi as payments_upi
 
 from .. import invoice, payments, services, whatsapp
 from ..shortlinks import shorten
@@ -63,14 +64,14 @@ def guest_page(request, token):
             return redirect("pay_page", token=token)
     confirm = ""
     if req.status == PaymentRequest.Status.CLAIMED and (number := payments.hotel_whatsapp()):
-        text = (f"Hello {settings.HOTEL_NAME}, I have paid {invoice.money(req.amount)} by UPI for Room "
+        text = (f"Hello {hotel_name()}, I have paid {invoice.money(req.amount)} by UPI for Room "
                 f"{stay.room.number} ({stay.guest.name})." + (f" UPI reference: {req.reference}." if req.reference else ""))
         confirm = f"https://wa.me/{number}?text={quote(text)}"
     open_ = req.status == PaymentRequest.Status.OPEN and not stay.is_void
     return render(request, "core/pay.html", {
         "req": req, "stay": stay, "open": open_, "confirm": confirm,
         "upi": payments.upi_uri(req) if open_ else "", "qr": payments.qr_png(req) if open_ else "",
-        "upi_id": settings.UPI_ID, "upi_name": settings.UPI_NAME, "first_name": stay.guest.name.split()[0],
+        "upi_id": payments_upi()[0], "upi_name": payments_upi()[1], "first_name": stay.guest.name.split()[0],
     })
 
 
@@ -131,5 +132,5 @@ def testing(request):
         messages.success(request, f"Test stay created: Room {TEST_ROOM}, {invoice.money(amount)}.")
         return redirect("stay_detail", pk=s.pk)
     return render(request, "core/testing.html", {
-        "stays": list(_test_stays()), "upi_ready": payments.configured(), "upi_id": settings.UPI_ID,
+        "stays": list(_test_stays()), "upi_ready": payments.configured(), "upi_id": payments_upi()[0],
     })

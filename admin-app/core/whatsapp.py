@@ -7,7 +7,8 @@ The link opens WhatsApp on this phone / computer (whichever number is logged in 
 import re
 from urllib.parse import quote
 
-from django.conf import settings
+
+from cluster.current import name as hotel_name
 
 from .models import AppSetting, Stay
 
@@ -91,7 +92,7 @@ def context(stay: Stay, amount=None, base_url: str = "") -> dict[str, str]:
         "balance": _money(max(stay.balance, 0)),
         "amount": _money(amount or 0),
         "host": stay.host,
-        "hotel": settings.HOTEL_NAME,
+        "hotel": hotel_name(),
         # Only once the invoice is generated; until then the message's invoice part is left out (see render).
         "invoice_no": invoice.number(stay) if has_inv else "",
         "invoice_link": shorten(f"{base_url.rstrip('/')}/invoice/{invoice.token(stay)}/") if has_inv else "",
@@ -109,7 +110,7 @@ def render(body: str, ctx: dict[str, str]) -> str:
 
 
 def footer() -> str:
-    return f"- {settings.HOTEL_NAME}"
+    return f"- {hotel_name()}"
 
 
 def with_footer(text: str) -> str:

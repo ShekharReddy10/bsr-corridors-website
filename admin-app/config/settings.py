@@ -53,7 +53,11 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.humanize",
     "core",
+    "cluster",
 ]
+
+# Each cluster item's tables go to its own schema; logins and cluster tables stay in the main database.
+DATABASE_ROUTERS = ["cluster.router.ClusterRouter"]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -65,6 +69,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "core.middleware.LoginRequiredMiddleware",
+    "cluster.middleware.ClusterMiddleware",
     "core.middleware.CurrentUserMiddleware",
     "core.middleware.NoIndexMiddleware",
 ]
@@ -106,7 +111,7 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
 ]
 LOGIN_URL = "login"
-LOGIN_REDIRECT_URL = "dashboard"
+LOGIN_REDIRECT_URL = "cluster_home"
 LOGOUT_REDIRECT_URL = "login"
 
 # Sessions: expire after 8 hours of inactivity.
@@ -133,7 +138,7 @@ SHORT_DATE_FORMAT = "d-m-Y"
 DATETIME_FORMAT = "d-m-Y H:i"
 DATE_INPUT_FORMATS = ["%Y-%m-%d", "%d-%m-%Y"]
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"  # absolute: cluster item pages live under /p/<code>/
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STORAGES = {
@@ -147,6 +152,7 @@ STORAGES = {
 
 # ── App settings ──────────────────────────────────────────────
 HOTEL_NAME = env("HOTEL_NAME", "BSR Corridors")
+CLUSTER_NAME = env("CLUSTER_NAME", "BSR Group of Hotels")
 # Payment links (UPI, no gateway): the UPI ID that receives the money and the name shown in the guest's UPI app.
 UPI_ID = env("UPI_ID")
 UPI_NAME = env("UPI_NAME", HOTEL_NAME)

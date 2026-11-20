@@ -6,8 +6,9 @@ link again gives the same short link. The target pages keep their own checks (si
 import secrets
 
 from django.conf import settings
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
 
+from .db import atomic
 from .models import ShortLink
 
 ALPHABET = "23456789abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ"  # no 0/O, 1/l/I
@@ -22,7 +23,7 @@ def shorten(url: str) -> str:
     link = ShortLink.objects.filter(path=path).first()
     while link is None:
         try:
-            with transaction.atomic():
+            with atomic():
                 link = ShortLink.objects.create(path=path, code="".join(secrets.choice(ALPHABET) for _ in range(LENGTH)))
         except IntegrityError:  # code taken (or the same path saved at the same moment): try again
             link = ShortLink.objects.filter(path=path).first()

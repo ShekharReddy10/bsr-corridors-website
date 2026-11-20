@@ -363,7 +363,7 @@
     if (digits === lastLookup) return;
     lastLookup = digits;
     try {
-      const res = await fetch(`/guests/lookup/?phone=${encodeURIComponent(phone.value)}`, { headers: { Accept: "application/json" } });
+      const res = await fetch(`${document.body.dataset.base || "/"}guests/lookup/?phone=${encodeURIComponent(phone.value)}`, { headers: { Accept: "application/json" } });
       const g = await res.json();
       if (!g.found) { clearReturning(); return; }
       box.innerHTML = "";
@@ -424,5 +424,18 @@
         if (e && e.name !== "AbortError") alert("Couldn’t share the invoice. Use Download instead.");
       });
     });
+  });
+})();
+
+// Cluster item theme: live preview while picking (nothing is saved until "Save theme").
+(() => {
+  const picker = document.querySelector("[data-theme-picker]");
+  if (!picker) return;
+  const preview = picker.querySelector("[data-preview]");
+  picker.addEventListener("change", (e) => {
+    const choice = e.target.closest(".theme-choice");
+    if (!choice || !preview) return;
+    preview.style.setProperty("--p-accent", choice.dataset.accent);
+    preview.style.setProperty("--p-dark", choice.dataset.dark);
   });
 })();
