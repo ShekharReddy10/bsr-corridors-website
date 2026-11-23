@@ -128,6 +128,10 @@ def send(request, pk):
         if "{payment_link}" in template.body:  # needs an amount and a new link: sent from the Payment section
             messages.info(request, "Use “Send payment link” in the Payment section to send a payment link.")
             return redirect("stay_detail", pk=pk)
+        if any(f in template.body for f in whatsapp.EXT_FIELDS) and not whatsapp.extension(stay):
+            messages.info(request, "This stay hasn’t been extended yet — the “Stay extended” message opens after "
+                                   "you extend it.")
+            return redirect("stay_detail", pk=pk)
         if "{invoice_link}" in template.body or "{invoice_no}" in template.body:
             invoice.ensure(stay)  # departure / check-out details: make the invoice first, so the link goes with it
         name, text = template.name, whatsapp.render(template.body, whatsapp.context(stay, amount, request.build_absolute_uri("/")))

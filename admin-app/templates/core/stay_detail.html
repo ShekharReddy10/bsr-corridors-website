@@ -190,6 +190,7 @@
     <form method="post" action="{% url 'stay_pay_link' stay.pk %}" target="whatsapp" class="wa-amount">{% csrf_token %}
       <input name="amount" type="number" min="1" step="1" inputmode="decimal" placeholder="₹" aria-label="Amount to pay" required value="{% if stay.balance > 0 %}{{ stay.balance|floatformat:0 }}{% endif %}">
       <button class="btn btn-outline btn-sm">{{ t.name }}</button></form>{% endif %}
+    {% elif "{ext_amount}" in t.body %}{% if extended %}<a class="btn btn-outline btn-sm" href="{% url 'stay_whatsapp' stay.pk %}?t={{ t.pk }}" target="whatsapp">{{ t.name }}</a>{% endif %}
     {% elif "{amount}" in t.body %}
     <form method="get" action="{% url 'stay_whatsapp' stay.pk %}" target="whatsapp" class="wa-amount"><input type="hidden" name="t" value="{{ t.pk }}">
       <input name="amount" type="number" min="1" step="1" inputmode="decimal" placeholder="₹" aria-label="Amount received" required value="{% if last_payment %}{{ last_payment.amount|floatformat:0 }}{% endif %}">

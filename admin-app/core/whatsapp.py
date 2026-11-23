@@ -5,6 +5,7 @@ The link opens WhatsApp on this phone / computer (whichever number is logged in 
 """
 
 import re
+from decimal import Decimal
 from urllib.parse import quote
 
 from django.conf import settings
@@ -44,6 +45,12 @@ STAY_FIELDS = {
     "invoice_no": "Invoice number, e.g. 261115-261118-101",
     "payment_link": "UPI payment link (only in the “Payment link” message — sent from the stay’s Payment section)",
     "amount": "Amount just received (typed in next to the button; else the latest payment)",
+    "ext_from": "Extension: first extra night (only in the “Stay extended” message)",
+    "ext_to": "Extension: new check-out date",
+    "ext_nights": "Extension: number of extra nights",
+    "ext_amount": "Extension: amount for the extra nights",
+    "prev_balance": "Extension: balance already due before it (the line is left out when there was none)",
+    "total_due": "Total still to pay for the whole stay (extension + any earlier balance, less payments)",
     "host": "Host looking after the guest",
     "hotel": "Hotel name",
 }
@@ -95,7 +102,12 @@ def context(stay: Stay, amount=None, base_url: str = "") -> dict[str, str]:
         # Only once the invoice is generated; until then the message's invoice part is left out (see render).
         "invoice_no": invoice.number(stay) if has_inv else "",
         "invoice_link": shorten(f"{base_url.rstrip('/')}/invoice/{invoice.token(stay)}/") if has_inv else "",
+        "total_due": _money(max(due(stay), 0)) if stay.pk else _money(max(stay.balance, 0)),
     }
+    if stay.pk and (ext := extension(stay)):
+        ctx.update({"ext_from": f"{ext['from']:%a %d-%m-%Y}", "ext_to": f"{ext['to']:%a %d-%m-%Y}",
+                    "ext_nights": str(ext["nights"]), "ext_amount": _money(ext["amount"]),
+                    "prev_balance": _money(ext["prev"]) if ext["prev"] > 0 else ""})
     # Hotel info may use stay placeholders too, e.g. a Wi-Fi name "BSR {floor}".
     return {**{k: render(v, ctx) for k, v in hotel_info().items()}, **ctx}
 
@@ -105,6 +117,8 @@ def render(body: str, ctx: dict[str, str]) -> str:
     left out while the stay has no invoice (not generated yet, or a platform booking not extended with us)."""
     if "invoice_link" in ctx and not ctx["invoice_link"]:
         body = "\n\n".join(p for p in re.split(r"\n\s*\n", body) if "{invoice_link}" not in p and "{invoice_no}" not in p)
+    if ctx.get("prev_balance") == "":  # no earlier balance: that line goes
+        body = "\n".join(line for line in body.split("\n") if "{prev_balance}" not in line)
     return PLACEHOLDER.sub(lambda m: ctx.get(m.group(1), m.group(0)), body).strip()
 
 
@@ -135,3 +149,38 @@ def link(phone: str, text: str, mobile: bool) -> str:
     (wa.me would first show a "Chat on WhatsApp" page)."""
     query = f"phone={wa_number(phone)}" + (f"&text={quote(text)}" if text else "")
     return f"whatsapp://send?{query}" if mobile else f"https://web.whatsapp.com/send?{query}"
+
+
+# ── Stay extensions: the latest one per stay, for the "Stay extended" message ──
+
+EXT_FIELDS = ("{ext_from}", "{ext_to}", "{ext_nights}", "{ext_amount}", "{prev_balance}")
+
+
+def due(stay: Stay) -> Decimal:
+    """Still to pay for the whole stay (all its rooms after a move)."""
+    return sum((s.balance for s in stay.chain() if not s.is_void), Decimal(0))
+
+
+def record_extension(stay: Stay, old_check_out, new_check_out, amount, prev_balance) -> None:
+    import json
+    AppSetting.put(f"extension_{stay.root.pk}", json.dumps({
+        "from": old_check_out.isoformat(), "to": new_check_out.isoformat(),
+        "nights": (new_check_out - old_check_out).days, "amount": str(amount or 0), "prev": str(max(prev_balance, 0))}))
+
+
+def extension(stay: Stay) -> dict | None:
+    import json
+    from datetime import date
+    raw = AppSetting.get(f"extension_{stay.root.pk}")
+    if not raw:
+        return None
+    d = json.loads(raw)
+    return {"from": date.fromisoformat(d["from"]), "to": date.fromisoformat(d["to"]), "nights": d["nights"],
+            "amount": Decimal(d["amount"]), "prev": Decimal(d["prev"])}
+
+
+def extension_message():
+    """The message sent after an extension: the one named “Stay extended”, else any with {ext_amount}."""
+    from .models import MessageTemplate
+    with_ext = [t for t in MessageTemplate.objects.all() if "{ext_amount}" in t.body]
+    return next((t for t in with_ext if t.name.strip().lower() == "stay extended"), with_ext[0] if with_ext else None)

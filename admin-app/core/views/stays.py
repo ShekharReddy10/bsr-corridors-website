@@ -11,7 +11,7 @@ from django.utils.html import escape
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
-from .. import gdrive, invoice, checks, payments, services
+from .. import gdrive, invoice, checks, payments, services, whatsapp
 from ..fields import mask
 from ..forms import ExtendForm, GuestForm, PaymentForm, ShortenForm, StayForm, other_guests_formset
 from ..models import AuditLog, Guest, MessageTemplate, Payment, PaymentRequest, Room, Stay
@@ -226,6 +226,7 @@ def stay_detail(request, pk):
         "wa_caretaker": next((t for t in MessageTemplate.objects.all() if "caretaker" in t.name.lower()), None),
         "drive_ready": gdrive.is_configured(),
         "wa_templates": MessageTemplate.objects.all(),
+        "extended": whatsapp.extension(stay) is not None,  # the “Stay extended” button shows once it was extended
         "last_payment": stay.payments.order_by("-date", "-pk").first(),
         "just_paid": int(request.GET["paid"]) if request.GET.get("paid", "").isdigit() else None,
         "just_checked_in": request.GET.get("welcome") == "1" and stay.status == Stay.Status.CHECKED_IN,
@@ -377,8 +378,12 @@ def extend(request, pk):
         return redirect("stay_detail", pk=pk)
 
     plan = None
+    fetch = request.headers.get("X-Requested-With") == "fetch"  # page script: opens the "Stay extended" message
     if request.method == "POST":
         form = ExtendForm(request.POST, stay=stay)
+        old_co, before = stay.check_out, whatsapp.due(stay)
+        if not form.is_valid() and fetch:
+            return JsonResponse({"ok": False})  # the script sends the form again normally, to show what's wrong
         if form.is_valid():
             new_co = form.cleaned_data["new_check_out"]
             money = (form.cleaned_data["amount"], form.cleaned_data["paid_now"] or 0, form.cleaned_data["payment_mode"],
@@ -394,7 +399,7 @@ def extend(request, pk):
                         move_start = min(max(stay.check_in, services.today()), stay.check_out)
                         services.extend_move(stay, new_co, room, move_start, *money)
                         messages.success(request, f"Extended: {stay.guest.name} moved to {room}, until {new_co:%d-%m-%Y}.")
-                    return redirect("stay_detail", pk=stay.root.pk)
+                    return _extended(request, stay, old_co, new_co, money[0], before, stay.root.pk, fetch)
                 plan = services.plan_extension(stay, new_co)
                 if plan.can_extend_in_place:
                     nights = f"+{plan.extra_nights} night{'s' if plan.extra_nights != 1 else ''}"
@@ -406,8 +411,12 @@ def extend(request, pk):
                         services.extend_with_moves(stay, new_co, plan.moves, *money)
                         messages.success(request, f"Extended in {stay.room} until {new_co:%d-%m-%Y} ({nights}). "
                                                   + "; ".join(moved) + ".")
-                    return redirect("stay_detail", pk=stay.pk)
+                    return _extended(request, stay, old_co, new_co, money[0], before, stay.pk, fetch)
+                if fetch:
+                    return JsonResponse({"ok": False})  # choices to make (other room): shown by the normal page
             except (services.StayConflict, ValueError) as exc:
+                if fetch:
+                    return JsonResponse({"ok": False})
                 messages.error(request, f"{exc} Please choose again.")
                 plan = services.plan_extension(stay, new_co)
     else:
@@ -417,6 +426,20 @@ def extend(request, pk):
 
 
 @require_POST
+def _extended(request, stay, old_co, new_co, amount, before, show_pk, fetch):
+    """After an extension: remember it for the “Stay extended” message, and open that message (page script)."""
+    stay.refresh_from_db()
+    whatsapp.record_extension(stay, old_co, new_co, amount, before)
+    template = whatsapp.extension_message()
+    last = [s for s in stay.chain() if not s.is_void][-1]  # after a room move, the room the guest is in now
+    wa = f"/stays/{last.pk}/whatsapp/?t={template.pk}" if template and stay.guest.phone else ""
+    if fetch:
+        return JsonResponse({"ok": True, "next": f"/stays/{show_pk}/", "wa": wa})
+    if wa:
+        messages.info(request, "Tap “Stay extended” under WhatsApp to send the guest the new dates and amount.")
+    return redirect("stay_detail", pk=show_pk)
+
+
 def payment_delete(request, pk, payment_pk):
     payment = get_object_or_404(Payment.objects.select_related("stay"), pk=payment_pk, stay_id=pk)
     services.delete_payment(payment)

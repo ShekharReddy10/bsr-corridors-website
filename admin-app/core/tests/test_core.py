@@ -1166,6 +1166,43 @@ class InvoiceTests(TestCase):
             self.assertIn(no, text)
             self.assertIn("http://testserver/s/", text)
 
+    def test_extend_opens_stay_extended_message(self):
+        from urllib.parse import parse_qs, urlparse
+        s = stay(make_guest(phone="98765 43210"), self.rooms["101"], -2, 3, status=Stay.Status.CHECKED_IN,
+                 amount_paid=Decimal(4000))  # total ₹4,500: ₹500 still due
+        page = self.client.get(f"/stays/{s.pk}/").content.decode()
+        self.assertNotIn(">Stay extended<", page)  # not extended yet
+        r = self.client.get(f"/stays/{s.pk}/whatsapp/?t={MessageTemplate.objects.get(name='Stay extended').pk}")
+        self.assertRedirects(r, f"/stays/{s.pk}/", fetch_redirect_response=False)  # nothing to tell yet
+        old_out = s.check_out
+        r = self.client.post(f"/stays/{s.pk}/extend/", {"new_check_out": (old_out + timedelta(days=2)).isoformat(),
+                                                        "amount": "3000", "paid_now": "1000", "payment_mode": "cash"},
+                             headers={"X-Requested-With": "fetch"})
+        d = r.json()
+        self.assertTrue(d["ok"])
+        self.assertEqual(d["next"], f"/stays/{s.pk}/")
+        text = parse_qs(urlparse(self.client.get(d["wa"])["Location"]).query)["text"][0]
+        self.assertIn(f"{old_out:%d-%m-%Y} to", text)
+        self.assertIn(f"{old_out + timedelta(days=2):%d-%m-%Y}", text)
+        self.assertIn("(2 night(s))", text)
+        self.assertIn("Amount for the extended stay: ₹3,000", text)
+        self.assertIn("Previous balance: ₹500", text)
+        self.assertIn("Total amount to be paid: ₹2,500", text)  # 500 + 3000 − 1000 paid now
+        self.assertContains(self.client.get(f"/stays/{s.pk}/"), ">Stay extended<")
+        # Extended again with nothing due before: the "Previous balance" line is left out.
+        s.refresh_from_db()
+        services.add_payment(s, Decimal(2500), "upi")
+        self.client.post(f"/stays/{s.pk}/extend/", {"new_check_out": (old_out + timedelta(days=3)).isoformat(),
+                                                    "amount": "1500"})
+        s.refresh_from_db()
+        text = parse_qs(urlparse(self.client.get(d["wa"])["Location"]).query)["text"][0]
+        self.assertNotIn("Previous balance", text)
+        self.assertIn("Total amount to be paid: ₹1,500", text)
+        # A clash (or a wrong date) through the page script: nothing changes, the page is shown normally instead.
+        bad = self.client.post(f"/stays/{s.pk}/extend/", {"new_check_out": old_out.isoformat(), "amount": "0"},
+                               headers={"X-Requested-With": "fetch"})
+        self.assertFalse(bad.json()["ok"])
+
     def test_platform_booking_not_invoiced_automatically(self):
         from urllib.parse import parse_qs, urlparse
         from core import invoice
