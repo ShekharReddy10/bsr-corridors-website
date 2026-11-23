@@ -214,10 +214,11 @@ def stay_detail(request, pk):
         "pay_ready": payments.configured(),
         "pay_requests": list(stay.payment_requests.all()[:5]),
         "pay_verify": [r for r in stay.payment_requests.all() if r.status == PaymentRequest.Status.CLAIMED],
-        "invoice_ok": invoice.eligible(stay) and not stay.is_void,
+        "invoice_ok": not stay.is_void,  # any stay: automatic for Walk-in / Direct, by hand for platform bookings
+        "invoice_auto": invoice.eligible(stay),
         "invoice_pending": invoice.pending(stay),
         "invoice_msgs": [t.pk for t in MessageTemplate.objects.all() if "{invoice_link}" in t.body or "{invoice_no}" in t.body],
-        "invoice_no": invoice.number(stay),
+        "invoice_no": invoice.number(stay, invoice.parts(stay, manual=True)),
         "invoice_drive": invoice.drive_link(stay),
         "invoice_at": invoice.generated_at(stay),
         "wa_invoice": _invoice_message(),
@@ -311,12 +312,12 @@ def stay_action(request, pk, action):
             messages.success(request, f"Rooms swapped: {stay.guest.name} is now in {stay.room}, "
                                       f"{other.guest.name} in {other.room}.")
         elif action == "make-invoice":
-            if stay.is_void or not invoice.eligible(stay):
-                messages.error(request, "This stay has no invoice — only Walk-in / Direct bookings, or nights a "
-                                        "platform guest extended directly with us, are invoiced.")
+            if stay.is_void:
+                messages.error(request, "A cancelled or transferred stay has no invoice.")
             else:
-                again, no = bool(invoice.generated_at(stay)), invoice.number(stay)
-                result = invoice.generate(stay)
+                again = bool(invoice.generated_at(stay))
+                result = invoice.generate(stay, manual=True)  # platform bookings: the whole stay, by hand
+                no = invoice.number(stay)
                 AuditLog.record("invoice", f"Invoice {no} {'updated' if again else 'generated'}", stay)
                 done = "updated" if again else "generated"
                 if result == "saved":

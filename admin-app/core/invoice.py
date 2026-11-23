@@ -1,11 +1,13 @@
 """Guest invoices as PDF (no GST — the hotel isn't GST-registered).
 
-Only money paid to us is invoiced: Walk-in and Direct bookings (the whole stay, covering its room moves too), and for
-platform bookings (Airbnb, Booking.com, …) only the nights the guest extended directly with us and the payments made to
-us for them. A platform booking that wasn't extended with us has no invoice at all.
+Automatic (made at check-out / with the departure message): Walk-in and Direct bookings (the whole stay, covering its
+room moves too), and for platform bookings (Airbnb, Booking.com, …) the nights the guest extended directly with us and
+the payments made to us for them.
 
-An invoice exists once it is generated — with the Generate button on the stay page, or at check-out. Until then no
-link is sent and the guest's link doesn't open.
+By hand: any other platform booking gets an invoice for the whole stay only when staff press Generate invoice (marked
+"manual"); from then on it is kept up to date at check-out and sent with the check-out message like any other.
+
+An invoice exists once it is generated. Until then no link is sent and the guest's link doesn't open.
 
 The number is built from the invoiced nights: first night (YYMMDD) - check-out (YYMMDD) - room number (3 digits; the
 penthouse is 601), e.g. 261115-261118-101. It follows the stay's dates and room, so it is never stored.
@@ -64,7 +66,7 @@ class Part:
         return ((self.end or max(today(), self.start)) - self.start).days
 
 
-def parts(stay: Stay) -> list[Part]:
+def _auto_parts(stay: Stay) -> list[Part]:
     out = []
     for s in _live_chain(stay):
         if s.is_void:
@@ -81,9 +83,25 @@ def parts(stay: Stay) -> list[Part]:
     return out
 
 
+def _whole_parts(stay: Stay) -> list[Part]:
+    """A platform booking invoiced by hand: the whole stay, every payment."""
+    return [Part(s, s.check_in, s.check_out, s.total, s.amount_paid or Decimal(0),
+                 list(s.payments.order_by("date", "pk")), True) for s in _live_chain(stay) if not s.is_void]
+
+
+def is_manual(stay: Stay) -> bool:
+    from .models import AppSetting
+    return AppSetting.get(f"{_drive_key(stay)}_manual") == "1"
+
+
+def parts(stay: Stay, manual: bool | None = None) -> list[Part]:
+    """What the invoice covers: the automatic part, else — for a platform booking invoiced by hand — the whole stay."""
+    return _auto_parts(stay) or (_whole_parts(stay) if (is_manual(stay) if manual is None else manual) else [])
+
+
 def eligible(stay: Stay) -> bool:
-    """Can this stay have an invoice: Walk-in / Direct, or a platform booking extended directly with us."""
-    return bool(parts(stay))
+    """Invoiced automatically: Walk-in / Direct, or a platform booking extended directly with us."""
+    return bool(_auto_parts(stay))
 
 
 def number(stay: Stay, ps: list[Part] | None = None) -> str:
@@ -422,11 +440,11 @@ def generated_at(stay: Stay) -> str:
 
 
 def has_invoice(stay: Stay) -> bool:
-    """An invoice exists: generated (button or check-out) and the stay still qualifies."""
-    return bool(generated_at(stay)) and eligible(stay)
+    """An invoice exists: generated (automatically or by hand) and the stay still has something to invoice."""
+    return bool(generated_at(stay)) and bool(parts(stay))
 
 
-def generate(stay: Stay, only_if_missing: bool = False) -> str:
+def generate(stay: Stay, only_if_missing: bool = False, manual: bool = False) -> str:
     """Generate (or update) this stay's invoice, saving it in Drive in the same file.
     Returns "saved", "no-drive" (Drive not connected, so it's not saved there), "failed" (Drive error), or "exists"
     (only_if_missing, and it was already generated).
@@ -441,6 +459,8 @@ def generate(stay: Stay, only_if_missing: bool = False) -> str:
         Stay.objects.select_for_update().filter(pk=stay.root.pk).first()
         if only_if_missing and generated_at(stay):
             return "exists"
+        if manual and not eligible(stay):  # a platform booking, by hand: the whole stay from now on
+            AppSetting.put(f"{_drive_key(stay)}_manual", "1")
         data = pdf(stay)  # raises ValueError if the stay has no invoice
         AppSetting.put(f"{_drive_key(stay)}_at", f"{timezone.localtime():%d-%m-%Y %I:%M %p}")
         if not gdrive.is_configured():
@@ -487,7 +507,7 @@ def forget(stay: Stay) -> None:
 
 def remove_from_drive(stay: Stay) -> None:
     """After a cancel / transfer: if nothing invoiceable is left, the invoice goes."""
-    if not eligible(stay):
+    if not parts(stay):
         forget(stay)
 
 
@@ -495,8 +515,8 @@ def on_check_out(request, stay: Stay) -> None:
     """Check-out generates the invoice (or updates it) once the guest has left — if the stay has one. Never blocks
     the check-out itself."""
     from django.contrib import messages
-    if not eligible(stay) or _live_chain(stay)[-1].status != Stay.Status.CHECKED_OUT:
-        return
+    if not (eligible(stay) or has_invoice(stay)) or _live_chain(stay)[-1].status != Stay.Status.CHECKED_OUT:
+        return  # platform bookings: only if an invoice was made by hand
     again = bool(generated_at(stay))
     result = generate(stay)  # the dates may have changed (early check-out): always brought up to date
     from .models import AuditLog
@@ -507,12 +527,12 @@ def on_check_out(request, stay: Stay) -> None:
 
 
 def tidy() -> int:
-    """Nightly: remove invoices of stays that no longer qualify (e.g. booked through Airbnb and not extended with
-    us, or deleted). Returns how many were removed."""
+    """Nightly: remove invoices of stays that no longer have anything to invoice (cancelled, transferred, deleted,
+    or changed to a platform booking that wasn't invoiced by hand). Returns how many were removed."""
     import re
     from .models import AppSetting
     pks = {int(m.group(1)) for k in AppSetting.objects.filter(key__startswith="invoice_").values_list("key", flat=True)
-           if (m := re.fullmatch(r"invoice_(\d+)_(?:id|link|at)", k))}
+           if (m := re.fullmatch(r"invoice_(\d+)_(?:id|link|at|manual)", k))}
     n = 0
     for pk in pks:
         stay = Stay.objects.filter(pk=pk).select_related("guest", "room", "room__room_type").first()
@@ -522,7 +542,7 @@ def tidy() -> int:
                 gdrive.delete_invoice(f"invoice_{pk}")
             AppSetting.objects.filter(key__startswith=f"invoice_{pk}_").delete()
             n += 1
-        elif not eligible(stay):
+        elif not parts(stay):
             forget(stay)
             n += 1
     return n
