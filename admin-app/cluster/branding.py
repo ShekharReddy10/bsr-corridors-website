@@ -34,7 +34,14 @@ def photo(item, which: str = "logo") -> bytes | None:
 
 def logo_url(item) -> str:
     """Where pages load the property's logo from ("" when it has none: the BSR icon is used)."""
-    return f"/properties/{item.code}/photo/logo/" if item is not None and item.logo_id else ""
+    return photo_url(item, "logo")
+
+
+def photo_url(item, which: str) -> str:
+    """The photo's address, with its Drive file ID in it: a new upload gets a new address, so browsers never keep
+    showing the old one."""
+    file_id = getattr(item, f"{which}_id", "") if item is not None else ""
+    return f"/properties/{item.code}/photo/{which}/?v={file_id[-12:]}" if file_id else ""
 
 
 def business_lines(item) -> list[str]:

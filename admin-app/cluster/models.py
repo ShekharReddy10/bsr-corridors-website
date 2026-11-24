@@ -100,6 +100,16 @@ class Item(models.Model):
         return "/" if self.is_default else f"/p/{self.code}/"
 
     @property
+    def cover_url(self) -> str:
+        from .branding import photo_url
+        return photo_url(self, "cover")
+
+    @property
+    def logo_url(self) -> str:
+        from .branding import photo_url
+        return photo_url(self, "logo")
+
+    @property
     def colors(self) -> tuple[str, str, str]:
         return THEMES.get(self.theme, THEMES["classic"])[1:]
 

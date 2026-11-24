@@ -8,7 +8,7 @@
   <div class="form-grid">{% field form.start %}{% field form.end %}{% field form.include_full_ids "span-2" %}</div>
   <p class="muted small">Without “full ID numbers”, only the last 4 digits are included.</p>
   <div class="form-actions">
-    <button class="btn btn-primary" name="action" value="download">Download Excel</button>
+    <button class="btn btn-primary" name="action" value="download" data-no-busy>Download Excel</button>
     <button class="btn btn-outline" name="action" value="drive" {% if not drive_ready %}disabled title="Connect Google Drive first (see Settings)"{% endif %}>Save to Google Drive</button>
   </div>
   {% if not drive_ready %}<p class="muted small">Google Drive isn’t connected yet — see <a href="{% url 'settings' %}">Settings</a>.</p>{% endif %}

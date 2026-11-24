@@ -30,7 +30,7 @@
   {% for c in cards %}{% with i=c.item s=c.snap %}
   <div class="item-card{% if i.archived %} is-archived{% endif %}" style="--i: {{ forloop.counter0 }}; --c-accent: {{ i.colors.0 }}; --c-dark: {{ i.colors.2 }};">
     <a class="item-card-link" href="{{ i.prefix }}" style="color: inherit; text-decoration: none;">
-      <div class="item-card-top"{% if i.cover_id %} style="background-image: linear-gradient(135deg, color-mix(in srgb, var(--c-dark) 85%, transparent), color-mix(in srgb, var(--c-accent) 55%, transparent)), url('{% url 'item_photo' i.code 'cover' %}'); background-size: cover; background-position: center;"{% endif %}>
+      <div class="item-card-top"{% if i.cover_id %} style="background-image: linear-gradient(135deg, color-mix(in srgb, var(--c-dark) 85%, transparent), color-mix(in srgb, var(--c-accent) 55%, transparent)), url('{{ i.cover_url }}'); background-size: cover; background-position: center;"{% endif %}>
         <span class="kind-badge">{{ i.get_kind_display }}{% if i.archived %} · archived{% endif %}</span>
         <h2>{{ i.name }}</h2>
         {% if i.address %}<small>{{ i.address|truncatechars:60 }}</small>{% endif %}

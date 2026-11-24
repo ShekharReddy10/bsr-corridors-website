@@ -68,10 +68,10 @@
   <h2>Photos</h2>
   <div class="photo-pair">
     <form method="post" enctype="multipart/form-data" class="inline-form">{% csrf_token %}<input type="hidden" name="action" value="cover">
-      {% if obj.cover_id %}<img src="{% url 'item_photo' obj.code 'cover' %}" alt="Cover photo" class="item-thumb">{% endif %}
+      {% if obj.cover_id %}<img src="{{ obj.cover_url }}" alt="Cover photo" class="item-thumb">{% endif %}
       <label class="field"><span class="label">Cover photo</span><input type="file" name="photo" accept="image/*"></label><button class="btn btn-outline btn-sm">Upload</button></form>
     <form method="post" enctype="multipart/form-data" class="inline-form">{% csrf_token %}<input type="hidden" name="action" value="logo">
-      {% if obj.logo_id %}<img src="{% url 'item_photo' obj.code 'logo' %}" alt="Logo" class="item-thumb item-thumb-logo">{% endif %}
+      {% if obj.logo_id %}<img src="{{ obj.logo_url }}" alt="Logo" class="item-thumb item-thumb-logo">{% endif %}
       <label class="field"><span class="label">Logo</span><input type="file" name="photo" accept="image/*"></label><button class="btn btn-outline btn-sm">Upload</button></form>
   </div>
 </section>

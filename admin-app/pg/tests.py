@@ -686,6 +686,8 @@ class PgTests(TransactionTestCase):
         self.assertIn("Thank you for choosing us!", printed)
         # On screen: its logo in the header.
         self.client.force_login(self.admin)
-        self.assertContains(self.client.get("/p/pgthree/pg/"), 'src="/properties/pgthree/photo/logo/"')
+        page = self.client.get("/p/pgthree/pg/")
+        self.assertContains(page, 'src="/properties/pgthree/photo/logo/?v=drive-file-1"')  # new upload: new address
+        self.assertContains(page, 'data-logo="/properties/pgthree/photo/logo/?v=drive-file-1"')  # the loader's logo
         self.assertEqual(branding.business_lines(None), [])
 

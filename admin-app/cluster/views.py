@@ -318,7 +318,8 @@ def item_photo(request, code, which):
     if not data:
         raise Http404
     response = HttpResponse(data, content_type="image/jpeg")
-    response["Cache-Control"] = "private, max-age=3600"
+    # The address changes with each new upload (?v=…), so browsers may keep this one for a day.
+    response["Cache-Control"] = "private, max-age=86400"
     return response
 
 

@@ -11,7 +11,7 @@
   <script src="{% static 'js/htmx.min.js' %}" defer></script>
   <script src="{% static 'js/app.js' %}" defer></script>
 </head>
-<body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}' data-base="{% if item %}{{ item.prefix }}{% else %}/{% endif %}"
+<body data-logo="{% if item_logo %}{{ item_logo }}{% else %}{% static 'img/icon.png' %}{% endif %}" data-icon="{% static 'img/icon.png' %}" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}' data-base="{% if item %}{{ item.prefix }}{% else %}/{% endif %}"
   {% if theme %}style="--gold: {{ theme.0 }}; --gold-dark: {{ theme.1 }}; --dark: {{ theme.2 }};"{% endif %}
   class="{% if item %}in-item{% if item.kind != 'hotel' %} in-pg{% endif %}{% else %}in-cluster{% endif %}">
 {% with url=request.resolver_match.url_name %}
@@ -82,7 +82,7 @@
         {% if user.is_superuser or my_items|length > 1 %}
         <div class="switcher-sheet">
           <a href="{% url 'cluster_home' %}?all">{{ CLUSTER_NAME }} — all properties</a>
-          {% for i in my_items %}{% if i.pk != item.pk %}<a href="{{ i.prefix }}">{% if i.logo_id %}<img src="/properties/{{ i.code }}/photo/logo/" alt="" width="20" height="20" class="brand-logo"> {% else %}<span class="swatch" style="--sw: {{ i.colors.0 }}"></span>{% endif %}{{ i.name }} <small class="muted">{{ i.get_kind_display }}</small></a>{% endif %}{% endfor %}
+          {% for i in my_items %}{% if i.pk != item.pk %}<a href="{{ i.prefix }}">{% if i.logo_id %}<img src="{{ i.logo_url }}" alt="" width="20" height="20" class="brand-logo"> {% else %}<span class="swatch" style="--sw: {{ i.colors.0 }}"></span>{% endif %}{{ i.name }} <small class="muted">{{ i.get_kind_display }}</small></a>{% endif %}{% endfor %}
         </div>
         {% endif %}
       </details>

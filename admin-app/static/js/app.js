@@ -57,24 +57,89 @@
   // "Generating the invoice…": shown while Check out / a message with the invoice link makes the invoice (a few
   // seconds — it's saved in Google Drive). A message opens WhatsApp in another tab/app, so this page then reloads
   // to show the invoice as generated.
-  let busyEl;
+  // The loader: the property's logo with a ring turning around it, and what is happening.
+  let busyEl, busyTimer = null;
   function busy(text, reloadAfter) {
+    clearTimeout(busyTimer);
+    busyTimer = null;
     if (!busyEl) {
       busyEl = document.createElement("div");
       busyEl.className = "busy-overlay";
       busyEl.setAttribute("role", "status");
-      busyEl.innerHTML = '<div class="busy-box"><span class="busy-spin" aria-hidden="true"></span><span class="busy-text"></span></div>';
+      busyEl.setAttribute("aria-live", "polite");
+      const icon = document.body.dataset.icon || "/static/img/icon.png";
+      busyEl.innerHTML = '<div class="busy-box"><span class="busy-logo" aria-hidden="true"><img alt=""><span class="busy-ring">' +
+        '</span></span><span class="busy-text"></span></div>';
+      const img = busyEl.querySelector("img");
+      img.addEventListener("error", () => { if (!img.src.endsWith(icon)) img.src = icon; });  // logo unavailable
+      img.src = document.body.dataset.logo || icon;
       document.body.append(busyEl);
     }
-    busyEl.querySelector(".busy-text").textContent = text;
+    busyEl.querySelector(".busy-text").textContent = text || "Please wait…";
     busyEl.hidden = false;
     if (reloadAfter) setTimeout(() => location.reload(), 6000);
   }
-  window.addEventListener("pageshow", () => { if (busyEl) busyEl.hidden = true; });  // back button
+  function unbusy() {
+    clearTimeout(busyTimer);
+    busyTimer = null;
+    if (busyEl) busyEl.hidden = true;
+  }
+  // Only when it takes a moment: quick answers never flash the loader.
+  let busyGiveUp = null;
+  function busySoon(text, ms) {
+    clearTimeout(busyTimer);
+    clearTimeout(busyGiveUp);
+    busyTimer = setTimeout(() => {
+      busy(text, false);
+      busyGiveUp = setTimeout(unbusy, 30000);  // e.g. a download: the page stays, so don't keep the loader up
+    }, ms === undefined ? 250 : ms);
+  }
+  window.app = Object.assign(window.app || {}, { busy, unbusy, busySoon });
+  // The property's logo in the header: if it can't be loaded (Drive unreachable), the BSR icon instead.
+  document.querySelectorAll("img.brand-logo").forEach((img) => {
+    const icon = document.body.dataset.icon;
+    const fallback = () => { if (icon && !img.src.endsWith(icon)) img.src = icon; };
+    if (img.complete && !img.naturalWidth) fallback();
+    else img.addEventListener("error", fallback);
+  });
+  window.addEventListener("pageshow", unbusy);  // back button
   document.addEventListener("click", (e) => {
     const a = e.target.closest && e.target.closest("a[data-busy]");
     if (a) busy(a.dataset.busy, a.target === "whatsapp");
   });
+
+  // Every button that sends a form (save, check in, record, move out…) shows the loader until the next page comes —
+  // unless the form opens elsewhere (WhatsApp, a PDF in a new tab) or was cancelled at "Are you sure?".
+  document.addEventListener("submit", (e) => {
+    const form = e.target;
+    if (e.defaultPrevented || !form.matches || form.dataset.busy || form.matches("[data-no-busy]")) return;
+    if (e.submitter && e.submitter.matches("[data-no-busy]")) return;  // e.g. Download: the page stays
+    const target = (e.submitter && e.submitter.getAttribute("formtarget")) || form.getAttribute("target");
+    if (target && target !== "_self") return;
+    const label = (e.submitter && (e.submitter.dataset.busyText || e.submitter.textContent.trim())) || "";
+    const get = (form.getAttribute("method") || "get").toLowerCase() === "get";
+    const text = form.dataset.busyText || (get ? "Loading…" : (label && label.length < 30 ? label + "…" : "Saving…"));
+    setTimeout(() => { if (!e.defaultPrevented) busySoon(text); }, 0);  // after any other handler took it over
+  });
+
+  // Going to another page of the app: the loader if the page takes a moment (e.g. the server waking up).
+  document.addEventListener("click", (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const a = e.target.closest && e.target.closest("a[href]");
+    if (!a || a.dataset.busy || a.matches("[data-no-busy], [download], [data-photo], [data-share-pdf]")) return;
+    if (a.target && a.target !== "_self") return;
+    const href = a.getAttribute("href");
+    if (!href || href.startsWith("#") || href.startsWith("javascript:")) return;
+    let url;
+    try { url = new URL(a.href, location.href); } catch (err) { return; }
+    if (url.origin !== location.origin || (url.pathname === location.pathname && url.search === location.search)) return;
+    if (/\.(pdf|xlsx|csv|zip|json|gz)$|\/(receipt|invoice|export|download)\b/i.test(url.pathname)) return;  // files
+    setTimeout(() => { if (!e.defaultPrevented) busySoon("Loading…", 400); }, 0);  // the photo viewer etc. stay here
+  });
+
+  // htmx parts of a page (when they're used): the loader if the answer takes a moment.
+  document.addEventListener("htmx:beforeRequest", () => busySoon("Loading…", 400));
+  document.addEventListener("htmx:afterRequest", unbusy);
 
   // Keep the server awake while this page is open: Render's free plan puts it to sleep after 15 minutes without
   // requests, and waking takes ~50 s. If the page hasn't talked to the server for 10 minutes (left idle), send a
@@ -196,6 +261,7 @@
     if (!input.files.length) return;
     const text = input.closest("label").querySelector("span");
     if (text) text.textContent = input.files.length > 1 ? `Uploading ${input.files.length} photos…` : "Uploading…";
+    busy(input.files.length > 1 ? `Uploading ${input.files.length} photos…` : "Uploading…", false);
     input.form.submit();
   }));
 
@@ -217,8 +283,10 @@
     toastTimer = setTimeout(() => { toastEl.hidden = true; }, 9000);
   }
   function openWhatsApp(url, init, fallback, after) {
+    busySoon("Preparing the message…");
     fetch(url, Object.assign({ headers: { "X-Requested-With": "fetch" }, credentials: "same-origin" }, init))
       .then((r) => ((r.headers.get("content-type") || "").includes("json") ? r.json() : Promise.reject(r)))
+      .finally(unbusy)
       .then((d) => {
         const go = () => {
           const win = window.open(d.url, "whatsapp");
