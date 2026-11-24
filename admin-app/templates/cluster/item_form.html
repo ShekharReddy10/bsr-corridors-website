@@ -20,7 +20,7 @@
     {% if title == "Basic details" %}
       <div class="field"><span class="label">Theme</span>
         <div class="theme-grid" role="radiogroup" aria-label="Theme">
-          {% for c in form.theme %}<label class="theme-choice">{{ c.tag }}<span>{{ c.choice_label }}</span></label>{% endfor %}
+          {% for key, label, accent, accent_dark, dark in themes %}<label class="theme-choice"><input type="radio" name="theme" value="{{ key }}" {% if form.theme.value == key %}checked{% endif %}><span class="theme-dots"><i style="background: {{ dark }}"></i><i style="background: {{ accent }}"></i></span><span>{{ label }}</span></label>{% endfor %}
         </div>
         <p class="muted small">See it before saving on the <a href="{% if obj %}{% url 'item_theme' obj.code %}{% else %}#{% endif %}">theme page</a>{% if not obj %} (after creating){% endif %}.</p>
       </div>
@@ -58,6 +58,17 @@
 <section class="card">
   <h2>Database</h2>
   <p class="muted">{% if obj.is_default %}BSR Corridors’ tables are in the main database, where they have always been.{% elif obj.db_url %}In its own database.{% else %}In its own section (schema <code>{{ obj.schema }}</code>) of the main database.{% endif %}{% if usage is not None %} Uses {{ usage }} MB.{% endif %}</p>
+  {% if not obj.is_default and not obj.db_url %}
+  <details><summary class="btn btn-outline btn-sm">Move to its own database</summary>
+    <form method="post" class="inline-form" data-busy="Moving {{ obj.name }} — copying and checking every record…"
+          data-confirm="Move {{ obj.name }} to the new database? It is read-only while it moves. Nothing switches unless every record copies and checks out.">{% csrf_token %}
+      <input type="hidden" name="action" value="move-db">
+      <input name="db_url" type="password" placeholder="postgresql://… (new, empty database)" required autocomplete="off" aria-label="New database link" style="min-width: 280px">
+      <button class="btn btn-primary btn-sm">Copy, check and switch</button>
+    </form>
+    <p class="muted small">For when the main database gets full (see Database space). Use an empty Postgres database, e.g. a new Supabase project (Session pooler link, ending in <code>?sslmode=require</code>). The old copy stays as a fallback.</p>
+  </details>
+  {% endif %}
 </section>
 
 {% if not obj.is_default %}

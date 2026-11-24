@@ -23,6 +23,8 @@ def schema_name(code: str) -> str:
 def create_schema(item: Item) -> None:
     alias = current.register(item)
     schema = item.schema
+    if not schema:  # its own database: its tables go in that database's usual place
+        return
     if not re.fullmatch(r"[a-z0-9_]{1,63}", schema):
         raise ValueError(f"Bad schema name: {schema!r}")
     # Created through a plain connection to the same database (the item's own connection can't see other schemas).

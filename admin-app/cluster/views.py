@@ -24,6 +24,10 @@ def admin_only(view):
     return wrapper
 
 
+def theme_list():
+    return [(k, *v) for k, v in THEMES.items()]
+
+
 def items_for(user):
     """The cluster items this person may open (the main admin: all, archived ones last)."""
     qs = Item.objects.all() if user.is_superuser else Item.objects.filter(memberships__user=user, archived=False)
@@ -91,7 +95,7 @@ def theme(request, code):
             return redirect("cluster_home")
         messages.error(request, "Pick one of the themes.")
     return render(request, "cluster/theme.html", {
-        "obj": item, "themes": [(k, *v) for k, v in THEMES.items()], "cluster_name": settings.CLUSTER_NAME,
+        "obj": item, "themes": theme_list(), "cluster_name": settings.CLUSTER_NAME,
     })
 
 
@@ -127,14 +131,14 @@ def item_new(request):
             finally:
                 item.delete()
             messages.error(request, f"Couldn’t create the tables for {item.name}: {exc}. Nothing was saved.")
-            return render(request, "cluster/item_form.html", {"form": form, "obj": None})
+            return render(request, "cluster/item_form.html", {"form": form, "obj": None, "themes": theme_list()})
         _set_money_password(item, form.cleaned_data["money_password"])
         manager = item.managed_by
         if manager and not manager.is_superuser:
             Membership.objects.get_or_create(user=manager, item=item, defaults={"role": Membership.Role.MANAGER})
         messages.success(request, f"{item.name} is ready. Next: connect its Google Drive, then add its rooms.")
         return redirect("item_edit", code=item.code)
-    return render(request, "cluster/item_form.html", {"form": form, "obj": None})
+    return render(request, "cluster/item_form.html", {"form": form, "obj": None, "themes": theme_list()})
 
 
 @admin_only
@@ -159,6 +163,16 @@ def item_edit(request, code):
             return redirect("item_edit", code=code)
         if action in {"cover", "logo"}:
             return _upload_photo(request, item, action)
+        if action == "move-db":
+            from .move import MoveFailed, move
+            try:
+                copied = move(item, request.POST.get("db_url", "").strip())
+            except MoveFailed as exc:
+                messages.error(request, f"Not moved: {exc}")
+            else:
+                messages.success(request, f"{item.name} moved to its own database — {sum(copied.values())} records "
+                                          f"copied and checked. The old copy is kept as a fallback.")
+            return redirect("item_edit", code=code)
         if form.is_valid():
             form.save()
             if form.cleaned_data.get("money_password"):
@@ -168,7 +182,7 @@ def item_edit(request, code):
                 messages.success(request, f"{item.name}: saved.")
             return redirect("item_edit", code=code)
     return render(request, "cluster/item_form.html", {
-        "form": form, "obj": item, "web_drive_ready": bool(settings.GOOGLE_WEB_CLIENT_ID),
+        "form": form, "obj": item, "web_drive_ready": bool(settings.GOOGLE_WEB_CLIENT_ID), "themes": theme_list(),
         "usage": schema_usage().get(item.code),
     })
 
