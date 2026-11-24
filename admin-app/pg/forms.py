@@ -25,8 +25,8 @@ class RoomForm(forms.ModelForm):
 
     class Meta:
         model = Room
-        fields = ["number", "floor", "room_type", "beds", "is_ac", "attached_bath", "balcony", "rent_monthly",
-                  "rent_weekly", "rent_daily", "deposit", "status", "notes"]
+        fields = ["number", "floor", "room_type", "beds", "is_ac", "attached_bath", "balcony", "deposit", "status",
+                  "notes"]
         widgets = {"notes": forms.Textarea(attrs={"rows": 2})}
 
     def __init__(self, *args, **kwargs):
@@ -38,7 +38,7 @@ class RoomForm(forms.ModelForm):
 class BedForm(forms.ModelForm):
     class Meta:
         model = Bed
-        fields = ["label", "rent_monthly", "rent_weekly", "rent_daily", "status", "notes"]
+        fields = ["label", "status", "notes"]
 
     def clean_label(self):
         label = self.cleaned_data["label"].strip().upper()
@@ -97,12 +97,9 @@ class TenancyForm(forms.ModelForm):
         self.bed = bed
         if not self.is_bound and not self.instance.pk:
             self.initial.setdefault("move_in", today())
-            if bed is not None:
-                self.initial.setdefault("rent", bed.rent_for("monthly"))
-                self.initial.setdefault("deposit", bed.room.deposit)
-        self.fields["rent"].widget.attrs.update({"data-rent-monthly": bed.rent_for("monthly") if bed else "",
-                                                 "data-rent-weekly": bed.rent_for("weekly") if bed else "",
-                                                 "data-rent-daily": bed.rent_for("daily") if bed else ""})
+            if bed is not None and bed.room.deposit:
+                self.initial.setdefault("deposit", bed.room.deposit)  # the room's usual advance, as a suggestion
+        self.fields["rent"].widget.attrs.update({"inputmode": "decimal", "placeholder": "As agreed with the resident"})
 
     def clean(self):
         data = super().clean()

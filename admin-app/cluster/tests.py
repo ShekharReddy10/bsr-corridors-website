@@ -93,14 +93,14 @@ class ClusterTests(TransactionTestCase):
         self.assertContains(r, 'href="/stays/"')
         self.assertContains(r, "--gold: #b88a44")
         # A cluster link made on an item page goes to the cluster page.
-        self.assertRedirects(self.client.get("/p/pgone/cluster/"), "/cluster/", fetch_redirect_response=False)
+        self.assertRedirects(self.client.get("/p/pgone/properties/"), "/properties/", fetch_redirect_response=False)
         self.assertEqual(self.client.get("/p/nothere/").status_code, 404)
 
     def test_access_only_to_given_items(self):
         self.login(R.DESK, self.pg)
-        self.assertRedirects(self.client.get("/cluster/"), "/p/pgone/", fetch_redirect_response=False)  # S1
+        self.assertRedirects(self.client.get("/properties/"), "/p/pgone/", fetch_redirect_response=False)  # S1
         self.assertEqual(self.client.get("/p/pgone/stays/").status_code, 200)
-        self.assertRedirects(self.client.get("/"), "/cluster/", fetch_redirect_response=False)
+        self.assertRedirects(self.client.get("/"), "/properties/", fetch_redirect_response=False)
         self.assertEqual(self.client.get("/stays/").status_code, 403)  # BSR Corridors: no access
         self.assertEqual(self.client.get(f"/stays/{self.bsr_stay.pk}/").status_code, 403)
 
@@ -123,26 +123,26 @@ class ClusterTests(TransactionTestCase):
     def test_home_lists_only_my_items(self):
         user = self.login(R.DESK, self.pg)
         Membership.objects.create(user=user, item=self.bsr, role=R.VIEWER)
-        r = self.client.get("/cluster/")
+        r = self.client.get("/properties/")
         self.assertContains(r, "BSR Ladies PG")
         self.assertContains(r, self.bsr.name)
         self.assertNotContains(r, "₹")  # no money on the cluster home page (D6)
         self.client.force_login(self.admin)
         Item.objects.create(code="other", name="Someone Else's PG", kind=Item.Kind.PG)  # no tables yet
-        r = self.client.get("/cluster/")
+        r = self.client.get("/properties/")
         self.assertContains(r, "Someone Else")
-        self.assertContains(r, "Can’t read this item’s data")  # refused, never BSR Corridors' tables
+        self.assertContains(r, "Can’t read this property’s data")  # refused, never BSR Corridors' tables
         self.client.force_login(user)
-        self.assertNotContains(self.client.get("/cluster/"), "Someone Else")
+        self.assertNotContains(self.client.get("/properties/"), "Someone Else")
 
     def test_theme_admin_only(self):
         self.login(R.OWNER, self.pg)
-        self.client.post("/cluster/items/pgone/theme/", {"theme": "rose"})
+        self.client.post("/properties/pgone/theme/", {"theme": "rose"})
         self.pg.refresh_from_db()
         self.assertEqual(self.pg.theme, "teal")
         self.client.force_login(self.admin)
-        self.assertContains(self.client.get("/cluster/items/pgone/theme/"), "data-preview")
-        self.client.post("/cluster/items/pgone/theme/", {"theme": "rose"})
+        self.assertContains(self.client.get("/properties/pgone/theme/"), "data-preview")
+        self.client.post("/properties/pgone/theme/", {"theme": "rose"})
         self.pg.refresh_from_db()
         self.assertEqual(self.pg.theme, "rose")
 
@@ -161,7 +161,7 @@ class ClusterTests(TransactionTestCase):
         data = {"name": "New Ladies PG", "code": "newpg", "kind": "pg", "email": "pg@example.com",
                 "managed_by": self.manager.pk, "theme": "plum", "sort_order": 0, "refund_days": 7,
                 "money_password": "pg-money-1", "money_confirm": "pg-money-1", **extra}
-        return self.client.post("/cluster/items/new/", data)
+        return self.client.post("/properties/new/", data)
 
     def test_add_cluster_item_creates_its_tables(self):
         self.manager = get_user_model().objects.create_user("meena", password="x" * 12)
@@ -170,7 +170,7 @@ class ClusterTests(TransactionTestCase):
         self.assertContains(r, "This field is required")
         self.assertFalse(Item.objects.filter(code="newpg").exists())
         r = self.add_item()
-        self.assertRedirects(r, "/cluster/items/newpg/", fetch_redirect_response=False)
+        self.assertRedirects(r, "/properties/newpg/", fetch_redirect_response=False)
         item = Item.objects.get(code="newpg")
         self.assertEqual((item.kind, item.schema, item.theme), ("pg", "item_newpg", "plum"))
         with current.using(item):
@@ -180,7 +180,7 @@ class ClusterTests(TransactionTestCase):
             self.assertTrue(AppSetting.get("revenue_password_hash"))  # money password set
         self.assertEqual(Membership.objects.get(user=self.manager, item=item).role, R.MANAGER)
         # The type and code can't change afterwards; the money password can be reset.
-        self.client.post("/cluster/items/newpg/", {"name": "Renamed PG", "code": "other", "kind": "hotel",
+        self.client.post("/properties/newpg/", {"name": "Renamed PG", "code": "other", "kind": "hotel",
                                                    "email": "pg@example.com", "managed_by": self.manager.pk,
                                                    "theme": "plum", "sort_order": 1, "refund_days": 10,
                                                    "upi_id": "newpg@ybl", "money_password": "new-money-2",
@@ -196,13 +196,13 @@ class ClusterTests(TransactionTestCase):
 
     def test_only_admin_adds_items(self):
         self.login(R.OWNER, self.pg)
-        self.assertRedirects(self.client.get("/cluster/items/new/"), "/cluster/", fetch_redirect_response=False)
-        self.assertRedirects(self.client.get("/cluster/items/pgone/"), "/cluster/", fetch_redirect_response=False)
+        self.assertRedirects(self.client.get("/properties/new/"), "/properties/", fetch_redirect_response=False)
+        self.assertRedirects(self.client.get("/properties/pgone/"), "/properties/", fetch_redirect_response=False)
 
     def test_archived_item_is_hidden_and_read_only(self):
         user = self.login(R.OWNER, self.pg)
         self.client.force_login(self.admin)
-        self.client.post("/cluster/items/pgone/", {"action": "archive"})
+        self.client.post("/properties/pgone/", {"action": "archive"})
         self.pg.refresh_from_db()
         self.assertTrue(self.pg.archived)
         self.assertEqual(self.client.get("/p/pgone/rooms/").status_code, 200)  # the admin can still look…
@@ -210,7 +210,7 @@ class ClusterTests(TransactionTestCase):
         self.client.force_login(user)
         self.assertEqual(self.client.get("/p/pgone/").status_code, 404)  # …others don't see it at all
         self.client.force_login(self.admin)
-        self.assertContains(self.client.post("/cluster/items/bsrc/", {"action": "archive"}, follow=True),
+        self.assertContains(self.client.post("/properties/bsrc/", {"action": "archive"}, follow=True),
                             "can’t be archived")
 
     def test_item_short_links_open_the_items_page(self):
@@ -247,11 +247,11 @@ class ClusterTests(TransactionTestCase):
 
     def test_database_space_shown_to_the_admin(self):
         self.client.force_login(self.admin)
-        r = self.client.get("/cluster/")
+        r = self.client.get("/properties/")
         self.assertContains(r, "Database space")
         self.assertContains(r, "of 500 MB")
         self.login(R.OWNER, self.pg)
-        self.assertNotContains(self.client.get("/cluster/?all"), "Database space")
+        self.assertNotContains(self.client.get("/properties/?all"), "Database space")
 
     def test_move_refused_leaves_item_unchanged(self):
         from .move import MoveFailed, move

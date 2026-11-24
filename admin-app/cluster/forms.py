@@ -19,7 +19,7 @@ DRIVE = ["drive_folder"]
 
 class ItemForm(forms.ModelForm):
     money_password = forms.CharField(label="Money password", required=False, widget=forms.PasswordInput(render_value=False),
-                                     help_text=f"For this item's revenue and profit pages (at least {MONEY_MIN} characters)")
+                                     help_text=f"For this property's revenue and profit pages (at least {MONEY_MIN} characters)")
     money_confirm = forms.CharField(label="Repeat money password", required=False,
                                     widget=forms.PasswordInput(render_value=False))
 
@@ -53,7 +53,7 @@ class ItemForm(forms.ModelForm):
         code = self.cleaned_data["code"].lower()
         if not re.fullmatch(r"[a-z][a-z0-9]{1,11}", code):
             raise forms.ValidationError("2–12 letters and numbers, starting with a letter (no spaces or dashes).")
-        if code in {"cluster", "static", "login", "logout", "new", "drive"}:
+        if code in {"cluster", "properties", "users", "static", "login", "logout", "new", "drive", "pg", "p", "s"}:
             raise forms.ValidationError("That code is reserved — pick another.")
         return code
 

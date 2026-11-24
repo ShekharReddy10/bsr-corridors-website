@@ -20,11 +20,11 @@
   <div class="card-head"><h2>Rooms</h2>{% if 'manage' in caps %}<a class="btn btn-primary btn-sm" href="{% url 'pg_setup_new' 'room' %}">+ Add room</a>{% endif %}</div>
   {% if rooms %}
   <div class="table-wrap"><table class="table table-cards">
-    <thead><tr><th>Room</th><th>Floor</th><th>Type</th><th>Beds</th><th class="num">Rent / bed / month</th><th class="num">Advance</th><th></th></tr></thead>
+    <thead><tr><th>Room</th><th>Floor</th><th>Type</th><th>Beds</th><th class="num">Usual advance</th><th></th></tr></thead>
     <tbody>{% for r in rooms %}<tr>
       <td data-label="Room"><b><a href="{% url 'pg_room' r.pk %}">{{ r.number }}</a></b>{% if r.status == 'maintenance' %} <span class="tag">Maintenance</span>{% endif %}</td>
       <td data-label="Floor">{{ r.floor.name }}</td><td data-label="Type">{{ r.room_type.name }}{% if r.is_ac %} · AC{% endif %}</td>
-      <td data-label="Beds">{{ r.n }}</td><td data-label="Rent" class="num">{{ r.rent_monthly|inr }}</td><td data-label="Advance" class="num">{{ r.deposit|inr }}</td>
+      <td data-label="Beds">{{ r.n }}</td><td data-label="Usual advance" class="num">{{ r.deposit|inr }}</td>
       <td>{% if 'manage' in caps %}<a class="btn btn-ghost btn-sm" href="{% url 'pg_setup_edit' 'room' r.pk %}">Edit</a>{% endif %}</td>
     </tr>{% endfor %}</tbody>
   </table></div>

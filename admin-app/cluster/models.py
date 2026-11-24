@@ -42,7 +42,7 @@ class Item(models.Model):
     # BSR Corridors: its data stays where it always was (the main database, at the site root). Exactly one.
     is_default = models.BooleanField(default=False, editable=False)
     schema = models.CharField(max_length=63, blank=True, editable=False,
-                              help_text="Postgres schema holding this item's tables (empty for BSR Corridors).")
+                              help_text="Postgres schema holding this property's tables (empty for BSR Corridors).")
     db_url = EncryptedTextField("Own database (optional)", blank=True,
                                 help_text="Empty: a separate section of the main database.")
     address = models.TextField(blank=True)
@@ -76,7 +76,7 @@ class Item(models.Model):
     drive_token = EncryptedTextField(blank=True, editable=False)
     drive_email = models.EmailField("Google account", blank=True, editable=False)
     drive_folder = models.CharField("Drive folder", max_length=120, blank=True,
-                                    help_text="Created in that Google Drive; empty: the item's name")
+                                    help_text="Created in that Google Drive; empty: the property's name")
     # PG / co-living move-out (decision D10).
     refund_days = models.PositiveSmallIntegerField("Deposit refunded within (days)", default=7)
     deductions = models.TextField("Standard deductions", blank=True,

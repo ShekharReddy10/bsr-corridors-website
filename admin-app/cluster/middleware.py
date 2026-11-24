@@ -1,7 +1,7 @@
 """Pick the cluster item for each request and check the user may do what they ask.
 
 Addresses:
-  /cluster/…        cluster pages (home, items, users) — no item
+  /properties/…     the properties pages (home, add / edit a property, users) — no property
   /p/<code>/…       a cluster item's pages; the /p/<code> part is taken off so the usual pages answer, and every link
                     the page makes gets it back (script prefix)
   everything else   BSR Corridors, at the same addresses as before v2 (bookmarks and guest links keep working)
@@ -14,7 +14,7 @@ from django.urls import set_script_prefix
 from . import access, current
 from .models import Item, Membership
 
-CLUSTER_PATHS = ("/cluster/", "/login/", "/logout/", "/healthz/", "/backup/run/", "/static/")
+CLUSTER_PATHS = ("/properties/", "/login/", "/logout/", "/healthz/", "/backup/run/", "/static/")
 GUEST_PATHS = ("/invoice/", "/pay/", "/s/")  # signed public links sent to guests
 # Hotel pages a PG / co-living doesn't have (it has floors → rooms → beds instead): they open its PG home.
 HOTEL_ONLY = {"dashboard", "confirm_check", "calendar", "room_month", "stay_list", "stay_new", "upcoming", "stay_detail",

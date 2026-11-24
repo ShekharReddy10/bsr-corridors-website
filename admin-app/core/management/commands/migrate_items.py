@@ -11,7 +11,7 @@ from cluster.models import Item
 
 
 class Command(BaseCommand):
-    help = "Apply database changes to every cluster item's tables."
+    help = "Apply database changes to every property's tables."
 
     def handle(self, **options):
         failed = []
@@ -26,4 +26,4 @@ class Command(BaseCommand):
         if failed:
             self.stderr.write(f"Not updated: {', '.join(failed)}. They show 'can't read' until fixed.")
         else:
-            self.stdout.write(self.style.SUCCESS("All cluster items up to date."))
+            self.stdout.write(self.style.SUCCESS("All properties up to date."))

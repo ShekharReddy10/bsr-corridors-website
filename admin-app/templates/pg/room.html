@@ -4,7 +4,7 @@
 <div class="page-head">
   <div><h1>Room {{ room.number }}</h1>
     <p class="muted">{{ room.floor.name }} · {{ room.room_type.name }}{% if room.is_ac %} · AC{% else %} · Non-AC{% endif %}{% if room.attached_bath %} · attached bathroom{% endif %}{% if room.balcony %} · balcony{% endif %}
-    · {{ room.rent_monthly|inr }}/month per bed · advance {{ room.deposit|inr }}{% if room.status == 'maintenance' %} · <span class="warn">under maintenance</span>{% endif %}</p></div>
+    {% if room.deposit %}· usual advance {{ room.deposit|inr }}{% endif %}{% if room.status == 'maintenance' %} · <span class="warn">under maintenance</span>{% endif %}</p></div>
   <div class="inline-form">{% if 'manage' in caps %}<a class="btn btn-outline" href="{% url 'pg_setup_edit' 'room' room.pk %}">Edit room</a>{% endif %}<a class="btn btn-ghost" href="{% url 'pg_floor' room.floor_id %}">Back</a></div>
 </div>
 
@@ -17,7 +17,7 @@
       <small class="muted">{% if v.state == 'reserved' %}moves in {{ v.tenancy.move_in|date:"d M Y" }}{% else %}since {{ v.tenancy.move_in|date:"d M Y" }}{% endif %}{% if v.state == 'notice' %} · last day {{ v.tenancy.last_day|date:"d M" }}{% endif %}</small></p>
       <p class="small">{{ v.tenancy.rent|inr }} {{ v.tenancy.get_cycle_display|lower }}{% if v.next %} · next due {{ v.next.start|date:"d M" }}{% endif %}</p>
     {% else %}
-      <p class="muted small">{{ v.rent|inr }}/month</p>
+      <p class="muted small">No one in this bed{% if v.state == 'maintenance' %} (under maintenance){% endif %}.</p>
     {% endif %}
     <footer class="inline-form">
       <a class="btn btn-ghost btn-sm" href="{% url 'pg_bed' v.bed.pk %}">Details</a>

@@ -212,7 +212,7 @@ def _upload_photo(request, item, which):
         return redirect("item_edit", code=item.code)
     with current.using(item):
         if not gdrive.is_configured():
-            messages.error(request, "Connect this item’s Google Drive first — photos are kept there.")
+            messages.error(request, "Connect this property’s Google Drive first — photos are kept there.")
             return redirect("item_edit", code=item.code)
         try:
             data = photos.prepare(upload)

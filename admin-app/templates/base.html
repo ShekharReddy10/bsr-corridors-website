@@ -58,7 +58,7 @@
       <img src="{% static 'img/icon.png' %}" alt="" width="36" height="36"> <span>{{ CLUSTER_NAME }}</span>
     </a>
     <nav>
-      <a href="{% url 'cluster_home' %}" {% if url == 'cluster_home' %}aria-current="page"{% endif %}>Cluster items</a>
+      <a href="{% url 'cluster_home' %}" {% if url == 'cluster_home' %}aria-current="page"{% endif %}>Properties</a>
       {% if user.is_superuser %}<a href="{% url 'users' %}" {% if url == 'users' %}aria-current="page"{% endif %}>Users &amp; access</a>{% endif %}
     </nav>
     <form method="post" action="{% url 'logout' %}" class="sidebar-logout">{% csrf_token %}<small class="muted">{{ user.get_full_name|default:user.username }}</small><button class="btn btn-ghost">Sign out</button></form>
@@ -72,7 +72,7 @@
         <summary class="topbar-brand"><img src="{% static 'img/icon.png' %}" alt="" width="28" height="28"> {{ HOTEL_NAME }} <small class="kind-badge">{{ item.get_kind_display }}</small>{% if user.is_superuser or my_items|length > 1 %} <span aria-hidden="true">▾</span>{% endif %}</summary>
         {% if user.is_superuser or my_items|length > 1 %}
         <div class="switcher-sheet">
-          <a href="{% url 'cluster_home' %}?all">{{ CLUSTER_NAME }} — all items</a>
+          <a href="{% url 'cluster_home' %}?all">{{ CLUSTER_NAME }} — all properties</a>
           {% for i in my_items %}{% if i.pk != item.pk %}<a href="{{ i.prefix }}"><span class="swatch" style="--sw: {{ i.colors.0 }}"></span>{{ i.name }} <small class="muted">{{ i.get_kind_display }}</small></a>{% endif %}{% endfor %}
         </div>
         {% endif %}
@@ -134,7 +134,7 @@
   </nav>
 {% else %}
   <nav class="tabbar tabbar-cluster" aria-label="Main navigation">
-    <a href="{% url 'cluster_home' %}" {% if url == 'cluster_home' %}aria-current="page"{% endif %}><span class="ti">▣</span>Items</a>
+    <a href="{% url 'cluster_home' %}" {% if url == 'cluster_home' %}aria-current="page"{% endif %}><span class="ti">▣</span>Properties</a>
     {% if user.is_superuser %}<a href="{% url 'users' %}" {% if url == 'users' %}aria-current="page"{% endif %}><span class="ti">☺</span>Users</a>{% endif %}
     <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button><span class="ti">⏻</span>Sign out</button></form>
   </nav>

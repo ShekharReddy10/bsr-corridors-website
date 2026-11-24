@@ -49,11 +49,9 @@ class Room(models.Model):
     is_ac = models.BooleanField("AC", default=False)
     attached_bath = models.BooleanField("Attached bathroom", default=True)
     balcony = models.BooleanField(default=False)
-    rent_monthly = models.DecimalField("Rent per bed — monthly", max_digits=10, decimal_places=2, default=0)
-    rent_weekly = models.DecimalField("Rent per bed — weekly", max_digits=10, decimal_places=2, default=0)
-    rent_daily = models.DecimalField("Rent per bed — daily", max_digits=10, decimal_places=2, default=0)
-    deposit = models.DecimalField("Advance per bed", max_digits=10, decimal_places=2, default=0,
-                                  help_text="Refundable security deposit")
+    # No rent here: each resident's rent is agreed with them at move-in (it differs bed to bed and person to person).
+    deposit = models.DecimalField("Usual advance", max_digits=10, decimal_places=2, default=0,
+                                  help_text="Refundable security deposit, suggested at move-in (can be changed there)")
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
     notes = models.TextField(blank=True)
 
@@ -62,9 +60,6 @@ class Room(models.Model):
 
     def __str__(self):
         return f"Room {self.number}"
-
-    def rent_for(self, cycle: str):
-        return {"monthly": self.rent_monthly, "weekly": self.rent_weekly, "daily": self.rent_daily}[cycle]
 
     def next_label(self) -> str:
         """A, B, C … — the first letter no bed of this room uses (removed beds keep theirs, so they can come back)."""
@@ -97,10 +92,6 @@ class Bed(models.Model):
 
     room = models.ForeignKey(Room, on_delete=models.PROTECT, related_name="beds")
     label = models.CharField(max_length=6)
-    rent_monthly = models.DecimalField("Own monthly rent", max_digits=10, decimal_places=2, null=True, blank=True,
-                                       help_text="Only if this bed costs more or less than the room's (window bed…)")
-    rent_weekly = models.DecimalField("Own weekly rent", max_digits=10, decimal_places=2, null=True, blank=True)
-    rent_daily = models.DecimalField("Own daily rent", max_digits=10, decimal_places=2, null=True, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
     notes = models.CharField(max_length=200, blank=True)
     added_on = models.DateField(default=date.today)
@@ -121,10 +112,6 @@ class Bed(models.Model):
     @property
     def is_removed(self) -> bool:
         return self.removed_on is not None
-
-    def rent_for(self, cycle: str):
-        own = {"monthly": self.rent_monthly, "weekly": self.rent_weekly, "daily": self.rent_daily}[cycle]
-        return own if own is not None else self.room.rent_for(cycle)
 
     def spell_on(self, day: date):
         return self.spells.covering(day).select_related("tenancy__resident").first()
@@ -233,7 +220,7 @@ class Tenancy(models.Model):
     due_day = models.PositiveSmallIntegerField("Due date of the month", null=True, blank=True,
                                                help_text="1–28, for a fixed date")
     rent = models.DecimalField("Rent per cycle", max_digits=10, decimal_places=2,
-                               help_text="Includes electricity and food")
+                               help_text="As agreed with this resident; includes electricity and food")
     deposit = models.DecimalField("Advance / security deposit", max_digits=10, decimal_places=2, default=0)
     deposit_received = models.DecimalField("Advance received so far", max_digits=10, decimal_places=2, default=0,
                                            help_text="For a reservation: the token advance")

@@ -585,9 +585,9 @@ class SecurityTests(TestCase):
 
     def test_login_and_lockout(self):
         r = self.client.post("/login/", {"username": "test-admin", "password": "test-pass-123456"})
-        self.assertRedirects(r, "/cluster/", fetch_redirect_response=False)
+        self.assertRedirects(r, "/properties/", fetch_redirect_response=False)
         # Only BSR Corridors: straight in, to the same Today page as before.
-        self.assertRedirects(self.client.get("/cluster/"), "/", fetch_redirect_response=False)
+        self.assertRedirects(self.client.get("/properties/"), "/", fetch_redirect_response=False)
         self.client.logout()
         for _ in range(5):
             self.assertContains(self.client.post("/login/", {"username": "test-admin", "password": "wrong"}),
@@ -1814,11 +1814,11 @@ class LoginTests(TestCase):
 
     def test_admin_adds_login_and_log_shows_who(self):
         from django.core.management import call_command
-        r = self.client.post("/cluster/users/", {"action": "add", "name": "Satish", "username": "Satish",
+        r = self.client.post("/properties/users/", {"action": "add", "name": "Satish", "username": "Satish",
                                                    "password": "satish-pass-1", "confirm": "satish-pass-1"}, follow=True)
         self.assertContains(r, "Login created for Satish")
         satish = get_user_model().objects.get(username="satish")
-        self.assertEqual(self.client.post("/cluster/users/", {"action": "add", "name": "X", "username": "x",
+        self.assertEqual(self.client.post("/properties/users/", {"action": "add", "name": "X", "username": "x",
                                                                "password": "short", "confirm": "short"}).status_code, 302)
         self.assertFalse(get_user_model().objects.filter(username="x").exists())
 
@@ -1828,23 +1828,23 @@ class LoginTests(TestCase):
         self.assertEqual(other.get("/stays/").status_code, 403)
         from cluster.models import Item, Membership
         bsr = Item.objects.get(is_default=True)
-        self.client.post("/cluster/users/", {"action": "access", "user": satish.pk, f"role-{bsr.pk}": "owner"})
+        self.client.post("/properties/users/", {"action": "access", "user": satish.pk, f"role-{bsr.pk}": "owner"})
         self.assertEqual(Membership.objects.get(user=satish).role, "owner")
         other.post("/settings/", {"action": "hosts", "hosts": "Shekhar, Mounika, Satish"})
         self.assertEqual(AuditLog.objects.filter(action="settings").latest("at").by, "Satish")
         self.assertContains(other.get("/settings/"), "<b>Satish:</b>")
         # Only the main admin manages logins.
-        self.assertRedirects(other.get("/cluster/users/"), "/cluster/", fetch_redirect_response=False)
+        self.assertRedirects(other.get("/properties/users/"), "/properties/", fetch_redirect_response=False)
         # Own password change keeps you signed in.
         other.post("/settings/password/", {"current": "satish-pass-1", "password": "satish-pass-2", "confirm": "satish-pass-2"})
         self.assertEqual(other.get("/").status_code, 200)
         satish.refresh_from_db()
         self.assertTrue(satish.check_password("satish-pass-2"))
         # Switch off; deploys no longer switch other logins off.
-        self.client.post("/cluster/users/", {"action": "toggle", "user": satish.pk})
+        self.client.post("/properties/users/", {"action": "toggle", "user": satish.pk})
         satish.refresh_from_db()
         self.assertFalse(satish.is_active)
-        self.client.post("/cluster/users/", {"action": "toggle", "user": satish.pk})
+        self.client.post("/properties/users/", {"action": "toggle", "user": satish.pk})
         with override_settings():
             import os
             from unittest import mock

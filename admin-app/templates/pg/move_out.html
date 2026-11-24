@@ -12,7 +12,7 @@
     <div class="field"><label for="mo-unpaid">Unpaid rent</label><input id="mo-unpaid" name="unpaid_rent" value="{{ unpaid_rent }}" inputmode="decimal" data-settle-amount><small class="help">Rent still owed up to the last day.</small></div>
   </div>
   <h2>Deductions</h2>
-  <p class="muted small">The standard ones from the item’s settings are filled in — change or clear them. Each needs a reason.</p>
+  <p class="muted small">The standard ones from the property’s settings are filled in — change or clear them. Each needs a reason.</p>
   <div class="deduction-rows">
     {% for d in rows %}<div class="inline-form"><input name="reason" value="{{ d.reason }}" placeholder="Reason, e.g. Cleaning" aria-label="Reason"><input name="amount" value="{{ d.amount }}" placeholder="₹" inputmode="decimal" aria-label="Amount" style="width: 110px" data-settle-amount></div>{% endfor %}
   </div>

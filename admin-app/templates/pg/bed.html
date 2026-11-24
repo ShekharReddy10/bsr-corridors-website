@@ -22,7 +22,6 @@
     <a class="btn btn-primary" href="{% url 'pg_tenancy' view.tenancy.pk %}">Open tenancy — notice, shift bed, move out</a>
   {% else %}
     <h2>No one in this bed</h2>
-    <dl class="dl">{% for c, amount in rent %}<dt>{{ c|capfirst }} rent</dt><dd>{{ amount|inr }}</dd>{% endfor %}</dl>
     {% if upcoming %}<p class="muted">Booked from {{ upcoming.start|date:"d M Y" }} by <a href="{% url 'pg_tenancy' upcoming.tenancy.pk %}">{{ upcoming.tenancy.resident.name }}</a>.</p>{% endif %}
     {% if view.state == 'vacant' and 'work' in caps %}<a class="btn btn-primary" href="{% url 'pg_move_in' bed.pk %}">Move someone in</a>{% endif %}
   {% endif %}

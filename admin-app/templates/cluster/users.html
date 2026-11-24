@@ -1,23 +1,23 @@
 {% extends "base.html" %}
 {% block title %}Users & access{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Users &amp; access</h1><p class="muted">One login per person for the whole cluster. Choose which cluster items each person can open, and their role there. Money pages still ask for each item’s money password.</p></div><a class="btn btn-ghost" href="{% url 'cluster_home' %}">Back</a></div>
+<div class="page-head"><div><h1>Users &amp; access</h1><p class="muted">One login per person for all the properties. Choose which properties each person can open, and their role there. Money pages still ask for each property’s money password.</p></div><a class="btn btn-ghost" href="{% url 'cluster_home' %}">Back</a></div>
 
 <section class="card">
   <h2>Logins</h2>
   {% for u in users %}
   <div class="user-row{% if not u.is_active %} is-inactive{% endif %}">
-    <div><b>{{ u.get_full_name|default:u.username }}</b> <small class="muted">{{ u.username }}{% if u.is_superuser %} · main admin (all items){% else %} · {{ u.access_count }} item{{ u.access_count|pluralize }}{% endif %}{% if not u.is_active %} · switched off{% endif %}{% if u.last_login %} · last signed in {{ u.last_login|date:"d-m-Y H:i" }}{% endif %}</small></div>
+    <div><b>{{ u.get_full_name|default:u.username }}</b> <small class="muted">{{ u.username }}{% if u.is_superuser %} · main admin (all properties){% else %} · {{ u.access_count }} propert{{ u.access_count|pluralize:'y,ies' }}{% endif %}{% if not u.is_active %} · switched off{% endif %}{% if u.last_login %} · last signed in {{ u.last_login|date:"d-m-Y H:i" }}{% endif %}</small></div>
     {% if u != request.user and not u.is_superuser %}
     <details class="user-actions"><summary class="btn btn-ghost btn-sm">Manage</summary>
       <form method="post" class="access-form">{% csrf_token %}<input type="hidden" name="action" value="access"><input type="hidden" name="user" value="{{ u.pk }}">
         <h3>Where they can work</h3>
         <div class="table-wrap"><table class="table access-table">
-          <thead><tr><th>Cluster item</th><th>Role</th><th>Money</th><th>Full IDs</th><th>Delete</th></tr></thead>
+          <thead><tr><th>Property</th><th>Role</th><th>Money</th><th>Full IDs</th><th>Delete</th></tr></thead>
           <tbody>
           {% for i, m in u.access %}
             <tr>
-              <td data-label="Cluster item"><span class="swatch" style="--sw: {{ i.colors.0 }}; display: inline-block"></span> {{ i.name }} <small class="muted">{{ i.get_kind_display }}</small></td>
+              <td data-label="Property"><span class="swatch" style="--sw: {{ i.colors.0 }}; display: inline-block"></span> {{ i.name }} <small class="muted">{{ i.get_kind_display }}</small></td>
               <td data-label="Role"><select name="role-{{ i.pk }}" aria-label="Role at {{ i.name }}">
                 <option value="">No access</option>
                 {% for value, label in roles %}<option value="{{ value }}" {% if m and m.role == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
@@ -29,7 +29,7 @@
           {% endfor %}
           </tbody>
         </table></div>
-        <p class="muted small">Owner / partner can do everything in that item. Manager: daily work, rooms, expenses. Front desk: bookings, check-in/out, payments, messages. Accountant: money, expenses, exports. View only: looks, changes nothing. The switches add money pages, full ID numbers or deleting to any role.</p>
+        <p class="muted small">Owner / partner can do everything in that property. Manager: daily work, rooms, expenses. Front desk: bookings, check-in/out, payments, messages. Accountant: money, expenses, exports. View only: looks, changes nothing. The switches add money pages, full ID numbers or deleting to any role.</p>
         <button class="btn btn-primary btn-sm">Save access</button>
       </form>
       <form method="post" class="inline-form">{% csrf_token %}<input type="hidden" name="action" value="reset"><input type="hidden" name="user" value="{{ u.pk }}">
@@ -52,7 +52,7 @@
     <div class="field"><label for="u-pass">Password <small class="muted">(at least {{ min_length }} characters)</small></label><input id="u-pass" type="password" name="password" minlength="{{ min_length }}" autocomplete="new-password" required></div>
     <div class="field"><label for="u-confirm">Repeat password</label><input id="u-confirm" type="password" name="confirm" minlength="{{ min_length }}" autocomplete="new-password" required></div>
   </div>
-  <p class="muted small">A new login can’t open anything until you give it access under <b>Manage</b>. Use the same name as in each item’s Hosts list (e.g. Satish) — payments they record are then marked as collected by them.</p>
+  <p class="muted small">A new login can’t open anything until you give it access under <b>Manage</b>. Use the same name as in each property’s Hosts list (e.g. Satish) — payments they record are then marked as collected by them.</p>
   <div class="form-actions"><button class="btn btn-primary">Create login</button></div>
 </form>
 {% endblock %}

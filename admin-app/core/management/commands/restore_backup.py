@@ -33,7 +33,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("path")
         parser.add_argument("--yes", action="store_true", help="Confirm the restore.")
-        parser.add_argument("--item", default="", help="Cluster item code (default: BSR Corridors).")
+        parser.add_argument("--item", default="", help="Property code (default: BSR Corridors).")
 
     def handle(self, path, yes, item="", **options):
         if not yes:
@@ -42,7 +42,7 @@ class Command(BaseCommand):
         from cluster.models import Item
         target = Item.objects.filter(code=item).first() if item else Item.objects.filter(is_default=True).first()
         if item and (target is None or target.is_default):
-            raise CommandError(f"No cluster item {item!r}.")
+            raise CommandError(f"No property {item!r}.")
         if target is None:  # before the cluster existed
             return self._restore(path)
         with current.using(target):

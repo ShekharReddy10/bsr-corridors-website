@@ -176,7 +176,7 @@ GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET")
 GOOGLE_REFRESH_TOKEN = env("GOOGLE_REFRESH_TOKEN")
 # Other cluster items connect their own Drive by signing in on the web: a "Web application" OAuth client in the same
-# Google Cloud project, with redirect URI https://<admin app>/cluster/drive/callback/.
+# Google Cloud project, with redirect URI https://<admin app>/properties/drive/callback/.
 GOOGLE_WEB_CLIENT_ID = env("GOOGLE_WEB_CLIENT_ID")
 GOOGLE_WEB_CLIENT_SECRET = env("GOOGLE_WEB_CLIENT_SECRET")
 GDRIVE_ROOT_FOLDER = env("GDRIVE_ROOT_FOLDER", "BSR Corridors Admin")

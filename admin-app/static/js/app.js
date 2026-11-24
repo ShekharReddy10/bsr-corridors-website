@@ -462,18 +462,14 @@
 
 // PG / co-living pages.
 (() => {
-  // PG move-in: returning resident by phone, rent by billing cycle, the date-of-month only for a fixed due date.
+  // PG move-in: returning resident by phone; the date-of-month only for a fixed due date.
   const pgForm = document.querySelector("form[data-pg-move-in]");
   if (pgForm) {
     const $ = (n) => pgForm.querySelector(`[name="${n}"]`);
-    const phone = $("r-phone"), cycle = $("t-cycle"), rent = $("t-rent"), rule = $("t-due_rule");
+    const phone = $("r-phone"), cycle = $("t-cycle"), rule = $("t-due_rule");
     const dayWrap = pgForm.querySelector(".due-day-wrap"), note = pgForm.querySelector("[data-returning]");
     const syncDue = () => { if (dayWrap) dayWrap.hidden = !(rule && rule.value === "fixed" && cycle.value === "monthly"); };
-    if (cycle && rent) cycle.addEventListener("change", () => {
-      const v = rent.dataset["rent" + cycle.value.charAt(0).toUpperCase() + cycle.value.slice(1)];
-      if (v && Number(v) > 0) rent.value = v;
-      syncDue();
-    });
+    if (cycle) cycle.addEventListener("change", syncDue);
     if (rule) rule.addEventListener("change", syncDue);
     syncDue();
     if (phone) phone.addEventListener("change", async () => {

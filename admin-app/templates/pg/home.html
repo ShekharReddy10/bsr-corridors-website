@@ -43,7 +43,7 @@
 <section class="card" id="vacant">
   <div class="card-head"><h2>Vacant beds</h2><span class="count">{{ vacant|length }}</span></div>
   {% if vacant %}
-  <div class="chips">{% for b in vacant %}{% if 'work' in caps %}<a class="chip" href="{% url 'pg_move_in' b.pk %}" title="Move someone in">{{ b.room.number }}-{{ b.label }} · {{ b.room.room_type.name }} · {{ b.rent_monthly|default:b.room.rent_monthly|inr }}/mo</a>{% else %}<a class="chip" href="{% url 'pg_bed' b.pk %}">{{ b.room.number }}-{{ b.label }}</a>{% endif %}{% endfor %}</div>
+  <div class="chips">{% for b in vacant %}{% if 'work' in caps %}<a class="chip" href="{% url 'pg_move_in' b.pk %}" title="Move someone in">{{ b.room.number }}-{{ b.label }} · {{ b.room.room_type.name }}</a>{% else %}<a class="chip" href="{% url 'pg_bed' b.pk %}">{{ b.room.number }}-{{ b.label }}</a>{% endif %}{% endfor %}</div>
   <p class="muted small">Tap a bed to move someone in (a future date reserves it).</p>
   {% else %}<p class="muted">Every bed is taken.</p>{% endif %}
 </section>

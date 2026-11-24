@@ -90,7 +90,6 @@ def room(request, pk):
         return redirect("pg_room", pk=rm.pk)
     beds = services.bed_views(rm.beds.in_use().select_related("room"))
     for v in beds:
-        v.rent = v.bed.rent_for("monthly")
         v.next = services.next_due(v.tenancy) if v.tenancy is not None and v.state != "reserved" else None
     removed = rm.beds.filter(removed_on__isnull=False).annotate(n=Count("spells")).order_by("label")
     return render(request, "pg/room.html", {"room": rm, "beds": beds, "removed": removed,
@@ -107,7 +106,6 @@ def bed(request, pk):
         upcoming = (b.spells.live().filter(start__gt=today()).select_related("tenancy__resident").first())
     return render(request, "pg/bed.html", {
         "bed": b, "view": view, "history": history, "upcoming": upcoming,
-        "rent": [(c, b.rent_for(c)) for c in ("monthly", "weekly", "daily")],
         "next": services.next_due(view.tenancy) if view.tenancy and view.state != "reserved" else None,
     })
 
@@ -363,7 +361,7 @@ def _upload(request, obj, what: str) -> None:
     if f.size > 8 * 1024 * 1024:
         raise ValidationError("That file is over 8 MB.")
     if not gdrive.is_configured():
-        raise ValidationError("Google Drive isn't connected for this item, so files can't be saved yet.")
+        raise ValidationError("Google Drive isn't connected for this property, so files can't be saved yet.")
     from core import photos
     head = f.read(4)
     f.seek(0)

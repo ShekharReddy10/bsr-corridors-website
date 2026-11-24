@@ -10,7 +10,7 @@ from cluster.move import MoveFailed, move
 
 
 class Command(BaseCommand):
-    help = "Copy a cluster item to an empty database, check every record, then switch to it."
+    help = "Copy a property to an empty database, check every record, then switch to it."
 
     def add_arguments(self, parser):
         parser.add_argument("code")
@@ -19,7 +19,7 @@ class Command(BaseCommand):
     def handle(self, code, db_url, **options):
         item = Item.objects.filter(code=code).first()
         if item is None:
-            raise CommandError(f"No cluster item {code!r}.")
+            raise CommandError(f"No property {code!r}.")
         try:
             copied = move(item, db_url)
         except MoveFailed as exc:

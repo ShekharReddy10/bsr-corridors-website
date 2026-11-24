@@ -83,8 +83,7 @@ class PgTests(TransactionTestCase):
         self.addCleanup(self.ctx.__exit__, None, None, None)
         self.floor = Floor.objects.create(name="1st", sort_order=1)
         self.type = RoomType.objects.create(name="2-sharing AC")
-        self.room = Room.objects.create(number="201", floor=self.floor, room_type=self.type, rent_monthly=9000,
-                                        rent_weekly=2500, rent_daily=500, deposit=10000)
+        self.room = Room.objects.create(number="201", floor=self.floor, room_type=self.type, deposit=10000)
         self.a, self.b = services.add_beds(self.room, 2)
         self.ria = Resident.objects.create(name="Ria", phone="+91 90000 11111", address="Hyderabad", id_number="1234 5678 9012")
         self.admin = get_user_model().objects.create_superuser("boss", password="boss-password-1")
@@ -220,6 +219,21 @@ class PgTests(TransactionTestCase):
         t.refresh_from_db()
         self.assertEqual((t.status, t.refund), (T.MOVED_OUT, Decimal("9500")))
 
+    def test_rent_is_agreed_per_resident(self):
+        self.client.force_login(self.admin)
+        base = {"r-phone": "+91 98765 00001", "r-name": "Anu", "r-address": "Vizag", "r-id_type": "aadhaar",
+                "r-id_number": "1111", "t-move_in": today().isoformat(), "t-cycle": "monthly", "t-due_rule": "move_in",
+                "t-deposit": "10000", "t-deposit_received": "0", "t-notice_days": "30"}
+        form = self.client.get(f"/p/pgthree/pg/bed/{self.b.pk}/move-in/")
+        self.assertContains(form, 'value="10000.00"')  # the room's usual advance is suggested…
+        self.assertNotContains(form, 'name="t-rent" value=')  # …but no rent: it's agreed with each resident
+        r = self.client.post(f"/p/pgthree/pg/bed/{self.b.pk}/move-in/", base)
+        self.assertEqual(r.status_code, 200)  # rent missing
+        self.assertFalse(Tenancy.objects.exists())
+        self.client.post(f"/p/pgthree/pg/bed/{self.b.pk}/move-in/", {**base, "t-rent": "8500"})
+        self.tenancy()  # bed A, same room, 9000
+        self.assertEqual(sorted(Tenancy.objects.values_list("rent", flat=True)), [Decimal("8500"), Decimal("9000")])
+
     def test_roles(self):
         user = get_user_model().objects.create_user("desk", password="x" * 12)
         Membership.objects.create(user=user, item=self.item, role=R.DESK)
@@ -247,4 +261,4 @@ class PgTests(TransactionTestCase):
     def test_cluster_home_counts_beds(self):
         self.tenancy()
         self.client.force_login(self.admin)
-        self.assertContains(self.client.get("/cluster/"), "beds taken")
+        self.assertContains(self.client.get("/properties/"), "beds taken")

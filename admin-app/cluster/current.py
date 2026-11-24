@@ -53,7 +53,7 @@ def register(item) -> str:
         return "default"
     if not item.schema and not item.db_url:
         # Without its own schema or database it would see the main database's tables — BSR Corridors' data.
-        raise ValueError(f"Cluster item {item.code!r} has no tables of its own yet.")
+        raise ValueError(f"Property {item.code!r} has no tables of its own yet.")
     name = item.alias
     if name not in connections.settings:
         base = dict(connections["default"].settings_dict)
