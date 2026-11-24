@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
-  <title>Sign in · {{ HOTEL_NAME }}</title>
+  <title>Sign in · {{ CLUSTER_NAME }}</title>
   <link rel="icon" href="{% static 'img/icon.png' %}">
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
 </head>
@@ -12,7 +12,7 @@
   <form class="login-card" method="post" novalidate>
     {% csrf_token %}
     <img src="{% static 'img/icon.png' %}" alt="" width="64" height="64">
-    <h1>{{ HOTEL_NAME }}</h1>
+    <h1>{{ CLUSTER_NAME }}</h1>
     <p class="muted">Admin sign in</p>
     {% if locked %}
       <p class="msg msg-error">Too many failed attempts. Please wait {{ lock_minutes }} minutes and try again.</p>
