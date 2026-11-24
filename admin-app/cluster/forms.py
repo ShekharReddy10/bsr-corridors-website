@@ -53,7 +53,7 @@ class ItemForm(forms.ModelForm):
         code = self.cleaned_data["code"].lower()
         if not re.fullmatch(r"[a-z][a-z0-9]{1,11}", code):
             raise forms.ValidationError("2–12 letters and numbers, starting with a letter (no spaces or dashes).")
-        if code in {"cluster", "properties", "users", "static", "login", "logout", "new", "drive", "pg", "p", "s", "overview", "search", "activity"}:
+        if code in {"cluster", "properties", "users", "static", "login", "logout", "new", "drive", "pg", "p", "s", "overview", "search", "activity", "archive"}:
             raise forms.ValidationError("That code is reserved — pick another.")
         return code
 

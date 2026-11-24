@@ -16,7 +16,7 @@
   <div class="inline-form">{% if user.is_superuser %}<a class="btn btn-outline btn-sm" href="{% url 'users' %}">Users &amp; logins</a>{% endif %}
     <a class="btn btn-ghost btn-sm" href="{% url 'my_password' %}">Change my password</a></div>
 </section>
-<form method="post" class="card">{% csrf_token %}
+{% if not is_pg %}<form method="post" class="card">{% csrf_token %}
   <input type="hidden" name="action" value="hosts">
   <h2>Hosts</h2>
   <p class="muted small">Names you can pick as “Host” on a stay. They show under the guest’s name in the calendar. Separate with commas.</p>
@@ -24,14 +24,14 @@
     <input name="hosts" value="{{ hosts }}" size="36" aria-label="Hosts" placeholder="Shekhar, Mounika, Satish">
     <button class="btn btn-outline btn-sm">Save hosts</button>
   </div>
-</form>
+</form>{% endif %}
 <section class="card">
   <h2>Partners</h2>
   <p class="muted small">Who shares the profit when a month is settled. {% if user.is_superuser and item %}Change them on the <a href="{% url 'item_edit' item.code %}">property’s page</a>.{% else %}The main admin sets them on the property’s page.{% endif %}</p>
   {% for p in partners %}<div class="stay-line"><div class="stay-line-main"><b>{{ p.name }}</b><small>{{ p.pct|floatformat:"-2" }}%{% if p.phone %} · {{ p.phone }}{% endif %}{% if p.pay_to %} · pay to {{ p.pay_to }}{% endif %}</small></div></div>
   {% empty %}<p class="muted">None set.</p>{% endfor %}
 </section>
-<form method="post" class="card danger-zone" data-confirm="Permanently delete old stays and guests?">{% csrf_token %}
+{% if not is_pg %}<form method="post" class="card danger-zone" data-confirm="Permanently delete old stays and guests?">{% csrf_token %}
   <h2>Delete old records</h2>
   <p class="muted small">Removes finished or cancelled stays that ended more than the chosen number of years ago, and guests with no remaining stays. Back up first.</p>
   <div class="inline-form">
@@ -39,7 +39,7 @@
     <label>Type PURGE <input name="confirm" autocomplete="off" size="8"></label>
     <button class="btn btn-danger btn-sm">Delete</button>
   </div>
-</form>
+</form>{% endif %}
 <section class="card"><h2>Activity log</h2>
   <ul class="log">{% for l in logs %}<li><time>{{ l.at|date:"d-m-Y H:i" }}</time> {% if l.by %}<b>{{ l.by }}:</b> {% endif %}{% if l.stay %}<a href="{% url 'stay_detail' l.stay_id %}">{{ l.summary }}</a>{% else %}{{ l.summary }}{% endif %}</li>{% empty %}<li class="muted">Nothing yet.</li>{% endfor %}</ul>
 </section>

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Archive{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Archive database</h1><p class="muted">When the main database is filling up, move old, finished records to a second free database. Rooms, floors, beds, properties, messages and settings always stay in the main database.</p></div>
+  <a class="btn btn-ghost" href="{% url 'cluster_home' %}">Back</a>
+</div>
+
+<div class="grid-2">
+  {% if main %}<section class="card db-usage{% if main.warn %} is-warn{% endif %}">
+    <div class="card-head"><h2>Main database</h2><span class="muted small">{{ main.used }} MB of {{ main.limit }} MB</span></div>
+    <div class="occupancy" style="--c-accent: {% if main.warn %}var(--red){% else %}var(--green){% endif %}"><i style="--pct: {{ main.pct }}%"></i></div>
+    <p class="muted small">{{ main.pct }}% used{% if main.warn %} — time to move old records{% endif %}.</p>
+  </section>{% endif %}
+  <section class="card">
+    <div class="card-head"><h2>Archive database</h2>{% if usage and not usage.error %}<span class="muted small">{{ usage.used }} MB of {{ usage.limit }} MB</span>{% endif %}</div>
+    {% if store %}
+      {% if usage.error %}<div class="msg msg-error">Can’t reach the archive database: {{ usage.error }}</div>
+      {% else %}
+      <div class="occupancy" style="--c-accent: {% if usage.warn %}var(--red){% else %}var(--green){% endif %}"><i style="--pct: {{ usage.pct }}%"></i></div>
+      <p class="muted small">Connected {{ store.connected_at|date:"d M Y" }}{% if store.connected_by %} by {{ store.connected_by }}{% endif %}. {% for code, n in usage.per.items %}{% for k, name in names.items %}{% if k == code %}{{ name }}{% endif %}{% endfor %}: {{ n }} records{% if not forloop.last %} · {% endif %}{% empty %}Nothing moved yet.{% endfor %}</p>
+      {% endif %}
+      <details><summary class="btn btn-ghost btn-sm">Disconnect or change</summary>
+        <form method="post" class="inline-form" data-confirm="Disconnect the archive database? Records already there stay there, but can’t be searched from here until it’s connected again.">{% csrf_token %}<input type="hidden" name="action" value="disconnect"><button class="btn btn-danger btn-sm">Disconnect</button></form>
+      </details>
+    {% else %}
+      <p class="muted small">Not connected. Make a new free Supabase project (e.g. “bsr-archive”), copy its <b>Session pooler</b> connection link (Project Settings → Database), and paste it here. Only you can see this page.</p>
+      <form method="post" class="inline-form">{% csrf_token %}<input type="hidden" name="action" value="connect">
+        <input name="db_url" type="password" placeholder="postgresql://… ?sslmode=require" required autocomplete="off" aria-label="Archive database link" style="min-width: 260px; flex: 1">
+        <button class="btn btn-primary btn-sm">Connect</button></form>
+    {% endif %}
+  </section>
+</div>
+
+{% if store %}
+<section class="card">
+  <h2>Move old records</h2>
+  <p class="muted small">Only finished records go: for a hotel, stays that ended before the date and are fully paid (with their payments and ID photo links), guests with nothing newer, expenses, room upkeep that’s done, logs; for a PG / co-living, residents who moved out before the date with no rent owed and no refund waiting (with their rent and bed history), fixed complaints, expenses, logs. Each record is copied, checked, and only then removed from the main database. Old months’ revenue then counts only what is still in the main database.</p>
+  <form method="post" class="filters">{% csrf_token %}
+    <label>Property <select name="item" required>{% for i in items %}<option value="{{ i.code }}" {% if i.code == code %}selected{% endif %}>{{ i.name }}</option>{% endfor %}</select></label>
+    <label>Finished before <input type="date" name="before" value="{{ before }}" required></label>
+    <button class="btn btn-outline" name="action" value="preview">Preview</button>
+  </form>
+  {% if preview %}
+    <div class="archive-preview">
+      <h3>{{ preview.item.name }} — before {{ before }}</h3>
+      {% if preview.plan.total %}
+        <ul class="money-split">{% for label, n in preview.plan.counts %}<li><span>{{ label }}</span><b>{{ n }}</b></li>{% endfor %}</ul>
+        {% if preview.plan.copy %}<p class="muted small">Also copied (kept here too): {{ preview.plan.copy|length }} guest{{ preview.plan.copy|length|pluralize }} / resident{{ preview.plan.copy|length|pluralize }} who still have newer records.</p>{% endif %}
+        {% if preview.plan.more %}<p class="muted small">There are more — this moves the oldest first; press Move again afterwards.</p>{% endif %}
+        <form method="post" data-busy="Copying, checking and removing {{ preview.plan.total }} old records…" data-confirm="Move {{ preview.plan.total }} old records of {{ preview.item.name }} to the archive? They are removed from the main database after they are copied and checked.">{% csrf_token %}
+          <input type="hidden" name="item" value="{{ preview.item.code }}"><input type="hidden" name="before" value="{{ before }}">
+          <button class="btn btn-primary" name="action" value="move">Move {{ preview.plan.total }} records to the archive</button></form>
+      {% else %}<p class="muted">Nothing finished before that date to move.</p>{% endif %}
+    </div>
+  {% endif %}
+  <p class="muted small">Moved people can still be found with <a href="{% url 'cluster_search' %}">Find a person</a>.</p>
+</section>
+{% endif %}
+{% endblock %}

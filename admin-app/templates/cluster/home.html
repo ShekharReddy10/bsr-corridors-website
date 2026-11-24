@@ -17,9 +17,9 @@
 
 {% if db %}
 <section class="card db-usage{% if db.warn %} is-warn{% endif %}">
-  <div class="card-head"><h2>Database space</h2><span class="muted small">{{ db.used }} MB of {{ db.limit }} MB</span></div>
+  <div class="card-head"><h2>Database space</h2><span class="muted small">{{ db.used }} MB of {{ db.limit }} MB · <a href="{% url 'cluster_archive' %}">Archive</a></span></div>
   <div class="occupancy" style="--c-accent: {% if db.warn %}var(--red){% else %}var(--green){% endif %}"><i style="--pct: {{ db.pct }}%"></i></div>
-  {% if db.warn %}<p class="item-alert" style="color: var(--red)">{{ db.pct }}% full. Free Supabase stops at {{ db.limit }} MB — move a large property to its own database, purge old records (Settings), or upgrade.</p>
+  {% if db.warn %}<p class="item-alert" style="color: var(--red)">{{ db.pct }}% full. Free Supabase stops at {{ db.limit }} MB — <a href="{% url 'cluster_archive' %}">move old records to the archive database</a>, move a large property to its own database, or upgrade.</p>
   {% else %}<p class="muted small">{{ db.pct }}% used, shared by all properties{% if usage %} — {% for name, mb in usage %}{{ name }} {{ mb }} MB{% if not forloop.last %} · {% endif %}{% endfor %}{% endif %}.</p>{% endif %}
 </section>
 {% endif %}

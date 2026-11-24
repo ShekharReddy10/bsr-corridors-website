@@ -531,3 +531,45 @@ class PgTests(TransactionTestCase):
         self.client.force_login(desk)
         for url in ("/properties/overview/", "/properties/search/?q=11111", "/properties/activity/"):
             self.assertRedirects(self.client.get(url), "/properties/", fetch_redirect_response=False)
+
+    def test_move_old_tenancies_to_the_archive(self):
+        from unittest import mock
+        from cluster import archive
+        from cluster.models import ArchiveStore
+        from .models import RentPayment
+        ArchiveStore.objects.create(db_url="postgresql://test/test")
+        with connection.cursor() as cur:
+            cur.execute(archive.TABLE_SQL)
+        self.addCleanup(lambda: connection.cursor().execute("DROP TABLE IF EXISTS bsr_archive"))
+        old = self.tenancy(move_in=today() - timedelta(days=800), cycle="monthly", rent=Decimal("9000"))
+        services.move_out(old, today() - timedelta(days=790))  # settled from the advance, refund waiting
+        mira = Resident.objects.create(name="Mira", phone="+91 90000 22222", address="Vizag", id_number="1")
+        now = self.tenancy(bed=self.b, resident=mira)
+        before = today() - timedelta(days=365)
+        with mock.patch.object(archive, "_alias", lambda: "default"):
+            self.assertEqual(archive.plan(self.item, before).total, 0)  # refund not paid yet: stays
+            services.refund_paid(old, today(), "UPI")
+            p = archive.plan(self.item, before)
+            self.assertEqual(dict(p.counts)["Tenancies"], 1)
+            archive.move(self.item, before)
+        self.assertFalse(Tenancy.objects.filter(pk=old.pk).exists())
+        self.assertFalse(Resident.objects.filter(pk=self.ria.pk).exists())
+        self.assertFalse(RentPayment.objects.filter(tenancy_id=old.pk).exists())
+        self.assertEqual(Tenancy.objects.get(), now)  # current ones untouched
+        self.assertEqual(Bed.objects.count(), 2)  # beds and rooms never move
+        self.assertEqual(self.state(self.a), "vacant")
+        with connection.cursor() as cur:
+            cur.execute("SELECT DISTINCT model FROM bsr_archive WHERE property = 'pgthree'")
+            models = {r[0] for r in cur.fetchall()}
+        self.assertTrue({"pg.tenancy", "pg.resident", "pg.rentpayment", "pg.rentdue", "pg.bedspell"} <= models)
+        self.assertFalse(models & {"pg.bed", "pg.room", "pg.floor"})
+
+    def test_settings_page_has_no_hotel_parts(self):
+        self.client.force_login(self.admin)
+        page = self.client.get("/p/pgthree/settings/")
+        self.assertContains(page, "Partners")
+        self.assertNotContains(page, "<h2>Hosts</h2>")
+        self.assertNotContains(page, "Delete old records")
+        r = self.client.post("/p/pgthree/settings/", {"confirm": "PURGE", "years": "1"})
+        self.assertEqual(r.status_code, 404)
+

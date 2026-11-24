@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{{ p.fields.name }} · archive{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ p.fields.name }} <small class="kind-badge" style="color: var(--ink)">Archived</small></h1>
+    <p class="muted">{% if p.model == 'core.guest' %}Guest{% else %}Resident{% endif %} at {{ p.property.name|default:p.code }}{% if p.fields.phone %} · {{ p.fields.phone }}{% endif %}{% if p.fields.address %} · {{ p.fields.address }}{% endif %}</p></div>
+  <a class="btn btn-ghost" href="javascript:history.back()">Back</a>
+</div>
+<section class="card">
+  <h2>{% if p.model == 'core.guest' %}Stays{% else %}Tenancies{% endif %} in the archive</h2>
+  {% for c in p.children %}{% with f=c.fields %}
+  <div class="stay-line"><span class="room-badge">{{ c.place }}</span>
+    <div class="stay-line-main">
+      {% if p.model == 'core.guest' %}<b>{{ f.check_in }} → {{ f.check_out|default:"open" }}</b><small>{{ f.status }} · total ₹{{ f.total_amount|default:"0"|floatformat:"0" }} · paid ₹{{ c.paid|floatformat:"0" }}{% if f.source %} · {{ f.source }}{% endif %}</small>
+      {% else %}<b>{{ f.move_in }} → {{ f.move_out|default:"—" }}</b><small>{{ f.status }} · rent ₹{{ f.rent|floatformat:"0" }} {{ f.cycle|lower }} · advance ₹{{ f.deposit_received|floatformat:"0" }} · refund ₹{{ f.refund|floatformat:"0" }}{% if f.refund_paid_on %} paid {{ f.refund_paid_on }}{% endif %} · rent paid ₹{{ c.paid|floatformat:"0" }}</small>{% endif %}
+    </div></div>
+  {% endwith %}{% empty %}<p class="muted">Only their details are in the archive (their records are still in the main database).</p>{% endfor %}
+</section>
+<p class="muted small">Read-only. ID numbers stay encrypted in the archive and aren’t shown here.</p>
+{% endblock %}

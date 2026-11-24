@@ -293,3 +293,106 @@ class ClusterTests(TransactionTestCase):
         self.pg.refresh_from_db()
         self.assertEqual((self.pg.schema, self.pg.db_url, self.pg.archived), ("item_pgone", "", False))
 
+
+
+@skipUnless(connection.vendor == "postgresql", "the archive is a Postgres database")
+class ArchiveTests(TransactionTestCase):
+    """Old, finished records move to the archive database (here: a table in the test database); standard records
+    stay; people can still be found."""
+    serialized_rollback = True
+
+    def setUp(self):
+        from unittest import mock
+        from . import archive
+        from .models import ArchiveStore
+        ArchiveStore.objects.create(db_url="postgresql://test/test")
+        patcher = mock.patch.object(archive, "_alias", lambda: "default")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        with connection.cursor() as cur:
+            cur.execute(archive.TABLE_SQL)
+        self.addCleanup(self._drop)
+        self.bsr = Item.objects.get(is_default=True)
+        self.admin = get_user_model().objects.create_superuser("boss", password="boss-password-1")
+        rt = RoomType.objects.create(name="Deluxe AC")
+        self.room = Room.objects.create(number="101", room_type=rt)
+
+    @staticmethod
+    def _drop():
+        with connection.cursor() as cur:
+            cur.execute("DROP TABLE IF EXISTS bsr_archive")
+
+    def old_stay(self, guest, years_ago, paid=True, **kw):
+        from core.models import Payment
+        self.n = getattr(self, "n", 0) + 1  # one room: each stay on its own dates
+        start = services.today() - timedelta(days=365 * years_ago + 5 * self.n)
+        s = Stay.objects.create(guest=guest, room=self.room, check_in=start, check_out=start + timedelta(days=2),
+                                total_amount=Decimal("3000"), amount_paid=Decimal("3000") if paid else 0,
+                                status=Stay.Status.CHECKED_OUT, **kw)
+        if paid:
+            Payment.objects.create(stay=s, amount=Decimal("3000"), date=start)
+        return s
+
+    def test_move_old_hotel_records(self):
+        from core.models import Expense, Guest, Payment
+        from . import archive
+        gone = Guest.objects.create(name="Old Guest", phone="+91 90000 77777", id_number="1234 5678 9012")
+        owes = Guest.objects.create(name="Still Owes", phone="+91 90000 88888")
+        back = Guest.objects.create(name="Came Back", phone="+91 90000 99999")
+        self.old_stay(gone, 3)
+        self.old_stay(owes, 3, paid=False)  # money still to collect: stays
+        self.old_stay(back, 3)
+        now = Stay.objects.create(guest=back, room=self.room, check_in=services.today(),
+                                  check_out=services.today() + timedelta(days=1), total_amount=Decimal("1500"))
+        Expense.objects.create(date=services.today() - timedelta(days=800), category="other", amount=Decimal("500"),
+                               reason="Old paint")
+        before = services.today() - timedelta(days=365)
+        p = archive.plan(self.bsr, before)
+        self.assertEqual(dict(p.counts)["Stays"], 2)
+        self.assertEqual(dict(p.counts)["Guests"], 1)
+        archive.move(self.bsr, before)
+        self.assertFalse(Guest.objects.filter(pk=gone.pk).exists())  # moved
+        self.assertEqual(Stay.objects.filter(guest=back).get(), now)  # newer stay stays, guest kept
+        self.assertTrue(Stay.objects.filter(guest=owes).exists())  # unpaid: kept
+        self.assertEqual(Payment.objects.count(), 0)
+        self.assertFalse(Expense.objects.exists())
+        self.assertTrue(Room.objects.filter(pk=self.room.pk).exists())  # standard records never move
+        with connection.cursor() as cur:
+            cur.execute("SELECT model, count(*) FROM bsr_archive GROUP BY model")
+            got = dict(cur.fetchall())
+            cur.execute("SELECT data::text FROM bsr_archive WHERE model = 'core.guest'")
+            raw = " ".join(r[0] for r in cur.fetchall())
+        self.assertEqual((got["core.stay"], got["core.payment"], got["core.guest"]), (2, 2, 2))  # + Came Back copied
+        self.assertNotIn("core.room", got)
+        self.assertNotIn("1234 5678 9012", raw)  # ID numbers stay encrypted
+        # Found again, with the stay.
+        self.client.force_login(self.admin)
+        found = self.client.get("/properties/search/?q=77777")
+        self.assertContains(found, "In the archive")
+        rid = archive.find_people("", "9000077777")[0]["id"]
+        page = self.client.get(f"/properties/archive/{rid}/")
+        self.assertContains(page, "Old Guest")
+        self.assertContains(page, "paid ₹3000")
+        self.assertContains(page, ">101<")  # the room number, from the main database
+        self.assertEqual(archive.plan(self.bsr, before).total, 0)  # moving again: nothing left
+
+    def test_archive_page_is_admin_only_and_moves(self):
+        from core.models import Guest
+        from .models import Activity
+        g = Guest.objects.create(name="Old Guest", phone="+91 90000 77777")
+        self.old_stay(g, 3)
+        self.client.force_login(self.admin)
+        page = self.client.get("/properties/archive/")
+        self.assertContains(page, "Move old records")
+        before = (services.today() - timedelta(days=365)).isoformat()
+        prev = self.client.post("/properties/archive/", {"action": "preview", "item": self.bsr.code, "before": before})
+        self.assertContains(prev, "Move 3 records to the archive")  # stay, payment, guest
+        self.client.post("/properties/archive/", {"action": "move", "item": self.bsr.code, "before": before})
+        self.assertFalse(Guest.objects.filter(pk=g.pk).exists())
+        self.assertTrue(Activity.objects.filter(action="archive", summary__contains="1 stays").exists())
+        owner = get_user_model().objects.create_user("owner", password="x" * 12)
+        Membership.objects.create(user=owner, item=self.bsr, role=R.OWNER, money_access=True)
+        self.client.force_login(owner)
+        self.assertRedirects(self.client.get("/properties/archive/"), "/properties/", fetch_redirect_response=False)
+        home = self.client.get("/properties/?all")
+        self.assertNotContains(home, "Database space")  # space is the main admin's concern only

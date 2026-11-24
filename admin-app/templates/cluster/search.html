@@ -18,7 +18,15 @@
   <div class="stay-line" style="--c-accent: {{ r.item.colors.0 }}"><span class="room-badge person-badge">{{ r.who|first }}</span>
     <div class="stay-line-main"><b><a href="{{ r.url }}">{{ r.name }}</a></b><small>{{ r.who }} at {{ r.item.name }} · {{ r.phone|default:"no phone" }} · {{ r.status }}</small></div>
     <a class="btn btn-ghost btn-sm" href="{{ r.url }}">Open</a></div>
-  {% empty %}<p class="muted">No one found with “{{ q }}”.</p>{% endfor %}
+  {% empty %}{% if not archived %}<p class="muted">No one found with “{{ q }}”.</p>{% endif %}{% endfor %}
 </section>
+{% if archived %}
+<section class="card">
+  <div class="card-head"><h2>In the archive</h2><span class="count">{{ archived|length }}</span></div>
+  {% for a in archived %}<div class="stay-line"><span class="room-badge person-badge">A</span>
+    <div class="stay-line-main"><b><a href="{% url 'cluster_archive_person' a.id %}">{{ a.name }}</a></b><small>{% if a.model == 'core.guest' %}Guest{% else %}Resident{% endif %} at {{ a.property_name }} · {{ a.phone|default:"no phone" }} · old records, moved to the archive</small></div>
+    <a class="btn btn-ghost btn-sm" href="{% url 'cluster_archive_person' a.id %}">Open</a></div>{% endfor %}
+</section>
+{% endif %}
 {% endif %}
 {% endblock %}

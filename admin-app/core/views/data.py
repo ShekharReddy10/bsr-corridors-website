@@ -4,7 +4,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib import messages
 
-from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -90,6 +90,10 @@ def backup_hook(request):
 def settings_page(request):
     years = request.POST.get("years", "3")
     name_lists = {"hosts": (HOSTS_KEY, "Hosts")}  # partners: set on the property's page (main admin)
+    item = getattr(request, "item", None)
+    is_pg = item is not None and item.kind != "hotel"  # no stays: hosts and the stays purge don't apply
+    if request.method == "POST" and is_pg:
+        raise Http404
     if request.method == "POST" and request.POST.get("action") in name_lists:
         action = request.POST["action"]
         key, label = name_lists[action]
@@ -119,6 +123,6 @@ def settings_page(request):
         "encryption_set": bool(settings.FIELD_ENCRYPTION_KEY),
         "backup_hook_set": bool(settings.BACKUP_TOKEN),
         "hosts": ", ".join(host_names()),
-        "partners": partner_shares(),
+        "partners": partner_shares(), "is_pg": is_pg,
         "logs": AuditLog.objects.select_related("stay")[:100],
     })

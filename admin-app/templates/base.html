@@ -66,6 +66,7 @@
       <a href="{% url 'cluster_overview' %}" {% if url == 'cluster_overview' %}aria-current="page"{% endif %}>Overview</a>
       <a href="{% url 'cluster_search' %}" {% if url == 'cluster_search' %}aria-current="page"{% endif %}>Find a person</a>
       <a href="{% url 'users' %}" {% if url == 'users' %}aria-current="page"{% endif %}>Users &amp; access</a>
+      <a href="{% url 'cluster_archive' %}" {% if 'cluster_archive' in url %}aria-current="page"{% endif %}>Archive</a>
       <a href="{% url 'cluster_activity' %}" {% if url == 'cluster_activity' %}aria-current="page"{% endif %}>Activity log</a>
       {% endif %}
     </nav>

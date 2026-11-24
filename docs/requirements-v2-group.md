@@ -270,6 +270,18 @@ encryption key**, and the admin login.
 
 - One property's data **never** appears in another's pages, exports, backups or messages.
 - Each property is backed up **separately to its own Google Drive** every night (§12).
+- Database space is shown to the **main admin only**. [Asked]
+
+### 6.5 Archive database [Asked]
+
+- The main admin connects a **second free database** (e.g. another Supabase project) once, on the Archive page.
+- When the main database fills up: pick a property and a date, **Preview**, then **Move**. Old, finished records
+  are copied to the archive, checked, and only then removed from the main database (all or nothing).
+- What moves: guests, stays, payments, expenses, logs (hotel); residents, tenancies, rent, bed history, fixed
+  complaints, expenses, logs (PG / co-living). Only finished and fully settled ones: nothing with money still to
+  collect or a refund waiting.
+- What never moves: properties, rooms, floors, beds, room types, messages, settings, users.
+- Archived guests and residents are still found with **Find a person**, read-only, with their old stays.
 
 ---
 

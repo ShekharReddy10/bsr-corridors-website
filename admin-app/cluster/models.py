@@ -153,7 +153,7 @@ class Activity(models.Model):
 
     ACTIONS = {
         "property": "Properties", "access": "Logins & access", "drive": "Google Drive", "database": "Database",
-        "money_password": "Money password",
+        "money_password": "Money password", "archive": "Archive",
     }
 
     def get_action_label(self) -> str:
@@ -185,3 +185,17 @@ class Partner(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.item})"
+
+
+class ArchiveStore(models.Model):
+    """The archive database (one for the whole group): where old records are moved when the main one fills up."""
+
+    db_url = EncryptedTextField("Archive database link")
+    connected_at = models.DateTimeField(auto_now=True)
+    connected_by = models.CharField(max_length=60, blank=True)
+
+    class Meta:
+        db_table = "cluster_archive_store"
+
+    def __str__(self):
+        return "Archive database"

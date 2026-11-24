@@ -7,6 +7,7 @@ from functools import wraps
 from django.conf import settings
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 
 from . import current
 from .models import THEMES, Activity, Item
@@ -466,8 +467,19 @@ def search(request):
             except Exception:
                 log.exception("Search failed in %s", item.code)
                 problems.append(item.name)
+    archived = []
+    if q and usable:
+        from . import archive
+        try:
+            archived = archive.find_people(q, digits)
+        except Exception:
+            log.exception("Archive search failed")
+            problems.append("the archive")
+        names = {i.code: i.name for i in Item.objects.all()}
+        for a in archived:
+            a["property_name"] = names.get(a["property"], a["property"])
     return render(request, "cluster/search.html", {
-        "q": q, "results": results, "problems": problems, "too_short": bool(q) and not usable,
+        "q": q, "results": results, "problems": problems, "too_short": bool(q) and not usable, "archived": archived,
         "cluster_name": settings.CLUSTER_NAME,
     })
 
@@ -514,3 +526,94 @@ def activity(request):
         "page": page, "what": what, "code": code, "actions": Activity.ACTIONS.items(),
         "items": Item.objects.order_by("sort_order", "name"), "cluster_name": settings.CLUSTER_NAME,
     })
+
+
+# ── The archive database (admin): connect, move old records, read them back ──
+
+
+@admin_only
+def archive_page(request):
+    from datetime import date as d_, timedelta as td
+    from django.utils.dateparse import parse_date
+    from . import archive
+    from .models import Activity
+    items = list(Item.objects.order_by("archived", "sort_order", "name"))
+    action = request.POST.get("action", "")
+    preview = None
+    code = request.POST.get("item", request.GET.get("item", ""))
+    before = parse_date(request.POST.get("before", "") or "") or d_.today().replace(day=1) - td(days=730)
+    if request.method == "POST":
+        try:
+            if action == "connect":
+                archive.connect(request.POST.get("db_url", ""), by=request.user.get_full_name() or request.user.username)
+                Activity.record("archive", "Archive database connected")
+                messages.success(request, "Archive database connected and ready.")
+                return redirect("cluster_archive")
+            if action == "disconnect":
+                archive.disconnect()
+                Activity.record("archive", "Archive database disconnected (its records stay in it)")
+                messages.success(request, "Archive database disconnected. What was moved there stays there.")
+                return redirect("cluster_archive")
+            item = get_object_or_404(Item, code=code)
+            if action == "preview":
+                preview = {"item": item, "plan": archive.plan(item, before)}
+            elif action == "move":
+                p = archive.move(item, before)
+                what = ", ".join(f"{n} {label.lower()}" for label, n in p.counts) or "nothing"
+                Activity.record("archive", f"{item.name}: moved to the archive (before {before:%d-%m-%Y}) — {what}", item)
+                if p.total:
+                    messages.success(request, f"{item.name}: {p.total} old records moved to the archive and removed "
+                                              f"from the main database." + (" More are left — press Move again." if p.more else ""))
+                else:
+                    messages.info(request, f"{item.name}: nothing finished before {before:%d-%m-%Y} to move.")
+                return redirect(reverse("cluster_archive") + f"?item={item.code}")
+        except archive.ArchiveError as exc:
+            messages.error(request, str(exc))
+    return render(request, "cluster/archive.html", {
+        "store": archive.store(), "usage": archive.usage(), "main": db_usage(), "items": items, "code": code,
+        "before": before.isoformat(), "preview": preview, "cluster_name": settings.CLUSTER_NAME,
+        "names": {i.code: i.name for i in items},
+    })
+
+
+@admin_only
+def archive_person(request, rid):
+    from django.http import Http404
+    from . import archive
+    try:
+        p = archive.person(rid)
+    except archive.ArchiveError as exc:
+        messages.error(request, str(exc))
+        return redirect("cluster_archive")
+    if p is None:
+        raise Http404
+    rooms = {}
+    if p["property"] is not None:  # room / bed numbers: standard records, still in the main database
+        try:
+            with current.using(p["property"]):
+                if p["model"] == "core.guest":
+                    from core.models import Room
+                    rooms = {r.pk: r.number for r in Room.objects.all()}
+                else:
+                    from pg.models import Bed
+                    rooms = {b.pk: str(b) for b in Bed.objects.select_related("room")}
+        except Exception:
+            rooms = {}
+    from django.utils.dateparse import parse_date
+    if p["model"] == "core.guest":
+        from core.models import Stay
+        labels = {**dict(Stay.Status.choices), **dict(Stay.Source.choices)}
+    else:
+        from pg.models import Tenancy
+        labels = {**dict(Tenancy.Status.choices), **dict(Tenancy.Cycle.choices)}
+    for c in p["children"]:
+        f = c["fields"]
+        for k in ("status", "source", "cycle"):
+            if f.get(k):
+                f[k] = str(labels.get(f[k], f[k]))
+        for k in ("check_in", "check_out", "move_in", "move_out", "refund_paid_on"):
+            if f.get(k) and (d := parse_date(f[k])):
+                f[k] = f"{d:%d-%m-%Y}"
+        c["place"] = rooms.get(f.get("room") or f.get("bed"), "—")
+        c["paid"] = sum(float(x.get("amount") or 0) for x in c["payments"])
+    return render(request, "cluster/archive_person.html", {"p": p, "cluster_name": settings.CLUSTER_NAME})
