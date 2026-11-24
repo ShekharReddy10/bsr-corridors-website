@@ -42,7 +42,7 @@
     if (!form.matches || !form.matches("form[data-extend-wa]") || e.defaultPrevented) return;
     e.preventDefault();
     const win = window.open("", "whatsapp");
-    busy("Extending the stay…", false);
+    busy(form.dataset.busyText || "Extending the stay…", false);
     fetch(form.action || location.href, { method: "POST", body: new FormData(form), headers: { "X-Requested-With": "fetch" } })
       .then((r) => r.json())
       .then((d) => {
@@ -500,9 +500,17 @@
       let left = num(settle.dataset.deposit);
       settle.querySelectorAll("[data-settle-amount]").forEach((i) => { left -= num(i.value); });
       const fmt = (n) => "₹" + Math.round(Math.abs(n)).toLocaleString("en-IN");
-      out.textContent = left >= 0 ? fmt(left) : `${fmt(left)} still owed by the resident`;
+      out.textContent = fmt(left);
+      const label = settle.querySelector("[data-settle-label]");
+      if (label) label.textContent = left >= 0 ? "Refund" : "Still to be paid by the resident";
     };
     settle.addEventListener("input", calc);
     calc();
   }
+
+  // PG move-out: changing the date works the rent out again for that day.
+  const reloadDay = document.querySelector("[data-reload-day]");
+  if (reloadDay) reloadDay.addEventListener("change", () => {
+    if (reloadDay.value) location.href = location.pathname + "?day=" + encodeURIComponent(reloadDay.value);
+  });
 })();

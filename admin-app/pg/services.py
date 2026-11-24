@@ -102,7 +102,7 @@ def counts(views: list[BedView]) -> dict[str, int]:
 # ── Move-in, reservation, cancel ──────────────────────────────────────────────
 
 
-def move_in(tenancy: Tenancy, *, by: str = "") -> Tenancy:
+def move_in(tenancy: Tenancy, *, by: str = "", deposit_mode: str = "cash") -> Tenancy:
     """Save a new tenancy and give it the bed from its move-in date. A future date makes it a reservation."""
     if not tenancy.resident.ready_to_move_in and tenancy.move_in <= today():
         raise ValidationError("Add the resident's permanent address and ID number before they move in.")
@@ -123,6 +123,14 @@ def move_in(tenancy: Tenancy, *, by: str = "") -> Tenancy:
             raise _taken_error() from exc
         what = "reserved" if tenancy.status == T.RESERVED else "moved in to"
         _log("pg_move_in", f"{tenancy.resident.name} {what} bed {tenancy.bed} from {tenancy.move_in:%d-%m-%Y}")
+        if tenancy.deposit_received > 0:  # the advance (or a reservation's token) paid now: kept as a payment
+            from .models import RentPayment
+            RentPayment.objects.create(tenancy=tenancy, kind=RentPayment.Kind.DEPOSIT, amount=tenancy.deposit_received,
+                                       paid_on=min(today(), tenancy.move_in), mode=deposit_mode,
+                                       note="At move-in" if tenancy.status == T.STAYING else "Token advance",
+                                       recorded_by=by)
+        from . import money
+        money.sync(tenancy)  # the first rent period falls due on the move-in day
     return tenancy
 
 
@@ -147,6 +155,8 @@ def confirm_move_in(tenancy: Tenancy, day: date | None = None) -> None:
         except IntegrityError as exc:
             raise _taken_error() from exc
         _log("pg_move_in", f"{tenancy.resident.name} moved in to bed {tenancy.bed} on {day:%d-%m-%Y}")
+        from . import money
+        money.sync(tenancy)
 
 
 def cancel(tenancy: Tenancy, reason: str = "") -> None:
@@ -177,6 +187,8 @@ def give_notice(tenancy: Tenancy, given_on: date, last_day: date | None = None) 
     with atomic():
         tenancy.save(update_fields=["status", "notice_given_on", "last_day"])
         _log("pg_notice", f"{tenancy.resident.name} gave notice on {given_on:%d-%m-%Y}; last day {last_day:%d-%m-%Y}")
+        from . import money
+        money.sync(tenancy)  # the period with the last day in it is now charged by the day
 
 
 def withdraw_notice(tenancy: Tenancy) -> None:
@@ -186,6 +198,8 @@ def withdraw_notice(tenancy: Tenancy) -> None:
     with atomic():
         tenancy.save(update_fields=["status", "notice_given_on", "last_day"])
         _log("pg_notice", f"{tenancy.resident.name} withdrew their notice")
+        from . import money
+        money.sync(tenancy)  # back to full periods
 
 
 def shift(tenancy: Tenancy, new_bed: Bed, day: date) -> None:
@@ -233,14 +247,17 @@ def standard_deductions(item) -> list[dict]:
 
 
 def settle(tenancy: Tenancy, *, unpaid_rent: Decimal, deductions: list[dict]) -> Decimal:
-    """deposit received − unpaid rent − deductions. Negative: the resident still owes that much."""
+    """advance received − rent still owed − deductions. Negative: the resident still owes that much.
+    Rent paid ahead (negative owed) comes back with the advance."""
     total = sum((Decimal(str(d["amount"])) for d in deductions), Decimal("0"))
     return tenancy.deposit_received - unpaid_rent - total
 
 
-def move_out(tenancy: Tenancy, day: date, *, unpaid_rent: Decimal = Decimal("0"), deductions=(), by: str = "",
-             refund_days: int | None = None) -> Tenancy:
-    """The resident leaves on `day` (the bed is free from that day). Works out the deposit refund (§8.6)."""
+def move_out(tenancy: Tenancy, day: date, *, deductions=(), by: str = "", refund_days: int | None = None) -> Tenancy:
+    """The resident leaves on `day` (the bed is free from that day). Rent is charged up to that day; whatever is still
+    owed is taken from the advance, rent paid ahead goes back with it, and the rest is the refund (§8.6)."""
+    from . import money
+    from .models import RentPayment
     if tenancy.status not in (T.STAYING, T.NOTICE):
         raise ValidationError("Only someone staying can move out.")
     if day < tenancy.move_in:
@@ -259,8 +276,18 @@ def move_out(tenancy: Tenancy, day: date, *, unpaid_rent: Decimal = Decimal("0")
         spell.save(update_fields=["end"])
         tenancy.status, tenancy.move_out = T.MOVED_OUT, day
         tenancy.last_day = tenancy.last_day or day
-        tenancy.unpaid_rent, tenancy.deductions = unpaid_rent, deductions
-        tenancy.refund = settle(tenancy, unpaid_rent=unpaid_rent, deductions=deductions)
+        tenancy.save(update_fields=["status", "move_out", "last_day"])
+        money.sync(tenancy, max(day, today()))  # rent up to the move-out day (the last period by the day)
+        owed = money.balance(tenancy)
+        tenancy.unpaid_rent, tenancy.deductions = owed, deductions
+        tenancy.refund = settle(tenancy, unpaid_rent=owed, deductions=deductions)
+        # Settle the rent against the advance, so the rent account ends at zero (or at what is still owed).
+        available = tenancy.deposit_received - sum((Decimal(d["amount"]) for d in deductions), Decimal("0"))
+        settled = owed if owed < 0 else min(owed, max(available, Decimal("0")))
+        if settled:
+            RentPayment.objects.create(tenancy=tenancy, kind=RentPayment.Kind.RENT, amount=settled, paid_on=day,
+                                       mode=RentPayment.Mode.ADVANCE, recorded_by=by,
+                                       note="Taken from the advance" if settled > 0 else "Paid ahead — back with the advance")
         tenancy.refund_due_by = day + timedelta(days=refund_days) if tenancy.refund > 0 else None
         tenancy.settled_by = by
         tenancy.save()
@@ -337,60 +364,61 @@ def _money(x: Decimal) -> Decimal:
     return x.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
 
 
-def periods(tenancy: Tenancy, until: date) -> list[Period]:
-    """Rent periods from move-in, each due on its first day, up to `until` (or the move-out / last day).
+def natural_periods(tenancy: Tenancy, until: date) -> list[Period]:
+    """Rent periods from move-in, each due on its first day, up to `until` — ignoring any leaving day.
 
     Monthly + "same date as move-in": the 14th → 14th … (31st moves in: the last day of shorter months).
     Monthly + "fixed date": move-in to the next fixed date is charged by the day, then full months from that date.
-    Weekly / daily: every 7 days / every day from move-in. A final part period is charged by the day.
+    Weekly / daily: every 7 days / every day from move-in.
     """
-    stop = tenancy.move_out or tenancy.last_day
-    end_all = min(until, stop) if stop else until
     out: list[Period] = []
     start = tenancy.move_in
     if tenancy.cycle == Tenancy.Cycle.MONTHLY:
+        anchor = start.day
         if tenancy.due_rule == Tenancy.DueRule.FIXED and tenancy.due_day:
-            first = date(start.year, start.month, tenancy.due_day)
+            anchor = tenancy.due_day
+            first = date(start.year, start.month, anchor)
             if first <= start:
-                first = _add_months(first, 1, tenancy.due_day)
-            if start.day != tenancy.due_day:
-                days_in = (first - _add_months(first, -1, tenancy.due_day)).days  # the full month it is part of
-                if start <= end_all:
-                    end = min(first, stop) if stop else first
-                    out.append(Period(start, end, _money(tenancy.rent * (end - start).days / days_in), True))
+                first = _add_months(first, 1, anchor)
+            if start.day != anchor:
+                days_in = (first - _add_months(first, -1, anchor)).days  # the full month it is part of
+                if start <= until:
+                    out.append(Period(start, first, _money(tenancy.rent * (first - start).days / days_in), True))
                 start = first
-            anchor, k = tenancy.due_day, 0
-        else:
-            anchor, k = start.day, 0
-        base = start
-        while start <= end_all and (not stop or start < stop):
+        base, k = start, 0
+        while start <= until:
             k += 1
             nxt = _add_months(base, k, anchor)
-            if stop and nxt > stop:
-                part = Decimal((stop - start).days) / Decimal((nxt - start).days)
-                out.append(Period(start, stop, _money(tenancy.rent * part), True))
-                break
             out.append(Period(start, nxt, tenancy.rent))
             start = nxt
     else:
         step = 7 if tenancy.cycle == Tenancy.Cycle.WEEKLY else 1
-        while start <= end_all and (not stop or start < stop):
-            nxt = start + timedelta(days=step)
-            if stop and nxt > stop:
-                out.append(Period(start, stop, _money(tenancy.rent * (stop - start).days / step), True))
-                break
-            out.append(Period(start, nxt, tenancy.rent))
-            start = nxt
+        while start <= until:
+            out.append(Period(start, start + timedelta(days=step), tenancy.rent))
+            start += timedelta(days=step)
+    return out
+
+
+def periods(tenancy: Tenancy, until: date) -> list[Period]:
+    """The rent calendar up to `until`, with the last period charged by the day when they leave part-way through it
+    (move-out date, else the last day on notice)."""
+    stop = tenancy.move_out or tenancy.last_day
+    out = []
+    for p in natural_periods(tenancy, min(until, stop - timedelta(days=1)) if stop else until):
+        if stop and p.end > stop:
+            out.append(Period(p.start, stop, _money(p.amount * (stop - p.start).days / (p.end - p.start).days), True))
+        else:
+            out.append(p)
     return out
 
 
 def next_due(tenancy: Tenancy, day: date | None = None) -> Period | None:
-    """The next rent period starting on or after `day` (None once they've moved out or the last day has passed)."""
+    """The next rent period starting after `day` (None once they've moved out or the last day has passed)."""
     day = day or today()
     if not tenancy.is_open:
         return None
     for p in periods(tenancy, day + timedelta(days=62)):
-        if p.start >= day:
+        if p.start > day:  # today's is already due: the next one
             return p
     return None
 

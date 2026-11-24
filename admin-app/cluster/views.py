@@ -59,7 +59,7 @@ def snapshot(item) -> dict:
 
 def _pg_snapshot(t) -> dict:
     """PG / co-living: beds taken today, move-ins and last days today, deposits waiting to be refunded."""
-    from pg import services as pg
+    from pg import money, services as pg
     from pg.models import Bed, Tenancy
     c = pg.counts(pg.bed_views(Bed.objects.in_use().select_related("room"), t))
     open_ = Tenancy.objects
@@ -67,7 +67,7 @@ def _pg_snapshot(t) -> dict:
         "units": "beds", "taken": c["taken"], "total": c["total"],
         "arriving": open_.filter(status=Tenancy.Status.RESERVED, move_in__lte=t).count(),
         "departing": open_.filter(status=Tenancy.Status.NOTICE, last_day__lte=t).count(),
-        "verify": 0,
+        "verify": money.to_verify().count(),
         "refunds": open_.filter(status=Tenancy.Status.MOVED_OUT, refund__gt=0, refund_paid_on__isnull=True).count(),
     }
 

@@ -118,6 +118,9 @@ def revenue_page(request, year=None, month_no=None):
 
     if not _unlocked(request):
         return render(request, "core/revenue_lock.html", {"has_password": has_password, "min_length": MIN_LENGTH})
+    item = cluster_current.get()
+    if item is not None and item.kind != "hotel":
+        return redirect("pg_revenue")  # a PG / co-living's money page (rent instead of stays)
 
     this_month = today().replace(day=1)
     month = this_month

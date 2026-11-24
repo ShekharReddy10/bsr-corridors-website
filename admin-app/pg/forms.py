@@ -84,11 +84,13 @@ class ResidentForm(forms.ModelForm):
 
 class TenancyForm(forms.ModelForm):
     """Move-in (or reservation, when the date is in the future)."""
+    deposit_mode = forms.ChoiceField(label="Advance paid by", required=False, initial="cash",
+                                     choices=[("cash", "Cash"), ("upi", "UPI"), ("card", "Card"), ("bank", "Bank transfer")])
 
     class Meta:
         model = Tenancy
-        fields = ["move_in", "cycle", "due_rule", "due_day", "rent", "deposit", "deposit_received", "notice_days",
-                  "notes"]
+        fields = ["move_in", "cycle", "due_rule", "due_day", "rent", "deposit", "deposit_received", "deposit_mode",
+                  "notice_days", "notes"]
         widgets = {"move_in": DATE, "notes": forms.Textarea(attrs={"rows": 2})}
         help_texts = {"move_in": "A future date reserves the bed until then"}
 
@@ -103,6 +105,7 @@ class TenancyForm(forms.ModelForm):
 
     def clean(self):
         data = super().clean()
+        data["deposit_mode"] = data.get("deposit_mode") or "cash"
         if data.get("due_rule") == Tenancy.DueRule.FIXED:
             if data.get("cycle") != Tenancy.Cycle.MONTHLY:
                 self.add_error("due_rule", "A fixed date works only with monthly rent.")

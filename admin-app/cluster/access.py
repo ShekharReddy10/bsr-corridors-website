@@ -42,7 +42,11 @@ RULES: dict[str, tuple[set, set]] = {
 _pg_manage = ["pg_setup", "pg_setup_new", "pg_setup_edit", "pg_bed_edit", "pg_bed_action", "pg_room"]
 RULES.update({n: ({"view"}, {"manage"}) for n in _pg_manage})
 RULES["pg_reveal_id"] = ({"ids"}, {"ids"})
+RULES.update({"pg_messages": ({"view"}, {"manage"}), "pg_message_new": ({"manage"}, {"manage"}),
+              "pg_message_edit": ({"view"}, {"manage"}), "pg_revenue": ({"money"}, {"money"})})
 PG_TENANCY_ACTIONS = {"refund": {"pay"}}
+PG_RENT_ACTIONS = {"pay": {"pay"}, "pay-delete": {"pay", "delete"}, "link-ok": {"pay"}, "link-no": {"pay"},
+                   "message": {"work"}}
 STAY_ACTIONS = {"payment": {"pay"}, "pay-not-received": {"pay"}, "delete": {"work", "delete"}}
 
 
@@ -67,6 +71,8 @@ def needed(request, url_name: str, kwargs: dict) -> set:
         return STAY_ACTIONS.get(kwargs.get("action", ""), {"work"})
     if url_name == "pg_tenancy_action" and post:
         return PG_TENANCY_ACTIONS.get(kwargs.get("action", ""), {"work"})
+    if url_name == "pg_rent_action" and post:
+        return PG_RENT_ACTIONS.get(kwargs.get("action", ""), {"work"})
     if url_name == "pg_file" and kwargs.get("what") == "id":
         return {"ids"}
     if url_name == "export" and post and request.POST.get("include_full_ids"):

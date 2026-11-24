@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}WhatsApp messages{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>WhatsApp messages</h1><p class="muted">Ready-made messages for residents. They open in WhatsApp filled in; you check and send.</p></div>
+  {% if 'manage' in caps %}<a class="btn btn-primary" href="{% url 'pg_message_new' %}">+ New message</a>{% endif %}
+</div>
+<section class="card">
+  {% for m in msgs %}
+  <div class="stay-line"><div class="stay-line-main"><b>{{ m.name }}</b><small>{% if m.use %}{{ m.get_use_display }}{% else %}Button on the tenancy page{% endif %}</small></div>
+    {% if 'manage' in caps %}<a class="btn btn-ghost btn-sm" href="{% url 'pg_message_edit' m.pk %}">Edit</a>{% endif %}</div>
+  <pre class="wa-preview">{{ m.body }}</pre>
+  {% empty %}<p class="muted">No messages yet.</p>{% endfor %}
+</section>
+<section class="card">
+  <h2>Placeholders</h2>
+  <p class="muted small">Type these in a message; they are filled in for each resident. A line whose value is empty (e.g. nothing due) is left out.</p>
+  <dl class="dl">{% for k, v in fields.items %}<dt><code>{{ "{" }}{{ k }}{{ "}" }}</code></dt><dd>{{ v }}</dd>{% endfor %}</dl>
+</section>
+{% endblock %}

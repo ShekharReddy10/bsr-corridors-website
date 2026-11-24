@@ -27,8 +27,9 @@
       <a href="{% url 'pg_home' %}" {% if url == 'pg_home' %}aria-current="page"{% endif %}>Today</a>
       <a href="{% url 'pg_residents' %}" {% if 'pg_resident' in url or url == 'pg_tenancy' or url == 'pg_move_out' %}aria-current="page"{% endif %}>Residents</a>
       <a href="{% url 'pg_setup' %}" {% if 'pg_setup' in url or url == 'pg_floor' or url == 'pg_room' or 'pg_bed' in url %}aria-current="page"{% endif %}>Floors &amp; rooms</a>
+      {% if 'money' in caps %}<a href="{% url 'pg_revenue' %}" {% if url == 'pg_revenue' %}aria-current="page"{% endif %}>Money</a>{% endif %}
       {% if 'expenses' in caps %}<a href="{% url 'expense_list' %}" {% if 'expense' in url %}aria-current="page"{% endif %}>Expenses</a>{% endif %}
-      <a href="{% url 'whatsapp' %}" {% if url == 'whatsapp' or 'wa_' in url %}aria-current="page"{% endif %}>WhatsApp</a>
+      <a href="{% url 'pg_messages' %}" {% if 'pg_message' in url %}aria-current="page"{% endif %}>WhatsApp</a>
       <a href="{% url 'backups' %}" {% if url == 'backups' %}aria-current="page"{% endif %}>Backups</a>
       <a href="{% url 'settings' %}" {% if url == 'settings' %}aria-current="page"{% endif %}>Settings &amp; log</a>
     </nav>
@@ -99,8 +100,9 @@
     <details class="tab-more">
       <summary><span class="ti">⋯</span>More</summary>
       <div class="more-sheet">
+        {% if 'money' in caps %}<a href="{% url 'pg_revenue' %}">Money</a>{% endif %}
         {% if 'expenses' in caps %}<a href="{% url 'expense_list' %}">Expenses</a>{% endif %}
-        <a href="{% url 'whatsapp' %}">WhatsApp messages</a>
+        <a href="{% url 'pg_messages' %}">WhatsApp messages</a>
         <a href="{% url 'backups' %}">Backups</a>
         <a href="{% url 'settings' %}">Settings &amp; log</a>
         {% if user.is_superuser or my_items|length > 1 %}<a href="{% url 'cluster_home' %}?all">{{ CLUSTER_NAME }}</a>{% endif %}

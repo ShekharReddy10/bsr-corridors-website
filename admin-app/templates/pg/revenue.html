@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}Money · {{ m.start|date:"F Y" }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Money — {{ m.start|date:"F Y" }}</h1><p class="muted">Rent counts for the days stayed, like the hotel’s revenue.</p></div>
+  <form method="get" class="inline-form"><select name="month" onchange="this.form.submit()" aria-label="Month">{% for x in months %}<option value="{{ x|date:'Y-m' }}"{% if x == m.start %} selected{% endif %}>{{ x|date:"F Y" }}</option>{% endfor %}</select><noscript><button class="btn btn-outline btn-sm">Show</button></noscript></form>
+</div>
+<div class="stats">
+  <div class="stat"><b>{{ m.received|inr }}</b><span>received (days stayed, paid)</span></div>
+  <div class="stat"><b>{{ m.held|inr }}</b><span>paid ahead (days to come)</span></div>
+  <div class="stat{% if m.pending %} stat-warn{% endif %}"><b>{{ m.pending|inr }}</b><span>pending (stayed, not paid)</span></div>
+  <div class="stat"><b>{{ expenses|inr }}</b><span>expenses</span></div>
+</div>
+<section class="card money-hero">
+  <p class="money-label">Profit this month (received − expenses)</p>
+  <p class="money-big">{{ profit|inr }}</p>
+  <p class="muted small">Cash in this month: rent {{ m.collected|inr }} · advances {{ m.deposits_in|inr }} · refunds paid {{ m.refunds_out|inr }}. Advances held now: {{ held_deposits|inr }} (not income).</p>
+</section>
+<section class="card">
+  <h2>By resident</h2>
+  {% if m.rows %}
+  <div class="table-wrap"><table class="table table-cards">
+    <thead><tr><th>Bed</th><th>Resident</th><th class="num">Received</th><th class="num">Paid ahead</th><th class="num">Pending</th></tr></thead>
+    <tbody>{% for t, r, h, p in m.rows %}<tr><td data-label="Bed">{{ t.bed }}</td><td data-label="Resident"><a href="{% url 'pg_tenancy' t.pk %}">{{ t.resident.name }}</a></td><td data-label="Received" class="num">{{ r|inr }}</td><td data-label="Paid ahead" class="num">{{ h|inr }}</td><td data-label="Pending" class="num">{{ p|inr }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="muted">No rent for this month.</p>{% endif %}
+</section>
+{% if owing %}
+<section class="card">
+  <h2>Rent owed now</h2>
+  {% for o in owing %}<div class="stay-line{% if o.overdue %} is-warn{% endif %}"><span class="room-badge">{{ o.tenancy.bed }}</span><div class="stay-line-main"><b><a href="{% url 'pg_tenancy' o.tenancy.pk %}">{{ o.tenancy.resident.name }}</a></b><small>{{ o.amount|inr }}{% if o.since %} since {{ o.since|date:"d M" }}{% endif %}</small></div></div>{% endfor %}
+</section>
+{% endif %}
+<p class="muted small">Expenses work as before — <a href="{% url 'expense_list' %}">Expenses</a>.</p>
+{% endblock %}

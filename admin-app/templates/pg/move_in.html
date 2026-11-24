@@ -5,7 +5,7 @@
   <div><h1>Move in — bed {{ bed.label }}, room {{ bed.room.number }}</h1><p class="muted">{{ bed.room.room_type.name }} · a future date reserves the bed.</p></div>
   <a class="btn btn-ghost" href="{% url 'pg_bed' bed.pk %}">Back</a>
 </div>
-<form method="post" class="card" novalidate data-pg-move-in data-lookup="{% url 'pg_resident_lookup' %}">{% csrf_token %}
+<form method="post" class="card" novalidate data-extend-wa data-busy-text="Saving…" data-pg-move-in data-lookup="{% url 'pg_resident_lookup' %}">{% csrf_token %}
   <input type="hidden" name="resident_id" value="{{ existing.pk|default:'' }}">
   {% if tform.non_field_errors %}<div class="msg msg-error">{{ tform.non_field_errors }}</div>{% endif %}
   <h2>Resident</h2>
@@ -21,7 +21,7 @@
   <div class="form-grid">
     {% field tform.move_in %}{% field tform.cycle %}{% field tform.rent %}{% field tform.due_rule %}
     <div class="due-day-wrap">{% field tform.due_day %}</div>
-    {% field tform.deposit %}{% field tform.deposit_received %}{% field tform.notice_days %}{% field tform.notes %}
+    {% field tform.deposit %}{% field tform.deposit_received %}{% field tform.deposit_mode %}{% field tform.notice_days %}{% field tform.notes %}
   </div>
   <p class="muted small">Rent is what you agree with this resident (beds in the same room can differ) and includes electricity and food. Permanent address and ID are needed on the move-in day (not for a reservation).</p>
   <div class="form-actions"><button class="btn btn-primary">Save</button><a class="btn btn-ghost" href="{% url 'pg_bed' bed.pk %}">Cancel</a></div>

@@ -22,8 +22,9 @@ HOTEL_ONLY = {"dashboard", "confirm_check", "calendar", "room_month", "stay_list
               "guest_list", "guest_detail", "guest_lookup", "rooms", "roomtype_new", "roomtype_edit", "room_new",
               "room_edit", "room_log", "maintenance_done", "maintenance_delete", "room_delete", "stay_invoice",
               "stay_pay_link", "wa_in_house", "id_photos_upload", "id_photos_use", "id_photo_unuse", "id_photo_person",
-              "id_photo", "id_photo_delete"}
-NO_CHECK = {"login", "logout", "healthz", "backup_hook", "my_password", "guest_invoice", "pay_page", "short_link"}
+              "id_photo", "id_photo_delete", "whatsapp", "wa_template_new", "wa_template_edit",
+              "wa_template_delete"}
+NO_CHECK = {"pg_pay_page", "pg_public_receipt", "login", "logout", "healthz", "backup_hook", "my_password", "guest_invoice", "pay_page", "short_link"}
 
 
 def split(path: str) -> tuple[str | None, str]:
@@ -84,7 +85,7 @@ class ClusterMiddleware:
         name = match.url_name if match else ""
         if request.item is not None and name:
             if request.item.kind != Item.Kind.HOTEL and name in HOTEL_ONLY:
-                return redirect("pg_home")
+                return redirect("pg_messages" if name == "whatsapp" or name.startswith("wa_") else "pg_home")
             if request.item.kind == Item.Kind.HOTEL and name.startswith("pg_"):
                 raise Http404
         if request.item is None or not request.user.is_authenticated or (match and match.url_name in NO_CHECK):

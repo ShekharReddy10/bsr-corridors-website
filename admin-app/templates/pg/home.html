@@ -20,6 +20,19 @@
   <div class="stat{% if all.notice %} stat-warn{% endif %}"><b>{{ all.notice }}</b><span>on notice</span></div>
 </div>
 
+{% if verify or overdue or due_today %}
+<section class="card">
+  <div class="card-head"><h2>Rent</h2>{% if owed_total %}<span class="count">{{ owed_total|inr }} due</span>{% endif %}</div>
+  {% for req in verify %}<div class="stay-line is-warn"><span class="room-badge">UPI</span><div class="stay-line-main"><b>{{ req.tenancy.resident.name }}</b><small>Says paid {{ req.amount|inr }} by UPI — check and record</small></div><a class="btn btn-primary btn-sm" href="{% url 'pg_tenancy' req.tenancy.pk %}">Check</a></div>{% endfor %}
+  {% for d in due_today %}<div class="stay-line"><span class="room-badge">{{ d.tenancy.bed }}</span><div class="stay-line-main"><b>{{ d.tenancy.resident.name }}</b><small>Rent {{ d.amount|inr }} due today</small></div>
+    {% if 'work' in caps %}{% for m in wa_rent_due %}<form method="post" action="{% url 'pg_rent_action' d.tenancy.pk 'message' %}" target="whatsapp">{% csrf_token %}<input type="hidden" name="message" value="{{ m.pk }}"><button class="btn btn-outline btn-sm">Remind</button></form>{% endfor %}{% endif %}
+    <a class="btn btn-ghost btn-sm" href="{% url 'pg_tenancy' d.tenancy.pk %}">Open</a></div>{% endfor %}
+  {% for o in overdue %}<div class="stay-line is-warn"><span class="room-badge">{{ o.tenancy.bed }}</span><div class="stay-line-main"><b>{{ o.tenancy.resident.name }}</b><small>{{ o.amount|inr }} overdue since {{ o.since|date:"d M" }}{% if o.tenancy.status == 'moved_out' %} · moved out{% endif %}</small></div>
+    {% if 'work' in caps %}{% for m in wa_overdue %}<form method="post" action="{% url 'pg_rent_action' o.tenancy.pk 'message' %}" target="whatsapp">{% csrf_token %}<input type="hidden" name="message" value="{{ m.pk }}"><button class="btn btn-outline btn-sm">Remind</button></form>{% endfor %}{% endif %}
+    <a class="btn btn-ghost btn-sm" href="{% url 'pg_tenancy' o.tenancy.pk %}">Open</a></div>{% endfor %}
+</section>
+{% endif %}
+
 {% if moving_in or moving_out or notice_week or refunds %}
 <section class="card">
   <h2>To do</h2>

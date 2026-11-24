@@ -642,6 +642,24 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .stay-line.is-warn .room-badge { animation: pulse 1.6s ease-in-out 3; }
 .in-pg .stay-line-main { flex-direction: column; align-items: flex-start; gap: 2px; }  /* name above its details: no cut-off names on phones */
 
+.rent-card .card-head { flex-wrap: wrap; gap: 8px; }
+.rent-balance { font-weight: 700; padding: 3px 12px; border-radius: 999px; font-size: .9rem; }
+.rent-balance.is-due { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); }
+.rent-balance.is-ahead, .rent-balance.is-clear { background: color-mix(in srgb, var(--green) 12%, transparent); color: var(--green); }
+.verify-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.verify-line form { margin: 0; }
+.collect { margin: 10px 0; }
+.collect > summary { list-style: none; display: inline-flex; }
+.collect > summary::-webkit-details-marker { display: none; }
+.collect[open] .collect-form { margin-top: 12px; animation: pop-in .2s ease-out; }
+.wa-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 6px; }
+.wa-buttons form { margin: 0; }
+.rent-lists h3 { font-size: 1rem; margin: 14px 0 6px; }
+.rent-lists > div { min-width: 0; }
+.wa-preview { white-space: pre-wrap; font: inherit; font-size: .88rem; color: var(--ink-soft); background: var(--bg);
+  border-radius: 10px; padding: 10px 12px; margin: 4px 0 14px; }
+.settle-owed { margin: 6px 0 0; font-size: 1.15rem; }
+
 /* ── Animations (decision: light, 150–400 ms; none for "reduce motion") ── */
 @keyframes rise-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 @keyframes pop-in { from { opacity: 0; transform: scale(.96) translateY(-4px); } to { opacity: 1; transform: none; } }

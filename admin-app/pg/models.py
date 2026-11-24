@@ -289,3 +289,108 @@ class BedSpell(models.Model):
 
     def __str__(self):
         return f"{self.bed}: {self.start} → {self.end or '…'}"
+
+
+# ── Rent and money (phase 4) ──────────────────────────────────────────────────
+
+
+class RentDue(models.Model):
+    """One rent period, added on its due date (its first day). `full` is the period's rent at the time; `amount` is
+    what is charged — less when the resident leaves part-way through (charged by the day). Later rent changes never
+    alter periods already added."""
+    tenancy = models.ForeignKey(Tenancy, on_delete=models.CASCADE, related_name="dues")
+    start = models.DateField()
+    end = models.DateField()  # the period's natural end (exclusive)
+    full = models.DecimalField(max_digits=10, decimal_places=2)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["start"]
+        constraints = [models.UniqueConstraint(fields=["tenancy", "start"], name="pg_rentdue_one_per_period")]
+
+    def __str__(self):
+        return f"{self.tenancy}: {self.start} → {self.end} ₹{self.amount}"
+
+    @property
+    def part(self) -> bool:
+        return self.amount != self.full
+
+
+class RentPayment(models.Model):
+    class Kind(models.TextChoices):
+        RENT = "rent", "Rent"
+        DEPOSIT = "deposit", "Advance / deposit"
+
+    class Mode(models.TextChoices):
+        CASH = "cash", "Cash"
+        UPI = "upi", "UPI"
+        CARD = "card", "Card"
+        BANK = "bank", "Bank transfer"
+        OTHER = "other", "Other"
+        ADVANCE = "advance", "From the advance (move-out)"  # not money coming in: settled against the advance
+
+    tenancy = models.ForeignKey(Tenancy, on_delete=models.PROTECT, related_name="payments")
+    kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.RENT)
+    paid_on = models.DateField()
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    mode = models.CharField(max_length=10, choices=Mode.choices, default=Mode.UPI)
+    reference = models.CharField("UPI / bank reference", max_length=40, blank=True)
+    note = models.CharField(max_length=200, blank=True)
+    recorded_by = models.CharField(max_length=150, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-paid_on", "-pk"]
+
+    def __str__(self):
+        return f"{self.paid_on:%d-%m-%Y} ₹{self.amount:,.0f} {self.get_kind_display()}"
+
+
+class RentRequest(models.Model):
+    """A UPI payment link sent to a resident (no gateway: money goes straight to the property's UPI ID).
+    open → the resident pays and ticks "I've paid" (claimed) → staff check the UPI app and record it (paid), or mark
+    it not received (open again). A newer link for the tenancy replaces older open ones."""
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Waiting for payment"
+        CLAIMED = "claimed", "Resident says paid — to verify"
+        PAID = "paid", "Paid"
+        REPLACED = "replaced", "Replaced by a newer link"
+
+    tenancy = models.ForeignKey(Tenancy, on_delete=models.CASCADE, related_name="requests")
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN, db_index=True)
+    reference = models.CharField("UPI reference (UTR)", max_length=40, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.CharField(max_length=150, blank=True)
+    claimed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class PgMessage(models.Model):
+    """A ready-made WhatsApp message for residents; {placeholders} are filled in from the tenancy and the property."""
+
+    class Use(models.TextChoices):
+        WELCOME = "welcome", "Opens after Move in"
+        RENT_DUE = "rent_due", "Rent due (button on Today and the tenancy)"
+        OVERDUE = "overdue", "Rent overdue (button on Today and the tenancy)"
+        PAY_LINK = "pay_link", "Carries the UPI payment link"
+        RECEIPT = "receipt", "Payment received (with the receipt link)"
+        NOTICE = "notice", "Notice noted"
+        MOVE_OUT = "move_out", "Opens after Move out"
+
+    name = models.CharField(max_length=60, help_text="Button label")
+    use = models.CharField("Used for", max_length=10, choices=Use.choices, blank=True,
+                           help_text="Each use has one message; empty: only a button on the tenancy page")
+    body = models.TextField()
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "pk"]
+        constraints = [models.UniqueConstraint(fields=["use"], condition=~Q(use=""), name="pg_message_one_per_use")]
+
+    def __str__(self):
+        return self.name

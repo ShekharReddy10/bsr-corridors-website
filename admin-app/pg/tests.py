@@ -16,8 +16,8 @@ from cluster import current, provision
 from cluster.models import Item, Membership
 from core.services import today
 
-from . import services
-from .models import Bed, BedSpell, Floor, Resident, Room, RoomType, Tenancy
+from . import defaults, money, services
+from .models import Bed, BedSpell, Floor, PgMessage, Resident, Room, RoomType, Tenancy
 
 T = Tenancy.Status
 R = Membership.Role
@@ -81,6 +81,7 @@ class PgTests(TransactionTestCase):
         self.ctx = current.using(self.item)
         self.ctx.__enter__()
         self.addCleanup(self.ctx.__exit__, None, None, None)
+        defaults.ensure_messages()  # the test runner empties the tables between tests
         self.floor = Floor.objects.create(name="1st", sort_order=1)
         self.type = RoomType.objects.create(name="2-sharing AC")
         self.room = Room.objects.create(number="201", floor=self.floor, room_type=self.type, deposit=10000)
@@ -88,8 +89,8 @@ class PgTests(TransactionTestCase):
         self.ria = Resident.objects.create(name="Ria", phone="+91 90000 11111", address="Hyderabad", id_number="1234 5678 9012")
         self.admin = get_user_model().objects.create_superuser("boss", password="boss-password-1")
 
-    def tenancy(self, bed=None, move_in=None, resident=None, **kw):
-        t = Tenancy(resident=resident or self.ria, bed=bed or self.a, move_in=move_in or today(), rent=Decimal("9000"),
+    def tenancy(self, bed=None, move_in=None, resident=None, rent=Decimal("9000"), **kw):
+        t = Tenancy(resident=resident or self.ria, bed=bed or self.a, move_in=move_in or today(), rent=rent,
                     deposit=Decimal("10000"), deposit_received=Decimal("10000"), **kw)
         return services.move_in(t, by="test")
 
@@ -158,16 +159,23 @@ class PgTests(TransactionTestCase):
         self.assertEqual(self.state(self.b), "vacant")
 
     def test_notice_move_out_and_deposit_settlement(self):
-        t = self.tenancy(move_in=today() - timedelta(days=60))
+        t = self.tenancy(move_in=today() - timedelta(days=14), cycle="weekly", rent=Decimal("2100"))
+        self.assertEqual(money.balance(t), Decimal("6300"))  # weeks starting 14 and 7 days ago, and today
+        services.give_notice(t, today(), today() + timedelta(days=3))
+        self.assertEqual(money.balance(t), Decimal("5100"))  # this week charged by the day: 3 of 7 days = 900
+        services.withdraw_notice(t)
+        self.assertEqual(money.balance(t), Decimal("6300"))  # back to a full week
         services.give_notice(t, today(), None)
         self.assertEqual(t.last_day, today() + timedelta(days=30))
         self.assertEqual(self.state(self.a), "notice")
-        services.move_out(t, today(), unpaid_rent=Decimal("2000"),
-                          deductions=[{"reason": "Cleaning", "amount": "500"}, {"reason": "", "amount": "0"}])
+        money.record(t, Decimal("1000"), mode="cash")
+        services.move_out(t, today(), deductions=[{"reason": "Cleaning", "amount": "500"}, {"reason": "", "amount": "0"}])
         t.refresh_from_db()
         self.assertEqual(t.status, T.MOVED_OUT)
-        self.assertEqual(t.refund, Decimal("7500"))
-        self.assertEqual(t.refund_due_by, today() + timedelta(days=10))  # the item's refund period
+        self.assertEqual(t.unpaid_rent, Decimal("3200"))  # two weeks (today's week dropped: they leave today) − 1000
+        self.assertEqual(t.refund, Decimal("6300"))  # 10000 − 3200 − 500
+        self.assertEqual(money.balance(t), 0)  # the rent was taken from the advance
+        self.assertEqual(t.refund_due_by, today() + timedelta(days=10))  # the property's refund period
         self.assertEqual(t.deductions, [{"reason": "Cleaning", "amount": "500"}])
         self.assertEqual(self.state(self.a), "vacant")
         self.assertTrue(t.refund_pending)
@@ -175,10 +183,39 @@ class PgTests(TransactionTestCase):
         self.assertFalse(Tenancy.objects.get(pk=t.pk).refund_pending)
 
     def test_owing_more_than_the_deposit(self):
-        t = self.tenancy(move_in=today() - timedelta(days=60))
-        services.move_out(t, today(), unpaid_rent=Decimal("12000"))
+        t = self.tenancy(move_in=today() - timedelta(days=14), cycle="weekly", rent=Decimal("6000"))
+        services.move_out(t, today())
         self.assertEqual(t.refund, Decimal("-2000"))
         self.assertIsNone(t.refund_due_by)
+        self.assertEqual(money.balance(t), Decimal("2000"))  # still on the Today page as owing
+        self.assertEqual([o.tenancy for o in money.owing()], [t])
+
+    def test_rent_paid_ahead_comes_back_with_the_advance(self):
+        t = self.tenancy(move_in=today() - timedelta(days=3), cycle="weekly", rent=Decimal("2100"))
+        money.record(t, Decimal("2100"), mode="upi")
+        services.move_out(t, today())
+        self.assertEqual(t.unpaid_rent, Decimal("-1200"))  # 3 days used of the 2100 paid
+        self.assertEqual(t.refund, Decimal("11200"))
+        self.assertEqual(money.balance(t), 0)
+
+    def test_dues_payments_and_rent_changes(self):
+        t = self.tenancy(move_in=today() - timedelta(days=8), cycle="weekly", rent=Decimal("2000"))
+        self.assertEqual(money.balance(t), Decimal("4000"))
+        money.record(t, Decimal("3000"), mode="upi")
+        states = [ln.state for ln in money.lines(t)]
+        self.assertEqual(states, ["paid", "part"])  # oldest first
+        self.assertEqual(money.unpaid_since(t), today() - timedelta(days=1))
+        t.rent = Decimal("2500")  # agreed new rent: only periods from now on
+        t.save()
+        money.sync(t, today() + timedelta(days=6))
+        self.assertEqual([d.amount for d in t.dues.all()], [Decimal("2000"), Decimal("2000"), Decimal("2500")])
+        self.assertEqual(money.balance(t), Decimal("3500"))
+        # The advance is the sum of advance payments.
+        money.record(t, Decimal("500"), kind="deposit", mode="cash")
+        t.refresh_from_db()
+        self.assertEqual(t.deposit_received, Decimal("10500"))
+        with self.assertRaises(ValidationError):
+            money.record(t, Decimal("0"))
 
     def test_cancel_reservation_frees_the_bed(self):
         t = self.tenancy(move_in=today() + timedelta(days=4))
@@ -209,12 +246,13 @@ class PgTests(TransactionTestCase):
         self.assertRedirects(r, f"/p/pgthree/pg/tenancy/{t.pk}/", fetch_redirect_response=False)
         self.assertEqual((t.status, t.due_day, t.created_by), (T.STAYING, 5, "boss"))
         page = self.client.get(f"/p/pgthree/pg/tenancy/{t.pk}/")
-        self.assertContains(page, "On the 5 of every month")
+        self.assertContains(page, "On the 5th of every month")
+        self.assertContains(page, "Payment received")  # the property's messages, as buttons
         self.assertNotContains(page, "1111 2222 3333")  # full ID never on the page
         # Move out with the standard deduction filled in.
         mo = self.client.get(f"/p/pgthree/pg/tenancy/{t.pk}/move-out/")
         self.assertContains(mo, 'value="Cleaning"')
-        self.client.post(f"/p/pgthree/pg/tenancy/{t.pk}/move-out/", {"day": today().isoformat(), "unpaid_rent": "0",
+        self.client.post(f"/p/pgthree/pg/tenancy/{t.pk}/move-out/", {"day": today().isoformat(),
                                                                     "reason": ["Cleaning", ""], "amount": ["500", ""]})
         t.refresh_from_db()
         self.assertEqual((t.status, t.refund), (T.MOVED_OUT, Decimal("9500")))
@@ -262,3 +300,75 @@ class PgTests(TransactionTestCase):
         self.tenancy()
         self.client.force_login(self.admin)
         self.assertContains(self.client.get("/properties/"), "beds taken")
+
+    # ── Rent and money pages ──
+
+    def test_collect_payment_receipt_and_upi_link(self):
+        Item.objects.filter(pk=self.item.pk).update(upi_id="bsrpg@ybl", upi_name="BSR Ladies PG")
+        t = self.tenancy(move_in=today() - timedelta(days=2), cycle="weekly", rent=Decimal("2100"))
+        self.client.force_login(self.admin)
+        r = self.client.post(f"/p/pgthree/pg/tenancy/{t.pk}/rent/pay/", {"amount": "1000", "kind": "rent", "mode": "cash",
+                                                                         "paid_on": today().isoformat(), "send_receipt": "1"})
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(r["Location"].startswith("https://web.whatsapp.com/send?phone=919000011111"))
+        self.assertIn("received", __import__("urllib.parse").parse.unquote(r["Location"]))
+        p = t.payments.get(kind="rent")
+        pdf = self.client.get(f"/p/pgthree/pg/payment/{p.pk}/receipt/")
+        self.assertEqual(pdf["Content-Type"], "application/pdf")
+        self.assertTrue(pdf.content.startswith(b"%PDF"))
+        # A UPI link for the rest, paid by the resident (no login), then checked by staff.
+        link = self.client.post(f"/p/pgthree/pg/tenancy/{t.pk}/rent/message/",
+                                {"message": PgMessage.objects.get(use="pay_link").pk, "amount": "1100"})
+        text = __import__("urllib.parse").parse.unquote(link["Location"])
+        self.assertIn("₹1,100", text)
+        req = t.requests.get()
+        self.client.logout()
+        token = money.pay_token(req)
+        page = self.client.get(f"/p/pgthree/pay/rent/{token}/")
+        self.assertContains(page, "₹1,100")
+        self.assertEqual(self.client.get(f"/p/pgthree/pay/rent/{token}x/").status_code, 404)
+        self.client.post(f"/p/pgthree/pay/rent/{token}/", {"paid": "1", "reference": "4123 4567 8901"})
+        req.refresh_from_db()
+        self.assertEqual((req.status, req.reference), ("claimed", "412345678901"))
+        public = self.client.get(f"/p/pgthree/pay/receipt/{money.receipt_token(p)}/")
+        self.assertTrue(public.content.startswith(b"%PDF"))
+        self.client.force_login(self.admin)
+        self.assertContains(self.client.get("/p/pgthree/pg/"), "Says paid")
+        self.client.post(f"/p/pgthree/pg/tenancy/{t.pk}/rent/link-ok/", {"request": req.pk})
+        self.assertEqual(money.balance(t), 0)
+
+    def test_welcome_message_opens_after_move_in(self):
+        self.client.force_login(self.admin)
+        r = self.client.post(f"/p/pgthree/pg/bed/{self.b.pk}/move-in/", {
+            "r-phone": "+91 98765 43210", "r-name": "Anu Rao", "r-address": "Vizag", "r-id_type": "aadhaar",
+            "r-id_number": "1111", "t-move_in": today().isoformat(), "t-cycle": "monthly", "t-due_rule": "move_in",
+            "t-rent": "8000", "t-deposit": "8000", "t-deposit_received": "8000", "t-deposit_mode": "upi",
+            "t-notice_days": "30"}, HTTP_X_REQUESTED_WITH="fetch")
+        d = r.json()
+        self.assertTrue(d["ok"])
+        text = __import__("urllib.parse").parse.unquote(d["wa"])
+        self.assertIn("Welcome to BSR Ladies PG", text)
+        self.assertIn("₹8,000 (monthly)", text)
+        t = Tenancy.objects.get(resident__name="Anu Rao")
+        self.assertEqual(t.payments.get().mode, "upi")  # the advance, as a payment
+        self.assertEqual(money.balance(t), Decimal("8000"))  # first month due on the move-in day
+
+    def test_money_page_needs_the_money_password(self):
+        t = self.tenancy(move_in=today().replace(day=1), cycle="daily", rent=Decimal("300"))
+        money.record(t, Decimal("300"), mode="cash")
+        self.client.force_login(self.admin)
+        r = self.client.get("/p/pgthree/pg/revenue/")
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("/p/pgthree/revenue/", r["Location"])
+        self.client.post("/p/pgthree/revenue/", {"password": "money-pass-1", "confirm": "money-pass-1"})
+        self.assertRedirects(self.client.get("/p/pgthree/revenue/"), "/p/pgthree/pg/revenue/", fetch_redirect_response=False)
+        page = self.client.get("/p/pgthree/pg/revenue/")
+        self.assertContains(page, "Ria")
+        m = money.month(today().replace(day=1))
+        days = today().day
+        self.assertEqual(m.received, Decimal("300"))  # day one paid
+        self.assertEqual(m.pending, Decimal(300 * (days - 1)))  # the other days so far not paid
+        self.assertEqual(m.collected, Decimal("300"))
+        self.assertRedirects(self.client.get("/p/pgthree/whatsapp/"), "/p/pgthree/pg/messages/",
+                             fetch_redirect_response=False)
+

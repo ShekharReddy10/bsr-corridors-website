@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
-from django.db.models import Count, ProtectedError, Q
+from django.db.models import Count, ProtectedError, Q, Sum
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -18,6 +18,7 @@ from cluster import current
 from core.services import today
 
 from . import services
+from .messages import due_rule_text
 from .forms import (BedForm, FloorForm, NoticeForm, RefundForm, ResidentForm, RoomForm, RoomTypeForm, ShiftForm,
                     TenancyForm)
 from .models import Bed, BedSpell, Floor, Resident, Room, RoomType, Tenancy
@@ -61,8 +62,20 @@ def home(request):
         "refunds": [x for x in open_.filter(status=T.MOVED_OUT, refund__gt=0, refund_paid_on__isnull=True)
                     .order_by("refund_due_by")],
         "vacant": [v.bed for v in views if v.state == "vacant"], "set_up": Room.objects.exists(), "today": t,
+        **_rent_today(t),
     }
     return render(request, "pg/home.html", ctx)
+
+
+def _rent_today(t) -> dict:
+    from . import money
+    owing = money.owing(t)
+    due_today = [d for d in money.due_on(t) if d.tenancy.status in (T.STAYING, T.NOTICE)]
+    still_owing = {o.tenancy.pk for o in owing}
+    from .models import PgMessage
+    return {"wa_rent_due": PgMessage.objects.filter(use="rent_due"), "wa_overdue": PgMessage.objects.filter(use="overdue"),
+            "overdue": [o for o in owing if o.overdue], "due_today": [d for d in due_today if d.tenancy_id in still_owing],
+            "verify": list(money.to_verify()), "owed_total": sum((o.amount for o in owing), Decimal(0))}
 
 
 def floor(request, pk):
@@ -163,15 +176,18 @@ def move_in(request, pk):
                 with atomic():
                     resident.save()
                     tenancy.resident = resident
-                    services.move_in(tenancy, by=_who(request))
+                    services.move_in(tenancy, by=_who(request), deposit_mode=tform.cleaned_data["deposit_mode"])
             except ValidationError as exc:
                 tform.add_error(None, exc)
             else:
+                nxt = reverse("pg_tenancy", args=[tenancy.pk])
                 if tenancy.status == T.RESERVED:
                     messages.success(request, f"Bed {b} reserved for {resident.name} from {tenancy.move_in:%d-%m-%Y}.")
-                else:
-                    messages.success(request, f"{resident.name} moved in to bed {b}.")
-                return redirect("pg_tenancy", pk=tenancy.pk)
+                    return _open_message(request, tenancy, "", nxt)
+                messages.success(request, f"{resident.name} moved in to bed {b}.")
+                return _open_message(request, tenancy, "welcome", nxt)
+    if request.method == "POST" and request.headers.get("X-Requested-With") == "fetch":
+        return JsonResponse({"ok": False})  # the page script then sends the form normally, to show the errors
     return render(request, "pg/move_in.html", {"bed": b, "rform": rform, "tform": tform, "existing": existing})
 
 
@@ -201,11 +217,20 @@ def _vacant_beds(exclude=None):
 def tenancy(request, pk):
     t = get_object_or_404(Tenancy.objects.select_related("resident", "bed__room__floor"), pk=pk)
     item = current.get()
+    from . import money
+    from .models import PgMessage, RentPayment
+    money.sync(t)
     nxt = services.next_due(t) if t.status in (T.STAYING, T.NOTICE) else None
+    owed = money.balance(t)
     ctx = {
+        "owed": owed, "lines": list(reversed(money.lines(t)))[:12], "payments": t.payments.all()[:30],
+        "verify": t.requests.filter(status="claimed"), "open_link": t.requests.filter(status="open").first(),
+        "msgs": PgMessage.objects.all(), "upi_ready": money.upi_ready(), "since": money.unpaid_since(t),
+        "kinds": RentPayment.Kind.choices, "modes": [m for m in RentPayment.Mode.choices if m[0] != "advance"],
+        "today": today(), "due_text": due_rule_text(t),
         "t": t, "r": t.resident, "spells": t.spells.select_related("bed__room").order_by("start"), "next": nxt,
         "notice_form": NoticeForm(prefix="n"), "shift_form": ShiftForm(beds=_vacant_beds(t.bed), prefix="s"),
-        "refund_form": RefundForm(prefix="f"), "schedule": services.periods(t, today())[-6:] if t.move_in <= today() else [],
+        "refund_form": RefundForm(prefix="f"),
         "standard": services.standard_deductions(item),
     }
     return render(request, "pg/tenancy.html", ctx)
@@ -262,6 +287,7 @@ def _amount(raw: str) -> Decimal:
 
 
 def move_out(request, pk):
+    from . import money
     t = get_object_or_404(Tenancy.objects.select_related("resident", "bed__room"), pk=pk)
     item = current.get()
     if t.status not in (T.STAYING, T.NOTICE):
@@ -269,16 +295,15 @@ def move_out(request, pk):
         return redirect("pg_tenancy", pk=t.pk)
     rows = services.standard_deductions(item)
     errors = []
+    day = parse_date(request.POST.get("day", "") or request.GET.get("day", "")) or t.last_day or today()
     if request.method == "POST":
         reasons, amounts = request.POST.getlist("reason"), request.POST.getlist("amount")
         rows = [{"reason": r, "amount": a} for r, a in zip(reasons, amounts) if r.strip() or a.strip()]
         try:
-            day = parse_date(request.POST.get("day", "")) or today()
-            unpaid = _amount(request.POST.get("unpaid_rent", "0"))
             ded = [{"reason": r["reason"], "amount": _amount(r["amount"])} for r in rows]
             if any(d["amount"] > 0 and not d["reason"].strip() for d in ded):
                 raise ValidationError("Give a reason for each deduction.")
-            services.move_out(t, day, unpaid_rent=unpaid, deductions=ded, by=_who(request))
+            services.move_out(t, day, deductions=ded, by=_who(request))
         except ValidationError as exc:
             errors = exc.messages
         else:
@@ -289,11 +314,13 @@ def move_out(request, pk):
                 messages.warning(request, f"{t.resident.name} moved out and still owes ₹{-t.refund:,.0f}.")
             else:
                 messages.success(request, f"{t.resident.name} moved out. Nothing to refund.")
-            return redirect("pg_tenancy", pk=t.pk)
+            return _open_message(request, t, "move_out", reverse("pg_tenancy", args=[t.pk]))
+        if request.headers.get("X-Requested-With") == "fetch":
+            return JsonResponse({"ok": False})
+    money.sync(t)
     return render(request, "pg/move_out.html", {
-        "t": t, "rows": rows + [{"reason": "", "amount": ""}] * 2, "errors": errors,
-        "day": request.POST.get("day") or (t.last_day or today()).isoformat(),
-        "unpaid_rent": request.POST.get("unpaid_rent", "0"), "refund_days": getattr(item, "refund_days", 7),
+        "t": t, "rows": rows + [{"reason": "", "amount": ""}] * 2, "errors": errors, "day": day.isoformat(),
+        "owed": money.owed_if_leaving(t, day), "refund_days": getattr(item, "refund_days", 7),
     })
 
 
@@ -445,4 +472,217 @@ def setup_edit(request, kind, pk=None):
     return render(request, "pg/form.html", {
         "form": form, "title": (f"Edit {label}" if obj else f"Add {label}"), "back": reverse("pg_setup"),
         "can_delete": obj is not None and kind != "room" or (kind == "room" and obj is not None and not obj.beds.exists()),
+    })
+
+
+# ── Rent and money (phase 4) ──────────────────────────────────────────────────
+
+
+def _base(request) -> str:
+    from cluster.current import local
+    return request.build_absolute_uri(local("/"))
+
+
+def _wa_url(request, phone: str, text: str) -> str:
+    from core import whatsapp
+    from core.views.whatsapp import MOBILE
+    return whatsapp.link(phone, text, bool(MOBILE.search(request.headers.get("User-Agent", ""))))
+
+
+def _open_message(request, t, use: str, fallback, **kw):
+    """After Move in / Move out: the page script opened a window and asked for JSON; send the message's WhatsApp
+    address there and the next page here. Without the script, just go to the next page."""
+    from . import messages as pgm
+    wa = ""
+    msg = pgm.for_use(use)
+    if msg is not None and t.resident.phone:
+        try:
+            wa = _wa_url(request, t.resident.phone, pgm.build(t, msg, _base(request), by=_who(request), **kw))
+        except ValidationError:
+            wa = ""
+    if request.headers.get("X-Requested-With") == "fetch":
+        return JsonResponse({"ok": True, "next": fallback, "wa": wa})
+    return redirect(fallback)
+
+
+def _parse_amount(raw) -> Decimal | None:
+    try:
+        value = Decimal(str(raw or "").replace(",", "").replace("₹", "").strip())
+    except InvalidOperation:
+        return None
+    return value.quantize(Decimal("0.01"))
+
+
+@require_POST
+def rent_action(request, pk, action):
+    """Collect a payment, delete one, send a payment link or a message, check a UPI payment."""
+    from core.views.whatsapp import open_chat
+
+    from . import messages as pgm
+    from . import money
+    from .models import PgMessage, RentPayment, RentRequest
+    t = get_object_or_404(Tenancy.objects.select_related("resident", "bed__room"), pk=pk)
+    back = redirect("pg_tenancy", pk=t.pk)
+    try:
+        if action == "pay":
+            amount = _parse_amount(request.POST.get("amount"))
+            kind = request.POST.get("kind", RentPayment.Kind.RENT)
+            mode = request.POST.get("mode", RentPayment.Mode.CASH)
+            if kind not in RentPayment.Kind.values or mode not in RentPayment.Mode.values or mode == RentPayment.Mode.ADVANCE:
+                raise ValidationError("Pick what it is for and how it was paid.")
+            p = money.record(t, amount, kind=kind, mode=mode, paid_on=parse_date(request.POST.get("paid_on", "")) or today(),
+                             reference=request.POST.get("reference", ""), note=request.POST.get("note", ""),
+                             by=_who(request))
+            messages.success(request, f"₹{p.amount:,.0f} recorded.")
+            if request.POST.get("send_receipt") and (msg := pgm.for_use(PgMessage.Use.RECEIPT)) and t.resident.phone:
+                return open_chat(request, t.resident.phone, pgm.build(t, msg, _base(request), payment=p))
+        elif action == "pay-delete":
+            p = get_object_or_404(RentPayment, pk=request.POST.get("payment"), tenancy=t)
+            if p.mode == RentPayment.Mode.ADVANCE:
+                raise ValidationError("This was settled at move-out and can't be deleted.")
+            money.delete(p)
+            messages.success(request, "Payment deleted.")
+        elif action in ("link-ok", "link-no"):
+            req = get_object_or_404(RentRequest, pk=request.POST.get("request"), tenancy=t)
+            if action == "link-ok":
+                money.confirm(req, by=_who(request))
+                messages.success(request, f"₹{req.amount:,.0f} by UPI recorded.")
+            else:
+                money.not_received(req)
+                messages.info(request, "Marked as not received — the link is open again.")
+        elif action == "message":
+            msg = get_object_or_404(PgMessage, pk=request.POST.get("message"))
+            if not t.resident.phone:
+                raise ValidationError("Add the resident's phone number first.")
+            amount = _parse_amount(request.POST.get("amount")) if request.POST.get("amount") else None
+            text = pgm.build(t, msg, _base(request), by=_who(request), amount=amount)
+            return open_chat(request, t.resident.phone, text)
+        else:
+            raise Http404
+    except ValidationError as exc:
+        _error(request, exc)
+    return back
+
+
+def receipt(request, pk):
+    from . import receipt as rc
+    from . import money
+    from .models import RentPayment
+    p = get_object_or_404(RentPayment.objects.select_related("tenancy__resident", "tenancy__bed__room"), pk=pk)
+    resp = HttpResponse(rc.pdf(p), content_type="application/pdf")
+    resp["Content-Disposition"] = f'inline; filename="receipt-{money.receipt_no(p)}.pdf"'
+    return resp
+
+
+def public_receipt(request, token):
+    """Public (signed link sent on WhatsApp): the resident's receipt."""
+    from . import receipt as rc
+    from . import money
+    p = money.payment_for_token(token)
+    if p is None:
+        raise Http404
+    resp = HttpResponse(rc.pdf(p), content_type="application/pdf")
+    resp["Content-Disposition"] = f'inline; filename="receipt-{money.receipt_no(p)}.pdf"'
+    return resp
+
+
+def pay_page(request, token):
+    """Public (no login): the resident's UPI payment page. A wrong or altered link is a plain 404."""
+    from urllib.parse import quote
+
+    from core.payments import hotel_whatsapp
+    from . import money
+    from .models import RentRequest
+    req = money.request_for_token(token)
+    if req is None:
+        raise Http404
+    t = req.tenancy
+    if request.method == "POST" and req.status == RentRequest.Status.OPEN and request.POST.get("paid") == "1":
+        money.claim(req, request.POST.get("reference", ""))
+        return redirect("pg_pay_page", token=token)
+    confirm = ""
+    if req.status == RentRequest.Status.CLAIMED and (number := hotel_whatsapp()):
+        text = (f"Hello {current.name()}, I have paid ₹{req.amount:,.0f} by UPI for bed {t.bed} ({t.resident.name})."
+                + (f" UPI reference: {req.reference}." if req.reference else ""))
+        confirm = f"https://wa.me/{number}?text={quote(text)}"
+    open_ = req.status == RentRequest.Status.OPEN
+    upi_id, upi_name = current.upi()
+    return render(request, "pg/pay.html", {
+        "req": req, "t": t, "open": open_, "confirm": confirm, "upi_id": upi_id, "upi_name": upi_name,
+        "upi": money.upi_uri(req) if open_ else "", "qr": money.qr_png(req) if open_ else "",
+        "first_name": t.resident.name.split()[0],
+    })
+
+
+# ── Messages page ─────────────────────────────────────────────────────────────
+
+
+def message_list(request):
+    from . import messages as pgm
+    from .models import PgMessage
+    return render(request, "pg/messages.html", {"msgs": PgMessage.objects.all(), "fields": pgm.FIELDS})
+
+
+def message_edit(request, pk=None):
+    from django import forms as dj
+
+    from .models import PgMessage
+
+    class MessageForm(dj.ModelForm):
+        class Meta:
+            model = PgMessage
+            fields = ["name", "use", "body", "sort_order"]
+            widgets = {"body": dj.Textarea(attrs={"rows": 10})}
+
+        def clean_use(self):
+            use = self.cleaned_data["use"]
+            if use and PgMessage.objects.filter(use=use).exclude(pk=self.instance.pk).exists():
+                raise dj.ValidationError("Another message already has this use — clear it there first.")
+            return use
+
+    obj = get_object_or_404(PgMessage, pk=pk) if pk else None
+    if request.method == "POST" and request.POST.get("action") == "delete" and obj:
+        obj.delete()
+        messages.success(request, "Message deleted.")
+        return redirect("pg_messages")
+    form = MessageForm(request.POST or None, instance=obj)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Message saved.")
+        return redirect("pg_messages")
+    return render(request, "pg/form.html", {"form": form, "title": "Edit message" if obj else "New message",
+                                            "back": reverse("pg_messages"), "can_delete": obj is not None,
+                                            "help": "Placeholders like {first_name}, {amount_due}, {payment_link} — "
+                                                    "see the list on the Messages page."})
+
+
+# ── Money (behind the money password) ─────────────────────────────────────────
+
+
+def revenue(request):
+    from datetime import date as d_
+
+    from core.models import Expense
+    from core.views.revenue import _unlocked
+    from . import money
+    if not _unlocked(request):
+        from cluster.current import local
+        return redirect(local("/revenue/") + "?next=" + request.path)
+    this = today().replace(day=1)
+    try:
+        y, m = (int(x) for x in request.GET.get("month", "").split("-"))
+        first = d_(y, m, 1)
+    except ValueError:
+        first = this
+    first = min(first, this)
+    mo = money.month(first)
+    expenses = Expense.objects.filter(date__gte=mo.start, date__lt=mo.end).aggregate(s=Sum("amount"))["s"] or Decimal(0)
+    first_due = Tenancy.objects.order_by("move_in").values_list("move_in", flat=True).first() or this
+    months, x = [], this
+    while x >= first_due.replace(day=1) and len(months) < 36:
+        months.append(x)
+        x = (x - timedelta(days=1)).replace(day=1)
+    return render(request, "pg/revenue.html", {
+        "m": mo, "expenses": expenses, "profit": mo.received - expenses, "months": months,
+        "held_deposits": money.deposits_held(), "owing": money.owing(),
     })
