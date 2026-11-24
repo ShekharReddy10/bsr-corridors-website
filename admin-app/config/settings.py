@@ -24,6 +24,7 @@ def env_bool(key: str, default: bool = False) -> bool:
 
 
 # Load a local .env file in development (simple KEY=VALUE lines; real env vars win).
+_DB_GIVEN = "DATABASE_URL" in os.environ  # given on the command line (not from .env) — see the test guard below
 _dotenv = BASE_DIR / ".env"
 if _dotenv.exists():
     for line in _dotenv.read_text().splitlines():
@@ -175,6 +176,11 @@ GOOGLE_REFRESH_TOKEN = env("GOOGLE_REFRESH_TOKEN")
 GDRIVE_ROOT_FOLDER = env("GDRIVE_ROOT_FOLDER", "BSR Corridors Admin")
 if sys.argv[1:2] == ["test"]:  # tests never touch the real Drive, even with the keys in .env
     GOOGLE_CLIENT_ID = GOOGLE_CLIENT_SECRET = GOOGLE_REFRESH_TOKEN = ""
+    # …nor the real database: .env's DATABASE_URL is the live one (or a tunnel to it). Tests need a test database
+    # given on the command line, e.g.  DATABASE_URL=sqlite:////tmp/t.sqlite3 python manage.py test core
+    if not _DB_GIVEN:
+        sys.exit("Refusing to run tests with DATABASE_URL from .env (live database). "
+                 "Give a test one: DATABASE_URL=sqlite:////tmp/t.sqlite3 python manage.py test core")
 # The Gmail account whose Drive holds backups/exports (pre-selected when connecting).
 GOOGLE_ACCOUNT_EMAIL = env("GOOGLE_ACCOUNT_EMAIL", "bsrcorridors@gmail.com")
 

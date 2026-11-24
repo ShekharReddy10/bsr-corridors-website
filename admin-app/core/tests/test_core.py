@@ -1177,22 +1177,87 @@ class InvoiceTests(TestCase):
             self.assertIn(no, text)
             self.assertIn("http://testserver/s/", text)
 
-    def test_platform_booking_has_no_invoice(self):
+    def test_extend_opens_stay_extended_message(self):
+        from urllib.parse import parse_qs, urlparse
+        s = stay(make_guest(phone="98765 43210"), self.rooms["101"], -2, 3, status=Stay.Status.CHECKED_IN,
+                 amount_paid=Decimal(4000))  # total ₹4,500: ₹500 still due
+        page = self.client.get(f"/stays/{s.pk}/").content.decode()
+        self.assertNotIn(">Stay extended<", page)  # not extended yet
+        r = self.client.get(f"/stays/{s.pk}/whatsapp/?t={MessageTemplate.objects.get(name='Stay extended').pk}")
+        self.assertRedirects(r, f"/stays/{s.pk}/", fetch_redirect_response=False)  # nothing to tell yet
+        old_out = s.check_out
+        r = self.client.post(f"/stays/{s.pk}/extend/", {"new_check_out": (old_out + timedelta(days=2)).isoformat(),
+                                                        "amount": "3000", "paid_now": "1000", "payment_mode": "cash"},
+                             headers={"X-Requested-With": "fetch"})
+        d = r.json()
+        self.assertTrue(d["ok"])
+        self.assertEqual(d["next"], f"/stays/{s.pk}/")
+        text = parse_qs(urlparse(self.client.get(d["wa"])["Location"]).query)["text"][0]
+        self.assertIn(f"{old_out:%d-%m-%Y} to", text)
+        self.assertIn(f"{old_out + timedelta(days=2):%d-%m-%Y}", text)
+        self.assertIn("(2 night(s))", text)
+        self.assertIn("Amount for the extended stay: ₹3,000", text)
+        self.assertIn("Previous balance: ₹500", text)
+        self.assertIn("Total amount to be paid: ₹2,500", text)  # 500 + 3000 − 1000 paid now
+        self.assertContains(self.client.get(f"/stays/{s.pk}/"), ">Stay extended<")
+        # Extended again with nothing due before: the "Previous balance" line is left out.
+        s.refresh_from_db()
+        services.add_payment(s, Decimal(2500), "upi")
+        self.client.post(f"/stays/{s.pk}/extend/", {"new_check_out": (old_out + timedelta(days=3)).isoformat(),
+                                                    "amount": "1500"})
+        s.refresh_from_db()
+        text = parse_qs(urlparse(self.client.get(d["wa"])["Location"]).query)["text"][0]
+        self.assertNotIn("Previous balance", text)
+        self.assertIn("Total amount to be paid: ₹1,500", text)
+        # A clash (or a wrong date) through the page script: nothing changes, the page is shown normally instead.
+        bad = self.client.post(f"/stays/{s.pk}/extend/", {"new_check_out": old_out.isoformat(), "amount": "0"},
+                               headers={"X-Requested-With": "fetch"})
+        self.assertFalse(bad.json()["ok"])
+
+    def test_platform_booking_not_invoiced_automatically(self):
         from urllib.parse import parse_qs, urlparse
         from core import invoice
         s = stay(make_guest(phone="98765 43210"), self.rooms["101"], -2, 2, status=Stay.Status.CHECKED_IN,
                  source="airbnb", amount_paid=Decimal(3000))
         page = self.client.get(f"/stays/{s.pk}/").content.decode()
-        self.assertNotIn("Generate invoice", page)
+        self.assertIn("Generate invoice", page)  # can be made by hand
+        self.assertIn("not made automatically", page)
         self.assertNotIn("WhatsApp invoice", page)
-        self.client.post(f"/stays/{s.pk}/make-invoice/")  # not even by hand
-        self.assertFalse(invoice.generated_at(s))
         self.client.post(f"/stays/{s.pk}/check-out/")
-        self.assertFalse(invoice.has_invoice(s))
+        self.assertFalse(invoice.has_invoice(s))  # check-out doesn't make one
         text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/?t=checkout")["Location"]).query)["text"][0]
         self.assertNotIn("invoice", text.lower())
         self.assertFalse(invoice.generated_at(s))
         self.assertEqual(self.client.get(f"/invoice/{invoice.token(s)}/").status_code, 404)
+
+    def test_platform_booking_invoiced_by_hand_goes_with_check_out_message(self):
+        from urllib.parse import parse_qs, urlparse
+        from core import invoice
+        s = stay(make_guest(phone="98765 43210"), self.rooms["101"], -2, 3, status=Stay.Status.CHECKED_IN,
+                 source="airbnb", source_ref="ABC123", amount_paid=Decimal(3000))
+        self.client.post(f"/stays/{s.pk}/make-invoice/")
+        self.assertTrue(invoice.has_invoice(s))
+        inv = invoice.build(s)
+        self.assertEqual(inv.parts[0].amount, s.total)  # the whole stay
+        self.assertTrue(inv.parts[0].whole)  # "Booked via: Airbnb" on the PDF, all payments listed
+        self.assertTrue(invoice.pdf(s).startswith(b"%PDF"))
+        self.assertContains(self.client.get(f"/stays/{s.pk}/"), "WhatsApp invoice")
+        # Early check-out: the invoice follows the new dates, and the check-out message carries the link.
+        self.client.post(f"/stays/{s.pk}/check-out/")
+        s.refresh_from_db()
+        self.assertEqual(invoice.number(s), f"{s.check_in:%y%m%d}-{T:%y%m%d}-101")
+        text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/?t=checkout")["Location"]).query)["text"][0]
+        self.assertIn("invoice", text.lower())
+        self.assertEqual(self.client.get(f"/invoice/{invoice.token(s)}/").status_code, 200)
+        self.assertEqual(invoice.tidy(), 0)  # the nightly clean-up keeps it
+        self.assertTrue(invoice.has_invoice(s))
+        # Cancelled afterwards: nothing left to invoice, so it goes.
+        self.client.post(f"/stays/{s.pk}/undo-check-out/")
+        self.client.post(f"/stays/{s.pk}/undo-check-in/")
+        self.client.post(f"/stays/{s.pk}/cancel/")
+        s.refresh_from_db()
+        if s.status == Stay.Status.CANCELLED:
+            self.assertFalse(invoice.has_invoice(s))
 
     def test_platform_booking_extended_through_platform_has_no_invoice(self):
         from core import invoice

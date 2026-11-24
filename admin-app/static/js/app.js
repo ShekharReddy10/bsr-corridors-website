@@ -34,6 +34,26 @@
       .catch(() => { if (win) win.close(); form.removeAttribute("data-pay-wa"); form.submit(); });
   });
 
+  // Extend stay: extend it, then open the "Stay extended" message (new dates, amount, total to pay) in WhatsApp in the
+  // same tap. If there's something to choose or fix (another room, a wrong date), the form is sent again normally
+  // so the page shows it — nothing was changed by the first try.
+  document.addEventListener("submit", (e) => {
+    const form = e.target;
+    if (!form.matches || !form.matches("form[data-extend-wa]") || e.defaultPrevented) return;
+    e.preventDefault();
+    const win = window.open("", "whatsapp");
+    busy("Extending the stay…", false);
+    fetch(form.action || location.href, { method: "POST", body: new FormData(form), headers: { "X-Requested-With": "fetch" } })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d.ok) throw new Error("show the page");
+        if (d.wa && win) win.location.href = d.wa;
+        else if (win) win.close();
+        location.href = d.next;
+      })
+      .catch(() => { if (win) win.close(); form.removeAttribute("data-extend-wa"); form.submit(); });
+  });
+
   // "Generating the invoice…": shown while Check out / a message with the invoice link makes the invoice (a few
   // seconds — it's saved in Google Drive). A message opens WhatsApp in another tab/app, so this page then reloads
   // to show the invoice as generated.

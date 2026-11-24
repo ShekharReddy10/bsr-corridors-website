@@ -8,7 +8,7 @@
 </div>
 
 {% if not plan %}
-<form method="post" class="card extend-form" novalidate data-total="{{ stay.total|floatformat:0 }}" data-paid="{{ stay.amount_paid|floatformat:0 }}">{% csrf_token %}
+<form method="post" class="card extend-form" novalidate data-extend-wa data-total="{{ stay.total|floatformat:0 }}" data-paid="{{ stay.amount_paid|floatformat:0 }}">{% csrf_token %}
   <h2>New check-out</h2>
   <div class="quick">
     {% for n, d in quick %}
@@ -47,7 +47,7 @@
   {% if plan.split_rooms %}
     <div class="choice-list">
     {% for r in plan.split_rooms %}
-      <form method="post">{% csrf_token %}
+      <form method="post" data-extend-wa>{% csrf_token %}
         <input type="hidden" name="new_check_out" value="{{ plan.new_check_out|date:'Y-m-d' }}"><input type="hidden" name="choice" value="split"><input type="hidden" name="room" value="{{ r.pk }}">
         <input type="hidden" name="amount" value="{{ amount }}"><input type="hidden" name="paid_now" value="{{ paid|default_if_none:'' }}"><input type="hidden" name="payment_mode" value="{{ mode }}">{% if form.via %}<input type="hidden" name="via" value="{{ form.cleaned_data.via }}">{% endif %}
         <button class="btn btn-outline">Move to <b>Room {{ r.number }}</b> on {{ stay.check_out|date:"d-m" }}</button>
@@ -61,7 +61,7 @@
   {% if plan.move_rooms %}
     <div class="choice-list">
     {% for r in plan.move_rooms %}
-      <form method="post">{% csrf_token %}
+      <form method="post" data-extend-wa>{% csrf_token %}
         <input type="hidden" name="new_check_out" value="{{ plan.new_check_out|date:'Y-m-d' }}"><input type="hidden" name="choice" value="move"><input type="hidden" name="room" value="{{ r.pk }}">
         <input type="hidden" name="amount" value="{{ amount }}"><input type="hidden" name="paid_now" value="{{ paid|default_if_none:'' }}"><input type="hidden" name="payment_mode" value="{{ mode }}">{% if form.via %}<input type="hidden" name="via" value="{{ form.cleaned_data.via }}">{% endif %}
         <button class="btn btn-outline">Room <b>{{ r.number }}</b> · {{ r.room_type.name }}</button>
