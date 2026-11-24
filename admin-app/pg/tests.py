@@ -624,3 +624,26 @@ class PgTests(TransactionTestCase):
             self.assertEqual(AppSetting.get("gdrive_root", ""), "")
         self.assertEqual(AppSetting.get("gdrive_root"), "folder1")
 
+    def test_drive_sign_in_keeps_its_code_verifier(self):
+        """Google's sign-in (PKCE): the code verifier made at Connect must be sent back when Google returns."""
+        from unittest import mock
+        from urllib.parse import parse_qs, urlparse
+        from django.test import override_settings
+        from google_auth_oauthlib.flow import Flow
+        sent = {}
+
+        def fake_fetch(flow, **kw):
+            sent["verifier"] = flow.code_verifier
+            raise RuntimeError("stop here")  # (no real Google in tests)
+
+        self.client.force_login(self.admin)
+        with override_settings(GOOGLE_WEB_CLIENT_ID="id", GOOGLE_WEB_CLIENT_SECRET="secret"), \
+                mock.patch.object(Flow, "fetch_token", fake_fetch):
+            r = self.client.get("/properties/pgthree/drive/")
+            query = parse_qs(urlparse(r["Location"]).query)
+            self.assertEqual(query["code_challenge_method"], ["S256"])
+            made = self.client.session["drive-connect-verifier"]["verifier"]
+            self.client.get("/properties/drive/callback/", {"state": query["state"][0], "code": "abc"})
+        self.assertEqual(sent["verifier"], made)
+        self.assertTrue(made)
+

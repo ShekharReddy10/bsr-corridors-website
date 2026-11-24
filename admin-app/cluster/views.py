@@ -332,6 +332,7 @@ def item_photo(request, code, which):
 # ── Connect Google Drive (each item its own Google account) ──
 
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+DRIVE_VERIFIER_KEY = "drive-connect-verifier"
 
 
 def _flow(request, state=None):
@@ -355,8 +356,10 @@ def drive_connect(request, code):
                                 "on this page).")
         return redirect("item_edit", code=code)
     state = signing.dumps({"item": item.code, "user": request.user.pk}, salt="drive-connect")
-    url, _ = _flow(request, state).authorization_url(access_type="offline", prompt="consent",
-                                                     include_granted_scopes="true")
+    flow = _flow(request, state)
+    url, _ = flow.authorization_url(access_type="offline", prompt="consent", include_granted_scopes="true")
+    # Google's sign-in uses a one-time code verifier (PKCE): made here, needed again when Google sends us back.
+    request.session[DRIVE_VERIFIER_KEY] = {"state": state, "verifier": flow.code_verifier}
     return redirect(url)
 
 
@@ -373,6 +376,9 @@ def drive_callback(request):
         messages.error(request, "Google Drive wasn’t connected (cancelled).")
         return redirect("item_edit", code=item.code)
     flow = _flow(request, request.GET.get("state"))
+    saved = request.session.pop(DRIVE_VERIFIER_KEY, None) or {}
+    if saved.get("state") == request.GET.get("state"):
+        flow.code_verifier = saved.get("verifier")
     try:
         flow.fetch_token(code=request.GET.get("code", ""))
     except Exception as exc:
