@@ -616,3 +616,9 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 }
 .item-card-top { min-height: 104px; }
 .btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
+.item-form h2 { margin-top: 22px; }
+.item-form h2:first-of-type { margin-top: 0; }
+.item-thumb { width: 96px; height: 64px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+.item-thumb-logo { width: 64px; object-fit: contain; background: #fff; }
+.photo-pair { display: grid; gap: 12px; }
+.db-usage.is-warn { border-color: var(--red); }

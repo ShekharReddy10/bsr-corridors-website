@@ -53,6 +53,34 @@ class Item(models.Model):
     theme = models.CharField(max_length=20, choices=[(k, v[0]) for k, v in THEMES.items()], default="classic")
     managed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                    related_name="+")
+    whatsapp_phone = models.CharField("WhatsApp number", max_length=20, blank=True,
+                                      help_text="Guests confirm payments to this number")
+    check_in_time = models.CharField(max_length=40, blank=True)
+    check_out_time = models.CharField(max_length=40, blank=True)
+    notes = models.TextField(blank=True)
+    # Photos, stored in the item's own Google Drive (file IDs).
+    cover_id = models.CharField(max_length=100, blank=True, editable=False)
+    logo_id = models.CharField(max_length=100, blank=True, editable=False)
+    # Business details (all optional — S5).
+    legal_name = models.CharField("Legal / business name", max_length=150, blank=True)
+    gstin = models.CharField("GSTIN", max_length=15, blank=True)
+    pan = models.CharField("PAN", max_length=10, blank=True)
+    udyam = models.CharField("Udyam number", max_length=25, blank=True)
+    invoice_footer = models.CharField("Invoice footer", max_length=200, blank=True)
+    # Payments to this item (never to another item's account).
+    upi_id = models.CharField("UPI ID", max_length=80, blank=True)
+    upi_name = models.CharField("UPI name", max_length=80, blank=True, help_text="Payee name shown in the UPI app")
+    short_link_base = models.URLField("Short link website", blank=True,
+                                      help_text="Website that forwards /s/… links here; empty: this app's address")
+    # Its own Google Drive (Connect Google Drive button).
+    drive_token = EncryptedTextField(blank=True, editable=False)
+    drive_email = models.EmailField("Google account", blank=True, editable=False)
+    drive_folder = models.CharField("Drive folder", max_length=120, blank=True,
+                                    help_text="Created in that Google Drive; empty: the item's name")
+    # PG / co-living move-out (decision D10).
+    refund_days = models.PositiveSmallIntegerField("Deposit refunded within (days)", default=7)
+    deductions = models.TextField("Standard deductions", blank=True,
+                                  help_text="One per line, e.g. “Cleaning: 500”")
     sort_order = models.PositiveIntegerField(default=0)
     archived = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)

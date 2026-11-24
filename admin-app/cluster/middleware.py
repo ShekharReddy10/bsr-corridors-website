@@ -60,6 +60,8 @@ class ClusterMiddleware:
         request.item = item
         request.membership = membership(request.user, item) if item else None
         request.caps = access.caps(request.user, request.membership) if item else set()
+        if item is not None and item.archived:
+            request.caps = request.caps & {"view"}  # archived: read-only, even for the main admin
         token = current.set_item(item)
         if code is not None:
             set_script_prefix(item.prefix)

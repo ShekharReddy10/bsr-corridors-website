@@ -1,0 +1,71 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}{% if obj %}{{ obj.name }}{% else %}Add cluster item{% endif %}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{% if obj %}{{ obj.name }} <small class="kind-badge" style="color: var(--ink)">{{ obj.get_kind_display }}</small>{% else %}Add cluster item{% endif %}</h1>
+    <p class="muted">{% if obj %}Details, payments, Google Drive and photos. The type and short code can’t change.{% else %}A hotel, PG or co-living. Its own tables are created when you save (this takes a few seconds).{% endif %}</p></div>
+  <div class="inline-form">{% if obj %}<a class="btn btn-outline" href="{{ obj.prefix }}">Open {{ obj.name }}</a>{% endif %}<a class="btn btn-ghost" href="{% url 'cluster_home' %}">Back</a></div>
+</div>
+
+<form method="post" class="card item-form" novalidate {% if not obj %}data-busy="Creating {{ form.name.value|default:'the item' }}’s tables…"{% endif %}>{% csrf_token %}
+  {% if form.non_field_errors %}<div class="msg msg-error">{{ form.non_field_errors }}</div>{% endif %}
+  {% for title, fields in form.sections %}
+    <h2>{{ title }}</h2>
+    {% if title == "Google Drive" and obj and not obj.is_default %}
+      <p class="muted small">{% if obj.drive_token %}Connected{% if obj.drive_email %} to <b>{{ obj.drive_email }}</b>{% endif %} — backups, invoices, ID photos and receipts of {{ obj.name }} go there.{% else %}Not connected yet: until it is, {{ obj.name }} has no backups, invoices in Drive or photos.{% endif %}</p>
+    {% elif title == "Google Drive" and obj.is_default %}
+      <p class="muted small">BSR Corridors uses the Drive set in Render (GOOGLE_* keys), as before.</p>
+    {% endif %}
+    <div class="form-grid">{% for f in fields %}{% field f %}{% endfor %}</div>
+    {% if title == "Basic details" %}
+      <div class="field"><span class="label">Theme</span>
+        <div class="theme-grid" role="radiogroup" aria-label="Theme">
+          {% for c in form.theme %}<label class="theme-choice">{{ c.tag }}<span>{{ c.choice_label }}</span></label>{% endfor %}
+        </div>
+        <p class="muted small">See it before saving on the <a href="{% if obj %}{% url 'item_theme' obj.code %}{% else %}#{% endif %}">theme page</a>{% if not obj %} (after creating){% endif %}.</p>
+      </div>
+    {% endif %}
+  {% endfor %}
+  <div class="form-actions"><button class="btn btn-primary">{% if obj %}Save{% else %}Create {{ form.kind.value|default:"item" }}{% endif %}</button></div>
+</form>
+
+{% if obj %}
+<section class="card">
+  <h2>Google Drive</h2>
+  {% if obj.is_default %}<p class="muted">Set in Render for BSR Corridors.</p>
+  {% else %}
+    <div class="inline-form">
+      <a class="btn {% if obj.drive_token %}btn-outline{% else %}btn-primary{% endif %}" href="{% url 'drive_connect' obj.code %}">{% if obj.drive_token %}Connect another account{% else %}Connect Google Drive{% endif %}</a>
+      {% if obj.drive_token %}<form method="post" data-confirm="Disconnect {{ obj.name }}’s Google Drive? Backups stop until it’s connected again.">{% csrf_token %}<input type="hidden" name="action" value="drive-disconnect"><button class="btn btn-ghost btn-sm">Disconnect</button></form>{% endif %}
+    </div>
+    {% if not web_drive_ready %}<p class="muted small">First, once: in Google Cloud (same project as BSR Corridors) create an OAuth client of type <b>Web application</b> with redirect URI <code>https://bsr-corridors-admin.onrender.com/cluster/drive/callback/</code>, then add <b>GOOGLE_WEB_CLIENT_ID</b> and <b>GOOGLE_WEB_CLIENT_SECRET</b> in Render.</p>{% endif %}
+    <p class="muted small">Sign in with the Google account whose Drive {{ obj.name }} should use. The app can only see files it creates there.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Photos</h2>
+  <div class="photo-pair">
+    <form method="post" enctype="multipart/form-data" class="inline-form">{% csrf_token %}<input type="hidden" name="action" value="cover">
+      {% if obj.cover_id %}<img src="{% url 'item_photo' obj.code 'cover' %}" alt="Cover photo" class="item-thumb">{% endif %}
+      <label class="field"><span class="label">Cover photo</span><input type="file" name="photo" accept="image/*"></label><button class="btn btn-outline btn-sm">Upload</button></form>
+    <form method="post" enctype="multipart/form-data" class="inline-form">{% csrf_token %}<input type="hidden" name="action" value="logo">
+      {% if obj.logo_id %}<img src="{% url 'item_photo' obj.code 'logo' %}" alt="Logo" class="item-thumb item-thumb-logo">{% endif %}
+      <label class="field"><span class="label">Logo</span><input type="file" name="photo" accept="image/*"></label><button class="btn btn-outline btn-sm">Upload</button></form>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Database</h2>
+  <p class="muted">{% if obj.is_default %}BSR Corridors’ tables are in the main database, where they have always been.{% elif obj.db_url %}In its own database.{% else %}In its own section (schema <code>{{ obj.schema }}</code>) of the main database.{% endif %}{% if usage is not None %} Uses {{ usage }} MB.{% endif %}</p>
+</section>
+
+{% if not obj.is_default %}
+<form method="post" class="card danger-zone" data-confirm="{% if obj.archived %}Bring {{ obj.name }} back?{% else %}Archive {{ obj.name }}? It is hidden from everyone but you and becomes read-only; its data is kept.{% endif %}">{% csrf_token %}
+  <input type="hidden" name="action" value="archive">
+  <button class="btn {% if obj.archived %}btn-outline{% else %}btn-danger{% endif %} btn-sm">{% if obj.archived %}Bring back{% else %}Archive{% endif %}</button>
+  <span class="muted small">Archived items keep all their data. Items are never deleted from here.</span>
+</form>
+{% endif %}
+{% endif %}
+{% endblock %}

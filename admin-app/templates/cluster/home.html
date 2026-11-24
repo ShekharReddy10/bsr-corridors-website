@@ -3,15 +3,25 @@
 {% block content %}
 <div class="page-head">
   <div><h1>{{ cluster_name }}</h1><p class="muted">{% if user.is_superuser %}All cluster items.{% else %}The cluster items you can open.{% endif %} Today at a glance — money is inside each item.</p></div>
-  {% if user.is_superuser %}<span class="btn btn-outline" aria-disabled="true" title="Coming in phase 2">+ Add cluster item <small>(phase 2)</small></span>{% endif %}
+  {% if user.is_superuser %}<a class="btn btn-primary" href="{% url 'item_new' %}">+ Add cluster item</a>{% endif %}
 </div>
+
+{% if db %}
+<section class="card db-usage{% if db.warn %} is-warn{% endif %}">
+  <div class="card-head"><h2>Database space</h2><span class="muted small">{{ db.used }} MB of {{ db.limit }} MB</span></div>
+  <div class="occupancy" style="--c-accent: {% if db.warn %}var(--red){% else %}var(--green){% endif %}"><i style="--pct: {{ db.pct }}%"></i></div>
+  {% if db.warn %}<p class="item-alert" style="color: var(--red)">{{ db.pct }}% full. Free Supabase stops at {{ db.limit }} MB — move a large item to its own database, purge old records (Settings), or upgrade.</p>
+  {% else %}<p class="muted small">{{ db.pct }}% used, shared by all items{% if usage %} — {% for name, mb in usage %}{{ name }} {{ mb }} MB{% if not forloop.last %} · {% endif %}{% endfor %}{% endif %}.</p>{% endif %}
+</section>
+{% endif %}
+{% for f in backup_failures %}<div class="msg msg-error">Last night’s backup of <b>{{ f.0 }}</b> failed: {{ f.1 }}</div>{% endfor %}
 
 {% if cards %}
 <div class="item-grid">
   {% for c in cards %}{% with i=c.item s=c.snap %}
   <div class="item-card{% if i.archived %} is-archived{% endif %}" style="--i: {{ forloop.counter0 }}; --c-accent: {{ i.colors.0 }}; --c-dark: {{ i.colors.2 }};">
     <a class="item-card-link" href="{{ i.prefix }}" style="color: inherit; text-decoration: none;">
-      <div class="item-card-top">
+      <div class="item-card-top"{% if i.cover_id %} style="background-image: linear-gradient(135deg, color-mix(in srgb, var(--c-dark) 85%, transparent), color-mix(in srgb, var(--c-accent) 55%, transparent)), url('{% url 'item_photo' i.code 'cover' %}'); background-size: cover; background-position: center;"{% endif %}>
         <span class="kind-badge">{{ i.get_kind_display }}{% if i.archived %} · archived{% endif %}</span>
         <h2>{{ i.name }}</h2>
         {% if i.address %}<small>{{ i.address|truncatechars:60 }}</small>{% endif %}
@@ -30,7 +40,7 @@
         {% endif %}
       </div>
     </a>
-    {% if user.is_superuser %}<div class="item-card-foot"><a class="btn btn-ghost btn-sm" href="{% url 'item_theme' i.code %}">Theme</a></div>{% endif %}
+    {% if user.is_superuser %}<div class="item-card-foot"><a class="btn btn-ghost btn-sm" href="{% url 'item_theme' i.code %}">Theme</a><a class="btn btn-outline btn-sm" href="{% url 'item_edit' i.code %}">Edit</a></div>{% endif %}
   </div>
   {% endwith %}{% endfor %}
 </div>

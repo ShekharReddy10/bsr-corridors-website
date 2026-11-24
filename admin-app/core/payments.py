@@ -100,6 +100,10 @@ def to_verify():
 
 def hotel_whatsapp() -> str:
     """The hotel's number for the guest's confirmation: the first number in hotel info "Contact"."""
+    from cluster import current
     from .whatsapp import hotel_info, wa_number
+    item = current.get()
+    if item is not None and not item.is_default and item.whatsapp_phone:
+        return wa_number(item.whatsapp_phone)
     m = re.search(r"\+?\d[\d \-]{8,}\d", hotel_info().get("contact", ""))
     return wa_number(m.group(0)) if m else ""

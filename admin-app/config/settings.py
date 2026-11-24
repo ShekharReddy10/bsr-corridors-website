@@ -154,6 +154,7 @@ STORAGES = {
 # ── App settings ──────────────────────────────────────────────
 HOTEL_NAME = env("HOTEL_NAME", "BSR Corridors")
 CLUSTER_NAME = env("CLUSTER_NAME", "BSR Group of Hotels")
+DB_LIMIT_MB = int(env("DB_LIMIT_MB", "500"))  # database size limit (Supabase free plan: 500 MB)
 # Payment links (UPI, no gateway): the UPI ID that receives the money and the name shown in the guest's UPI app.
 UPI_ID = env("UPI_ID")
 UPI_NAME = env("UPI_NAME", HOTEL_NAME)
@@ -173,9 +174,13 @@ BACKUP_TOKEN = env("BACKUP_TOKEN")
 GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET")
 GOOGLE_REFRESH_TOKEN = env("GOOGLE_REFRESH_TOKEN")
+# Other cluster items connect their own Drive by signing in on the web: a "Web application" OAuth client in the same
+# Google Cloud project, with redirect URI https://<admin app>/cluster/drive/callback/.
+GOOGLE_WEB_CLIENT_ID = env("GOOGLE_WEB_CLIENT_ID")
+GOOGLE_WEB_CLIENT_SECRET = env("GOOGLE_WEB_CLIENT_SECRET")
 GDRIVE_ROOT_FOLDER = env("GDRIVE_ROOT_FOLDER", "BSR Corridors Admin")
 if sys.argv[1:2] == ["test"]:  # tests never touch the real Drive, even with the keys in .env
-    GOOGLE_CLIENT_ID = GOOGLE_CLIENT_SECRET = GOOGLE_REFRESH_TOKEN = ""
+    GOOGLE_CLIENT_ID = GOOGLE_CLIENT_SECRET = GOOGLE_REFRESH_TOKEN = GOOGLE_WEB_CLIENT_ID = GOOGLE_WEB_CLIENT_SECRET = ""
     # …nor the real database: .env's DATABASE_URL is the live one (or a tunnel to it). Tests need a test database
     # given on the command line, e.g.  DATABASE_URL=sqlite:////tmp/t.sqlite3 python manage.py test core
     if not _DB_GIVEN:

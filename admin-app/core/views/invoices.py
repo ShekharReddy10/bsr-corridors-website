@@ -27,7 +27,17 @@ def short_link(request, code):
     """Public: /s/<code> → the page it stands for (the page itself checks its own link)."""
     from django.shortcuts import redirect
     from ..models import ShortLink
-    link = ShortLink.objects.filter(code=code).first()
+    from cluster import current
+    from cluster.models import Item
+    item_code, _, own = code.rpartition("-")  # another cluster item's link: /s/<item>-<code>
+    if item_code:
+        item = Item.objects.filter(code=item_code, is_default=False).exclude(schema="", db_url="").first()
+        if item is None:
+            raise Http404
+        with current.using(item):
+            link = ShortLink.objects.filter(code=own).first()
+    else:
+        link = ShortLink.objects.filter(code=code).first()
     if link is None:
         raise Http404
     return redirect(link.path)

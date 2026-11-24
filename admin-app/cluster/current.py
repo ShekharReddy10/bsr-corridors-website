@@ -109,7 +109,38 @@ def is_default() -> bool:
 
 
 def upi() -> tuple[str, str]:
-    """(UPI ID, payee name). BSR Corridors: from the environment, as before. Other items: set up in phase 2 — until
-    then none, so their payment links stay off (they never pay into BSR Corridors' account)."""
+    """(UPI ID, payee name). BSR Corridors: from the environment, as before. Other items: their own, set on the item
+    (never BSR Corridors' account); none set → payment links stay off for that item."""
     from django.conf import settings
-    return (settings.UPI_ID, settings.UPI_NAME) if is_default() else ("", "")
+    if is_default():
+        return settings.UPI_ID, settings.UPI_NAME
+    item = _item.get()
+    return item.upi_id, item.upi_name or item.name
+
+
+def drive() -> dict | None:
+    """Google Drive access for the current item: BSR Corridors from the environment (as before); other items from
+    their own Connect Google Drive (the web sign-in client). None: not connected."""
+    from django.conf import settings
+    if is_default():
+        if settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET and settings.GOOGLE_REFRESH_TOKEN:
+            return {"client_id": settings.GOOGLE_CLIENT_ID, "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                    "refresh_token": settings.GOOGLE_REFRESH_TOKEN, "folder": settings.GDRIVE_ROOT_FOLDER}
+        return None
+    item = _item.get()
+    if item.drive_token and settings.GOOGLE_WEB_CLIENT_ID and settings.GOOGLE_WEB_CLIENT_SECRET:
+        return {"client_id": settings.GOOGLE_WEB_CLIENT_ID, "client_secret": settings.GOOGLE_WEB_CLIENT_SECRET,
+                "refresh_token": item.drive_token, "folder": item.drive_folder or item.name}
+    return None
+
+
+def short_base() -> str:
+    from django.conf import settings
+    item = _item.get()
+    return (item.short_link_base if item is not None and not item.is_default and item.short_link_base else
+            settings.SHORT_LINK_BASE).rstrip("/")
+
+
+def short_prefix() -> str:
+    """Short link codes of other items start with the item's code: /s/pgone-Ab3dE9x (BSR Corridors: /s/Ab3dE9x)."""
+    return "" if is_default() else f"{_item.get().code}-"

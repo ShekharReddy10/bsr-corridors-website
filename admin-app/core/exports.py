@@ -151,5 +151,9 @@ def backup_json() -> bytes:
     ID numbers stay encrypted — restoring needs the same FIELD_ENCRYPTION_KEY. Logins are included (passwords only as
     Django's one-way hashes), so staff can sign in after a restore.
     """
-    objects = [obj for model in [get_user_model(), *BACKUP_MODELS] for obj in model.objects.order_by("pk")]
+    from cluster import current
+    from cluster.models import Item, Membership
+    # Logins and the cluster's own tables live with BSR Corridors' data: they go in its backup only.
+    shared = [get_user_model(), Item, Membership] if current.is_default() else []
+    objects = [obj for model in [*shared, *BACKUP_MODELS] for obj in model.objects.order_by("pk")]
     return serializers.serialize("json", objects, indent=1).encode()

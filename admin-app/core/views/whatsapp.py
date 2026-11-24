@@ -100,7 +100,7 @@ def in_house(request):
     return render(request, "core/whatsapp_in_house.html", {
         "templates": templates, "template": template, "text": text, "query": query,
         "with_phone": with_phone, "no_phone": [s for s in stays if not s.guest.phone],
-        "preview": whatsapp.with_footer(whatsapp.render(body, whatsapp.context(with_phone[0], base_url=request.build_absolute_uri("/")))) if body and with_phone else "",
+        "preview": whatsapp.with_footer(whatsapp.render(body, whatsapp.context(with_phone[0], base_url=request.build_absolute_uri(local("/"))))) if body and with_phone else "",
     })
 
 
@@ -137,9 +137,9 @@ def send(request, pk):
             return redirect("stay_detail", pk=pk)
         if "{invoice_link}" in template.body or "{invoice_no}" in template.body:
             invoice.ensure(stay)  # departure / check-out details: make the invoice first, so the link goes with it
-        name, text = template.name, whatsapp.render(template.body, whatsapp.context(stay, amount, request.build_absolute_uri("/")))
+        name, text = template.name, whatsapp.render(template.body, whatsapp.context(stay, amount, request.build_absolute_uri(local("/"))))
     else:
-        text = whatsapp.render(request.GET.get("text", ""), whatsapp.context(stay, amount, request.build_absolute_uri("/")))  # {guest}, {room}, … allowed
+        text = whatsapp.render(request.GET.get("text", ""), whatsapp.context(stay, amount, request.build_absolute_uri(local("/"))))  # {guest}, {room}, … allowed
         name = "custom message" if text else "chat"
     text = whatsapp.with_footer(text)
     AuditLog.record("whatsapp", f"WhatsApp {name} opened for {stay.guest.name}", stay)

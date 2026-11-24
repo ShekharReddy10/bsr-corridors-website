@@ -9,7 +9,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from cluster.current import name as hotel_name, upi as payments_upi
+from cluster.current import name as hotel_name, upi as payments_upi, local
 
 from .. import invoice, payments, services, whatsapp
 from ..shortlinks import shorten
@@ -46,8 +46,8 @@ def send_link(request, pk):
         messages.error(request, problem)
         return redirect("stay_detail", pk=pk)
     req = payments.create(stay, amount, request.user.get_full_name() or request.user.username)
-    ctx = {**whatsapp.context(stay, amount, request.build_absolute_uri("/")),
-           "payment_link": shorten(payments.link(req, request.build_absolute_uri("/")))}
+    ctx = {**whatsapp.context(stay, amount, request.build_absolute_uri(local("/"))),
+           "payment_link": shorten(payments.link(req, request.build_absolute_uri(local("/"))))}
     text = whatsapp.with_footer(whatsapp.render(template.body, ctx))
     return open_chat(request, stay.guest.phone, text)
 

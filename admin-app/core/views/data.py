@@ -55,22 +55,36 @@ def backups(request):
 @csrf_exempt
 @require_POST
 def backup_hook(request):
-    """Called nightly by GitHub Actions with the X-Backup-Token header."""
+    """Called nightly by GitHub Actions with the X-Backup-Token header: every cluster item in turn — its monthly
+    fixed expenses, then (if its Google Drive is connected) its backup, last month's report and invoice clean-up.
+    BSR Corridors first, exactly as before; its backup also holds the cluster's logins, access and items."""
     token = request.headers.get("X-Backup-Token", "")
     if not settings.BACKUP_TOKEN or not hmac.compare_digest(token, settings.BACKUP_TOKEN):
         return HttpResponseForbidden("bad token")
-    services.add_recurring_expenses()
-    run = gdrive.run_backup()
-    if run.ok:
+    from cluster import current
+    from cluster.models import Item
+    results, ok = {}, True
+    for item in Item.objects.filter(archived=False).order_by("-is_default", "sort_order", "name"):
         try:
-            gdrive.save_last_months_report_if_missing(today())
-        except Exception:  # the backup itself succeeded; the report is retried the next night
-            pass
-        try:
-            invoice.tidy()
-        except Exception:  # retried the next night
-            pass
-    return JsonResponse({"ok": run.ok, "message": run.message}, status=200 if run.ok else 500)
+            with current.using(item):
+                services.add_recurring_expenses()
+                if not gdrive.is_configured():
+                    results[item.code] = "Google Drive not connected — no backup"
+                    ok = ok and not item.is_default  # BSR Corridors without Drive is a failure, as before
+                    continue
+                run = gdrive.run_backup()
+                results[item.code] = run.message
+                ok = ok and run.ok
+                if run.ok:
+                    for job in (lambda: gdrive.save_last_months_report_if_missing(today()), invoice.tidy):
+                        try:
+                            job()
+                        except Exception:  # the backup itself succeeded; retried the next night
+                            pass
+        except Exception as exc:  # one item failing never stops the others
+            results[item.code], ok = f"failed: {exc}"[:300], False
+    message = " | ".join(f"{code}: {msg}" for code, msg in results.items())
+    return JsonResponse({"ok": ok, "message": message, "items": results}, status=200 if ok else 500)
 
 
 def settings_page(request):

@@ -31,24 +31,22 @@ class DriveNotConfigured(Exception):
 
 
 def is_configured() -> bool:
-    # Other cluster items connect their own Drive in phase 2; until then none (never BSR Corridors' Drive).
-    if not cluster_current.is_default():
-        return False
-    return bool(settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET and settings.GOOGLE_REFRESH_TOKEN)
+    return cluster_current.drive() is not None
 
 
 def _service():
-    if not is_configured():
-        raise DriveNotConfigured("Google Drive is not connected yet (GOOGLE_CLIENT_ID / SECRET / REFRESH_TOKEN).")
+    access = cluster_current.drive()
+    if access is None:
+        raise DriveNotConfigured("Google Drive is not connected yet.")
     from google.oauth2.credentials import Credentials
     from googleapiclient.discovery import build
 
     creds = Credentials(
         token=None,
-        refresh_token=settings.GOOGLE_REFRESH_TOKEN,
+        refresh_token=access["refresh_token"],
         token_uri="https://oauth2.googleapis.com/token",
-        client_id=settings.GOOGLE_CLIENT_ID,
-        client_secret=settings.GOOGLE_CLIENT_SECRET,
+        client_id=access["client_id"],
+        client_secret=access["client_secret"],
         scopes=SCOPES,
     )
     return build("drive", "v3", credentials=creds, cache_discovery=False)
@@ -86,7 +84,7 @@ def _upload(svc, data: bytes, name: str, mimetype: str, folder: str, *, as_sheet
 
 
 def _folders(svc) -> tuple[str, str, str]:
-    root = _folder(svc, "gdrive_root", settings.GDRIVE_ROOT_FOLDER)
+    root = _folder(svc, "gdrive_root", (cluster_current.drive() or {}).get("folder") or settings.GDRIVE_ROOT_FOLDER)
     backups = _folder(svc, "gdrive_backups", "Backups", root)
     exports = _folder(svc, "gdrive_exports", "Exports", root)
     return root, backups, exports
@@ -176,7 +174,7 @@ def export_to_drive(start: date, end: date, full_ids: bool) -> BackupRun:
 
 # ── Photos (receipts, ID cards) ──
 
-PHOTO_FOLDERS = {"receipts": "Expense receipts", "ids": "Guest ID photos"}
+PHOTO_FOLDERS = {"receipts": "Expense receipts", "ids": "Guest ID photos", "item": "Photos"}
 
 
 def upload_photo(data: bytes, name: str, kind: str) -> str:

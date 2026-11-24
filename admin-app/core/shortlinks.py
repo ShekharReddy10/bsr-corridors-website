@@ -5,8 +5,9 @@ link again gives the same short link. The target pages keep their own checks (si
 
 import secrets
 
-from django.conf import settings
 from django.db import IntegrityError
+
+from cluster.current import short_base, short_prefix
 
 from .db import atomic
 from .models import ShortLink
@@ -27,5 +28,5 @@ def shorten(url: str) -> str:
                 link = ShortLink.objects.create(path=path, code="".join(secrets.choice(ALPHABET) for _ in range(LENGTH)))
         except IntegrityError:  # code taken (or the same path saved at the same moment): try again
             link = ShortLink.objects.filter(path=path).first()
-    base = settings.SHORT_LINK_BASE or f"{parts.scheme}://{parts.netloc}"
-    return f"{base}/s/{link.code}"
+    base = short_base() or f"{parts.scheme}://{parts.netloc}"
+    return f"{base}/s/{short_prefix()}{link.code}"
