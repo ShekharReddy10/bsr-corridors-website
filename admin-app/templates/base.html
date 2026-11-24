@@ -19,7 +19,7 @@
   <aside class="sidebar" aria-label="Main navigation">
     {% if user.is_superuser or my_items|length > 1 %}<a class="sidebar-cluster" href="{% url 'cluster_home' %}">← {{ CLUSTER_NAME }}</a>{% endif %}
     <a class="sidebar-brand" href="{% if item.kind != 'hotel' %}{% url 'pg_home' %}{% else %}{% url 'dashboard' %}{% endif %}">
-      <img src="{% static 'img/icon.png' %}" alt="" width="36" height="36"> <span>{{ HOTEL_NAME }}<small class="kind-badge">{{ item.get_kind_display }}</small></span>
+      <img src="{% if item_logo %}{{ item_logo }}{% else %}{% static 'img/icon.png' %}{% endif %}" alt="" width="36" height="36" class="brand-logo"> <span>{{ HOTEL_NAME }}<small class="kind-badge">{{ item.get_kind_display }}</small></span>
     </a>
     {% if item.kind != 'hotel' %}
     {% if 'work' in caps %}<a class="btn btn-primary sidebar-new" href="{% url 'pg_home' %}#vacant">+ Move in</a>{% endif %}
@@ -78,11 +78,11 @@
     <header class="topbar">
       {% if item %}
       <details class="switcher">
-        <summary class="topbar-brand"><img src="{% static 'img/icon.png' %}" alt="" width="28" height="28"> {{ HOTEL_NAME }} <small class="kind-badge">{{ item.get_kind_display }}</small>{% if user.is_superuser or my_items|length > 1 %} <span aria-hidden="true">▾</span>{% endif %}</summary>
+        <summary class="topbar-brand"><img src="{% if item_logo %}{{ item_logo }}{% else %}{% static 'img/icon.png' %}{% endif %}" alt="" width="28" height="28" class="brand-logo"> {{ HOTEL_NAME }} <small class="kind-badge">{{ item.get_kind_display }}</small>{% if user.is_superuser or my_items|length > 1 %} <span aria-hidden="true">▾</span>{% endif %}</summary>
         {% if user.is_superuser or my_items|length > 1 %}
         <div class="switcher-sheet">
           <a href="{% url 'cluster_home' %}?all">{{ CLUSTER_NAME }} — all properties</a>
-          {% for i in my_items %}{% if i.pk != item.pk %}<a href="{{ i.prefix }}"><span class="swatch" style="--sw: {{ i.colors.0 }}"></span>{{ i.name }} <small class="muted">{{ i.get_kind_display }}</small></a>{% endif %}{% endfor %}
+          {% for i in my_items %}{% if i.pk != item.pk %}<a href="{{ i.prefix }}">{% if i.logo_id %}<img src="/properties/{{ i.code }}/photo/logo/" alt="" width="20" height="20" class="brand-logo"> {% else %}<span class="swatch" style="--sw: {{ i.colors.0 }}"></span>{% endif %}{{ i.name }} <small class="muted">{{ i.get_kind_display }}</small></a>{% endif %}{% endfor %}
         </div>
         {% endif %}
       </details>

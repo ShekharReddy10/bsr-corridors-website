@@ -301,29 +301,22 @@ def _upload_photo(request, item, which):
     item.save(update_fields=[f"{which}_id"])
     Activity.record("property", f"{item.name}: {'cover photo' if which == 'cover' else 'logo'} changed", item)
     from django.core.cache import cache
-    cache.delete(f"item-photo:{item.code}:{which}")
+    from .branding import cache_key
+    cache.delete(cache_key(item, which))
     messages.success(request, f"{'Cover photo' if which == 'cover' else 'Logo'} saved.")
     return redirect("item_edit", code=item.code)
 
 
 def item_photo(request, code, which):
     """The cover photo / logo (for cards and headers): from the item's Drive, kept in the cache for a day."""
-    from django.core.cache import cache
     from django.http import Http404, HttpResponse
+    from .branding import photo
     item = get_object_or_404(Item, code=code)
-    file_id = getattr(item, f"{which}_id", "") if which in {"cover", "logo"} else ""
-    if not file_id or item not in items_for(request.user):
+    if which not in {"cover", "logo"} or item not in items_for(request.user):
         raise Http404
-    key = f"item-photo:{code}:{which}"
-    data = cache.get(key)
-    if data is None:
-        from core import gdrive
-        try:
-            with current.using(item):
-                data = gdrive.fetch(file_id)
-        except Exception:
-            raise Http404
-        cache.set(key, data, 24 * 3600)
+    data = photo(item, which)
+    if not data:
+        raise Http404
     response = HttpResponse(data, content_type="image/jpeg")
     response["Cache-Control"] = "private, max-age=3600"
     return response

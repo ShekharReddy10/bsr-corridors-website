@@ -31,6 +31,7 @@ from .services import today
 
 FONTS = Path(__file__).resolve().parent / "fonts"
 LOGO = Path(__file__).resolve().parent / "invoice_logo.png"  # black and white
+log = logging.getLogger(__name__)
 SALT = "invoice"
 PENTHOUSE = "601"
 BLACK = (0, 0, 0)
@@ -225,6 +226,24 @@ def in_words(amount) -> str:
     return f"Rupees {' '.join(parts)} Only"
 
 
+def letterhead_logo(p, item, y: float, h: float = 20) -> float:
+    """The property's logo centred at the top (uploaded on its page). BSR Corridors without one: its usual logo;
+    another property without one: no logo. Returns the next y."""
+    import io
+    from cluster.branding import photo
+    data = photo(item, "logo")
+    try:
+        if data:
+            p.image(io.BytesIO(data), x=(p.w - h) / 2, y=y, h=h)
+            return y + h + 2
+    except Exception:  # an image fpdf can't read: as if there were none
+        log.exception("Logo for the letterhead")
+    if (item is None or item.is_default) and LOGO.exists():
+        p.image(str(LOGO), x=(p.w - 18) / 2, y=y, h=h)
+        return y + h + 2
+    return y
+
+
 class _PDF(FPDF):
     """Typewriter-style invoice: FreeMono (Courier-like), black on white, ruled boxes."""
 
@@ -254,8 +273,10 @@ class _PDF(FPDF):
 def pdf(stay: Stay) -> bytes:
     from .whatsapp import hotel_info
 
+    from cluster import branding, current
     inv = build(stay)
     info = hotel_info()
+    item = current.get()
     guest = inv.stay.guest
     first = inv.parts[0].stay
     p = _PDF()
@@ -265,11 +286,12 @@ def pdf(stay: Stay) -> bytes:
 
     # Letterhead, centred: logo, name, address, phone.
     y = 12
-    if LOGO.exists():
-        p.image(str(LOGO), x=(p.w - 18) / 2, y=y, h=20)
-        y += 22
+    y = letterhead_logo(p, item, y)
     p.put(left, y, width, 8, hotel_name().upper(), size=18, style="B", align="C")
     y += 8
+    for ln in branding.business_lines(item):  # legal name, GSTIN / PAN / Udyam — when filled in
+        p.put(left, y, width, 4.5, ln, size=9, align="C")
+        y += 4.5
     address = [ln.strip() for ln in info.get("location", "").splitlines() if ln.strip() and "://" not in ln]
     for ln in address:
         p.set_xy(left + 15, y)
@@ -413,8 +435,8 @@ def pdf(stay: Stay) -> bytes:
     y += 24
     p.hline(y, 0.2)
     p.hline(y + 0.9, 0.6)
-    p.put(left, y + 3, width, 5, "Thank you for staying with us. We look forward to welcoming you again.", size=9,
-          align="C")
+    p.put(left, y + 3, width, 5, branding.footer(item, "Thank you for staying with us. We look forward to welcoming you "
+                                                       "again."), size=9, align="C")
     p.put(left, y + 8, width, 4.5, "This is an electronically generated invoice and does not require a physical "
                                    "signature or stamp.", size=8, align="C", color=GREY)
     p.put(left, y + 12, width, 4.5, "It is valid and shall be treated as the original invoice.", size=8, align="C",

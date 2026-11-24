@@ -741,3 +741,4 @@ details.waive > summary { cursor: pointer; color: var(--ink-soft); }
   .overview-table .ov-tags { justify-content: flex-end; max-width: 70%; }
 
 }
+.brand-logo { object-fit: contain; border-radius: 6px; background: #fff; }

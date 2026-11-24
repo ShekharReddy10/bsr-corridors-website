@@ -1221,6 +1221,43 @@ class InvoiceTests(TestCase):
                                headers={"X-Requested-With": "fetch"})
         self.assertFalse(bad.json()["ok"])
 
+    def test_invoice_business_details_and_footer(self):
+        """Nothing set on BSR Corridors' page: the invoice is as it always was. Filled in: they're printed."""
+        from unittest import mock
+        from cluster import current
+        from cluster.models import Item
+        from core import invoice
+        s = Stay(guest=make_guest(phone="98765 43211"), room=self.rooms["101"], check_in=date(2026, 11, 15),
+                 check_out=date(2026, 11, 18), total_amount=Decimal(4500), source="walk_in",
+                 status=Stay.Status.CHECKED_IN)
+        services.save_stay(s, action="create", summary="test")
+        printed, images = [], []
+        real_put, real_image = invoice._PDF.put, invoice._PDF.image
+
+        def put(pdf, x, y, w, h, txt, *a, **kw):
+            printed.append(txt)
+            return real_put(pdf, x, y, w, h, txt, *a, **kw)
+
+        def image(pdf, src, *a, **kw):
+            images.append(src)
+            return real_image(pdf, src, *a, **kw)
+
+        bsr = Item.objects.get(is_default=True)
+        with mock.patch.object(invoice._PDF, "put", put), mock.patch.object(invoice._PDF, "image", image):
+            with current.using(bsr):
+                invoice.pdf(s)
+            self.assertIn("Thank you for staying with us. We look forward to welcoming you again.", printed)
+            self.assertFalse(any("GSTIN" in x for x in printed))
+            self.assertEqual(images, [str(invoice.LOGO)])  # its usual logo
+            bsr.legal_name, bsr.udyam, bsr.invoice_footer = "BSR Hospitality", "udyam-tg-01-0000001", "See you soon!"
+            bsr.save()
+            printed.clear()
+            with current.using(bsr):
+                invoice.pdf(s)
+        self.assertIn("BSR Hospitality", printed)
+        self.assertIn("Udyam: UDYAM-TG-01-0000001", printed)
+        self.assertIn("See you soon!", printed)
+
     def test_platform_booking_not_invoiced_automatically(self):
         from urllib.parse import parse_qs, urlparse
         from core import invoice

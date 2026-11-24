@@ -1,7 +1,8 @@
 """Rent receipt (PDF) for a payment — residents use it e.g. for HRA claims. Same typewriter style as the invoices."""
 
 from cluster import current
-from core.invoice import _PDF, in_words, money as inr
+from cluster import branding
+from core.invoice import _PDF, in_words, letterhead_logo, money as inr
 
 from . import money
 from .models import RentPayment
@@ -14,9 +15,12 @@ def pdf(p: RentPayment) -> bytes:
     doc.add_page()
     left, right = doc.l_margin, doc.w - doc.r_margin
     width = right - left
-    y = 14
+    y = letterhead_logo(doc, item, 12, h=16)
     doc.put(left, y, width, 8, current.name().upper(), size=18, style="B", align="C")
     y += 9
+    for ln in branding.business_lines(item):
+        doc.put(left, y, width, 4.5, ln, size=9, align="C")
+        y += 4.5
     for ln in [x.strip() for x in (getattr(item, "address", "") or "").splitlines() if x.strip()]:
         doc.put(left, y, width, 4.5, ln, size=9, align="C")
         y += 4.5
@@ -58,6 +62,9 @@ def pdf(p: RentPayment) -> bytes:
     doc.rect(left, y, width, 18)
     doc.put(left + 4, y + 3, width - 8, 6, f"Amount received : {inr(p.amount)}", size=13, style="B")
     doc.put(left + 4, y + 10, width - 8, 5, f"({in_words(p.amount)})", size=9)
-    y += 30
+    y += 26
+    if note := branding.footer(item, ""):
+        doc.put(left, y, width, 5, note, size=9, align="C")
+        y += 6
     doc.put(left, y, width, 5, "This is a computer-generated receipt and needs no signature.", size=8, align="C")
     return bytes(doc.output())

@@ -647,3 +647,45 @@ class PgTests(TransactionTestCase):
         self.assertEqual(sent["verifier"], made)
         self.assertTrue(made)
 
+    def test_logo_business_details_and_footer_on_paper_and_screen(self):
+        import io
+        from unittest import mock
+        from PIL import Image
+        from cluster import branding
+        from core.invoice import _PDF
+        from . import receipt
+        buf = io.BytesIO()
+        Image.new("RGB", (40, 40), "red").save(buf, "JPEG")
+        jpeg = buf.getvalue()
+        t = self.tenancy()
+        pay = money.record(t, Decimal("9000"), mode="upi")
+        printed, images = [], []
+        real_put, real_image = _PDF.put, _PDF.image
+
+        def put(pdf, x, y, w, h, txt, *a, **kw):
+            printed.append(txt)
+            return real_put(pdf, x, y, w, h, txt, *a, **kw)
+
+        def image(pdf, src, *a, **kw):
+            images.append(src)
+            return real_image(pdf, src, *a, **kw)
+
+        with mock.patch.object(_PDF, "put", put), mock.patch.object(_PDF, "image", image):
+            receipt.pdf(pay)  # nothing filled in: no logo (not BSR Corridors'), no extra lines
+            self.assertEqual(images, [])
+            self.assertFalse(any("GSTIN" in x for x in printed))
+            self.item.legal_name, self.item.gstin, self.item.pan = "Royal Stays LLP", "36abcde1234f1z5", ""
+            self.item.invoice_footer, self.item.logo_id = "Thank you for choosing us!", "drive-file-1"
+            self.item.save()
+            printed.clear()
+            with current.using(self.item), mock.patch.object(branding, "photo", lambda item, which="logo": jpeg):
+                receipt.pdf(pay)
+        self.assertEqual(len(images), 1)  # its own logo
+        self.assertIn("Royal Stays LLP", printed)
+        self.assertIn("GSTIN: 36ABCDE1234F1Z5", printed)  # PAN empty: left out
+        self.assertIn("Thank you for choosing us!", printed)
+        # On screen: its logo in the header.
+        self.client.force_login(self.admin)
+        self.assertContains(self.client.get("/p/pgthree/pg/"), 'src="/properties/pgthree/photo/logo/"')
+        self.assertEqual(branding.business_lines(None), [])
+
