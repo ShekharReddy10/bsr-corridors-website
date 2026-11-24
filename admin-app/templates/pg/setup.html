@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}Floors &amp; rooms{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Floors &amp; rooms</h1><p class="muted">The building: floors, room types, and rooms with their beds.</p></div></div>
+
+<div class="grid-2">
+<section class="card">
+  <div class="card-head"><h2>Floors</h2>{% if 'manage' in caps %}<a class="btn btn-primary btn-sm" href="{% url 'pg_setup_new' 'floor' %}">+ Add floor</a>{% endif %}</div>
+  {% for f in floors %}<div class="stay-line"><div class="stay-line-main"><b><a href="{% url 'pg_floor' f.pk %}">{{ f.name }}</a></b><small>{{ f.n }} room{{ f.n|pluralize }}</small></div>{% if 'manage' in caps %}<a class="btn btn-ghost btn-sm" href="{% url 'pg_setup_edit' 'floor' f.pk %}">Edit</a>{% endif %}</div>
+  {% empty %}<p class="muted">No floors yet — e.g. “Ground”, “1st”.</p>{% endfor %}
+</section>
+<section class="card">
+  <div class="card-head"><h2>Room types</h2>{% if 'manage' in caps %}<a class="btn btn-primary btn-sm" href="{% url 'pg_setup_new' 'type' %}">+ Add type</a>{% endif %}</div>
+  {% for t in types %}<div class="stay-line"><div class="stay-line-main"><b>{{ t.name }}</b><small>{{ t.n }} room{{ t.n|pluralize }}{% if t.notes %} · {{ t.notes }}{% endif %}</small></div>{% if 'manage' in caps %}<a class="btn btn-ghost btn-sm" href="{% url 'pg_setup_edit' 'type' t.pk %}">Edit</a>{% endif %}</div>
+  {% empty %}<p class="muted">No room types yet — e.g. “2-sharing AC”.</p>{% endfor %}
+</section>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>Rooms</h2>{% if 'manage' in caps %}<a class="btn btn-primary btn-sm" href="{% url 'pg_setup_new' 'room' %}">+ Add room</a>{% endif %}</div>
+  {% if rooms %}
+  <div class="table-wrap"><table class="table table-cards">
+    <thead><tr><th>Room</th><th>Floor</th><th>Type</th><th>Beds</th><th class="num">Rent / bed / month</th><th class="num">Advance</th><th></th></tr></thead>
+    <tbody>{% for r in rooms %}<tr>
+      <td data-label="Room"><b><a href="{% url 'pg_room' r.pk %}">{{ r.number }}</a></b>{% if r.status == 'maintenance' %} <span class="tag">Maintenance</span>{% endif %}</td>
+      <td data-label="Floor">{{ r.floor.name }}</td><td data-label="Type">{{ r.room_type.name }}{% if r.is_ac %} · AC{% endif %}</td>
+      <td data-label="Beds">{{ r.n }}</td><td data-label="Rent" class="num">{{ r.rent_monthly|inr }}</td><td data-label="Advance" class="num">{{ r.deposit|inr }}</td>
+      <td>{% if 'manage' in caps %}<a class="btn btn-ghost btn-sm" href="{% url 'pg_setup_edit' 'room' r.pk %}">Edit</a>{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="muted">No rooms yet. Add floors and a room type first.</p>{% endif %}
+</section>
+{% endblock %}

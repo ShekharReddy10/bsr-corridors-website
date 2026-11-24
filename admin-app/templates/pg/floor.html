@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}{{ floor.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ floor.name }}</h1><p class="muted">Rooms on this floor. Each dot is a bed.</p></div>
+  <a class="btn btn-ghost" href="{% url 'pg_home' %}">Back</a>
+</div>
+<div class="chips floor-tabs">{% for f in floors %}<a class="chip{% if f.pk == floor.pk %} is-on{% endif %}" href="{% url 'pg_floor' f.pk %}">{{ f.name }}</a>{% endfor %}</div>
+<div class="legend bed-legend"><span><i class="dot s-vacant"></i>Vacant</span><span><i class="dot s-occupied"></i>Occupied</span><span><i class="dot s-notice"></i>On notice</span><span><i class="dot s-reserved"></i>Reserved</span><span><i class="dot s-maintenance"></i>Maintenance</span></div>
+{% if tiles %}
+<div class="room-grid">
+  {% for t in tiles %}
+  <a class="room-tile{% if t.room.status == 'maintenance' %} is-maint{% endif %}" href="{% url 'pg_room' t.room.pk %}" style="--i: {{ forloop.counter0 }}">
+    <b>{{ t.room.number }}</b>
+    <small>{{ t.room.room_type.name }}{% if t.room.is_ac %} · AC{% endif %}</small>
+    <span class="dots">{% for v in t.beds %}<i class="dot s-{{ v.state }}" title="Bed {{ v.bed.label }}: {{ v.label }}{% if v.tenancy %} — {{ v.tenancy.resident.name }}{% endif %}"></i>{% empty %}<small class="muted">No beds</small>{% endfor %}</span>
+    <small>{{ t.taken }}/{{ t.total }} taken</small>
+  </a>
+  {% endfor %}
+</div>
+{% else %}<p class="card muted">No rooms on this floor yet.{% if 'manage' in caps %} <a href="{% url 'pg_setup_new' 'room' %}">Add a room</a>{% endif %}</p>{% endif %}
+{% endblock %}

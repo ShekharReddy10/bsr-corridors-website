@@ -39,6 +39,10 @@ RULES: dict[str, tuple[set, set]] = {
     "settings": ({"view"}, {"settings"}),
     "stay_reveal_id": ({"ids"}, {"ids"}),
 }
+_pg_manage = ["pg_setup", "pg_setup_new", "pg_setup_edit", "pg_bed_edit", "pg_bed_action", "pg_room"]
+RULES.update({n: ({"view"}, {"manage"}) for n in _pg_manage})
+RULES["pg_reveal_id"] = ({"ids"}, {"ids"})
+PG_TENANCY_ACTIONS = {"refund": {"pay"}}
 STAY_ACTIONS = {"payment": {"pay"}, "pay-not-received": {"pay"}, "delete": {"work", "delete"}}
 
 
@@ -61,6 +65,10 @@ def needed(request, url_name: str, kwargs: dict) -> set:
     post = request.method not in ("GET", "HEAD", "OPTIONS")
     if url_name == "stay_action" and post:
         return STAY_ACTIONS.get(kwargs.get("action", ""), {"work"})
+    if url_name == "pg_tenancy_action" and post:
+        return PG_TENANCY_ACTIONS.get(kwargs.get("action", ""), {"work"})
+    if url_name == "pg_file" and kwargs.get("what") == "id":
+        return {"ids"}
     if url_name == "export" and post and request.POST.get("include_full_ids"):
         return {"export", "ids"}
     get_caps, post_caps = RULES.get(url_name, ({"view"}, {"work"}))

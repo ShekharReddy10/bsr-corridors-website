@@ -174,7 +174,8 @@ def export_to_drive(start: date, end: date, full_ids: bool) -> BackupRun:
 
 # ── Photos (receipts, ID cards) ──
 
-PHOTO_FOLDERS = {"receipts": "Expense receipts", "ids": "Guest ID photos", "item": "Photos"}
+PHOTO_FOLDERS = {"receipts": "Expense receipts", "ids": "Guest ID photos", "item": "Photos",
+                 "pg": "Resident documents"}  # PG / co-living: agreements and ID photos
 
 
 def upload_photo(data: bytes, name: str, kind: str) -> str:
@@ -183,6 +184,14 @@ def upload_photo(data: bytes, name: str, kind: str) -> str:
     root, _, _ = _folders(svc)
     folder = _folder(svc, f"gdrive_{kind}", PHOTO_FOLDERS[kind], root)
     return _upload(svc, data, name, "image/jpeg", folder)["id"]
+
+
+def upload_file(data: bytes, name: str, mimetype: str, kind: str) -> str:
+    """Like upload_photo, for a photo or a PDF (rental agreements)."""
+    svc = _service()
+    root, _, _ = _folders(svc)
+    folder = _folder(svc, f"gdrive_{kind}", PHOTO_FOLDERS[kind], root)
+    return _upload(svc, data, name, mimetype, folder)["id"]
 
 
 def fetch(file_id: str) -> bytes:

@@ -1,0 +1,58 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}Today{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ HOTEL_NAME }}</h1><p class="muted">{{ today|date:"l, d M Y" }}</p></div>
+  <div class="inline-form"><a class="btn btn-outline" href="{% url 'pg_residents' %}">Residents</a>{% if 'manage' in caps %}<a class="btn btn-ghost" href="{% url 'pg_setup' %}">Floors &amp; rooms</a>{% endif %}</div>
+</div>
+
+{% if not set_up %}
+<section class="card empty">
+  <h2>Let’s set up the building</h2>
+  <p class="muted">Add the floors, a room type or two (e.g. “2-sharing AC”), then the rooms with their beds.</p>
+  {% if 'manage' in caps %}<a class="btn btn-primary" href="{% url 'pg_setup' %}">Set up floors and rooms</a>{% endif %}
+</section>
+{% else %}
+<div class="stats">
+  <div class="stat"><b>{{ all.taken }}/{{ all.total }}</b><span>beds taken</span></div>
+  <div class="stat"><b>{{ all.vacant }}</b><span>vacant</span></div>
+  <div class="stat"><b>{{ all.reserved }}</b><span>reserved</span></div>
+  <div class="stat{% if all.notice %} stat-warn{% endif %}"><b>{{ all.notice }}</b><span>on notice</span></div>
+</div>
+
+{% if moving_in or moving_out or notice_week or refunds %}
+<section class="card">
+  <h2>To do</h2>
+  {% for t in moving_in %}<div class="stay-line"><span class="room-badge">{{ t.bed }}</span><div class="stay-line-main"><b>{{ t.resident.name }}</b><small>Moving in {% if t.move_in < today %}— was due {{ t.move_in|date:"d M" }}{% else %}today{% endif %}</small></div><a class="btn btn-outline btn-sm" href="{% url 'pg_tenancy' t.pk %}">Open</a></div>{% endfor %}
+  {% for t in moving_out %}<div class="stay-line is-warn"><span class="room-badge">{{ t.bed }}</span><div class="stay-line-main"><b>{{ t.resident.name }}</b><small>Last day {% if t.last_day < today %}was {{ t.last_day|date:"d M" }}{% else %}today{% endif %}</small></div>{% if 'work' in caps %}<a class="btn btn-primary btn-sm" href="{% url 'pg_move_out' t.pk %}">Move out</a>{% endif %}</div>{% endfor %}
+  {% for t in notice_week %}<div class="stay-line"><span class="room-badge">{{ t.bed }}</span><div class="stay-line-main"><b>{{ t.resident.name }}</b><small>On notice — last day {{ t.last_day|date:"D d M" }}</small></div><a class="btn btn-ghost btn-sm" href="{% url 'pg_tenancy' t.pk %}">Open</a></div>{% endfor %}
+  {% for t in refunds %}<div class="stay-line{% if t.refund_due_by and t.refund_due_by < today %} is-warn{% endif %}"><span class="room-badge">₹</span><div class="stay-line-main"><b>{{ t.resident.name }}</b><small>Deposit to refund {{ t.refund|inr }}{% if t.refund_due_by %} by {{ t.refund_due_by|date:"d M" }}{% endif %}</small></div><a class="btn btn-ghost btn-sm" href="{% url 'pg_tenancy' t.pk %}">Open</a></div>{% endfor %}
+</section>
+{% endif %}
+
+<div class="floor-grid">
+  {% for f in floors %}
+  <a class="floor-card" href="{% url 'pg_floor' f.floor.pk %}" style="--i: {{ forloop.counter0 }}">
+    <h2>{{ f.floor.name }}</h2>
+    <div class="item-stats"><div><b>{{ f.rooms }}</b><span>rooms</span></div><div><b>{{ f.taken }}/{{ f.total }}</b><span>beds taken</span></div><div><b>{{ f.vacant }}</b><span>vacant</span></div></div>
+    <div class="occupancy" style="--c-accent: var(--gold)"><i style="--pct: {% widthratio f.taken f.total|default:1 100 %}%"></i></div>
+  </a>
+  {% endfor %}
+</div>
+
+<section class="card" id="vacant">
+  <div class="card-head"><h2>Vacant beds</h2><span class="count">{{ vacant|length }}</span></div>
+  {% if vacant %}
+  <div class="chips">{% for b in vacant %}{% if 'work' in caps %}<a class="chip" href="{% url 'pg_move_in' b.pk %}" title="Move someone in">{{ b.room.number }}-{{ b.label }} · {{ b.room.room_type.name }} · {{ b.rent_monthly|default:b.room.rent_monthly|inr }}/mo</a>{% else %}<a class="chip" href="{% url 'pg_bed' b.pk %}">{{ b.room.number }}-{{ b.label }}</a>{% endif %}{% endfor %}</div>
+  <p class="muted small">Tap a bed to move someone in (a future date reserves it).</p>
+  {% else %}<p class="muted">Every bed is taken.</p>{% endif %}
+</section>
+
+{% if reserved %}
+<section class="card">
+  <h2>Coming soon</h2>
+  {% for t in reserved %}<div class="stay-line"><span class="room-badge">{{ t.bed }}</span><div class="stay-line-main"><b>{{ t.resident.name }}</b><small>Moves in {{ t.move_in|date:"D d M" }}</small></div><a class="btn btn-ghost btn-sm" href="{% url 'pg_tenancy' t.pk %}">Open</a></div>{% endfor %}
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

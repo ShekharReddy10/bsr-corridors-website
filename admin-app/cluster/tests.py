@@ -44,7 +44,8 @@ class ClusterTests(TransactionTestCase):
         t = services.today()
         self.bsr_stay = Stay.objects.create(guest=self.bsr_guest, room=self.bsr_room, check_in=t,
                                             check_out=t + timedelta(days=3), total_amount=Decimal("4500"))
-        self.pg = Item.objects.create(code="pgone", name="BSR Ladies PG", kind=Item.Kind.PG, theme="teal")
+        # A second item using the hotel pages (PG pages have their own tests in pg/tests.py).
+        self.pg = Item.objects.create(code="pgone", name="BSR Ladies PG", kind=Item.Kind.HOTEL, theme="teal")
         provision.provision(self.pg)
         with current.using(self.pg):
             prt = RoomType.objects.create(name="2-sharing")

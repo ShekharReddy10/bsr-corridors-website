@@ -1,0 +1,38 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}Bed {{ bed }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Bed {{ bed.label }} <small class="muted">Room {{ bed.room.number }}</small></h1>
+    <p class="muted"><span class="bed-pill s-{{ view.state }}">{{ view.label }}</span> · {{ bed.room.floor.name }} · {{ bed.room.room_type.name }}{% if bed.notes %} · {{ bed.notes }}{% endif %}</p></div>
+  <div class="inline-form">{% if 'manage' in caps and not bed.is_removed %}<a class="btn btn-outline" href="{% url 'pg_bed_edit' bed.pk %}">Edit bed</a>{% endif %}<a class="btn btn-ghost" href="{% url 'pg_room' bed.room_id %}">Back</a></div>
+</div>
+
+{% if bed.is_removed %}<div class="msg msg-info">Removed on {{ bed.removed_on|date:"d M Y" }}: {{ bed.removed_reason }}. Restore it from the room page.</div>{% endif %}
+
+<section class="card">
+  {% if view.tenancy %}
+    <h2>{% if view.state == 'reserved' %}Reserved for{% else %}Current resident{% endif %}</h2>
+    <dl class="dl">
+      <dt>Resident</dt><dd><a href="{% url 'pg_resident' view.tenancy.resident.pk %}">{{ view.tenancy.resident.name }}</a> · <a href="tel:{{ view.tenancy.resident.phone_digits }}">{{ view.tenancy.resident.phone }}</a></dd>
+      <dt>{% if view.state == 'reserved' %}Moves in{% else %}Since{% endif %}</dt><dd>{{ view.tenancy.move_in|date:"d M Y" }}</dd>
+      <dt>Rent</dt><dd>{{ view.tenancy.rent|inr }} {{ view.tenancy.get_cycle_display|lower }}{% if next %} · next due {{ next.start|date:"d M Y" }}{% endif %}</dd>
+      <dt>Advance</dt><dd>{{ view.tenancy.deposit_received|inr }} received of {{ view.tenancy.deposit|inr }}</dd>
+      {% if view.tenancy.last_day %}<dt>Last day</dt><dd>{{ view.tenancy.last_day|date:"d M Y" }}</dd>{% endif %}
+    </dl>
+    <a class="btn btn-primary" href="{% url 'pg_tenancy' view.tenancy.pk %}">Open tenancy — notice, shift bed, move out</a>
+  {% else %}
+    <h2>No one in this bed</h2>
+    <dl class="dl">{% for c, amount in rent %}<dt>{{ c|capfirst }} rent</dt><dd>{{ amount|inr }}</dd>{% endfor %}</dl>
+    {% if upcoming %}<p class="muted">Booked from {{ upcoming.start|date:"d M Y" }} by <a href="{% url 'pg_tenancy' upcoming.tenancy.pk %}">{{ upcoming.tenancy.resident.name }}</a>.</p>{% endif %}
+    {% if view.state == 'vacant' and 'work' in caps %}<a class="btn btn-primary" href="{% url 'pg_move_in' bed.pk %}">Move someone in</a>{% endif %}
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Residents of this bed</h2>
+  {% for s in history %}
+  <div class="stay-line{% if not s.end %} is-current{% endif %}"><div class="stay-line-main"><b><a href="{% url 'pg_tenancy' s.tenancy.pk %}">{{ s.tenancy.resident.name }}</a></b>
+    <small>{{ s.start|date:"d M Y" }} → {% if s.end %}{{ s.end|date:"d M Y" }}{% else %}now{% endif %} · {{ s.tenancy.get_status_display }}</small></div></div>
+  {% empty %}<p class="muted">No one has stayed in this bed yet.</p>{% endfor %}
+</section>
+{% endblock %}

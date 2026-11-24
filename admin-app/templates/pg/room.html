@@ -1,0 +1,51 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}Room {{ room.number }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Room {{ room.number }}</h1>
+    <p class="muted">{{ room.floor.name }} · {{ room.room_type.name }}{% if room.is_ac %} · AC{% else %} · Non-AC{% endif %}{% if room.attached_bath %} · attached bathroom{% endif %}{% if room.balcony %} · balcony{% endif %}
+    · {{ room.rent_monthly|inr }}/month per bed · advance {{ room.deposit|inr }}{% if room.status == 'maintenance' %} · <span class="warn">under maintenance</span>{% endif %}</p></div>
+  <div class="inline-form">{% if 'manage' in caps %}<a class="btn btn-outline" href="{% url 'pg_setup_edit' 'room' room.pk %}">Edit room</a>{% endif %}<a class="btn btn-ghost" href="{% url 'pg_floor' room.floor_id %}">Back</a></div>
+</div>
+
+<div class="bed-grid">
+  {% for v in beds %}
+  <article class="bed-card s-{{ v.state }}" style="--i: {{ forloop.counter0 }}">
+    <header><b>Bed {{ v.bed.label }}</b><span class="bed-state">{{ v.label }}</span></header>
+    {% if v.tenancy %}
+      <p><a href="{% url 'pg_tenancy' v.tenancy.pk %}"><b>{{ v.tenancy.resident.name }}</b></a><br>
+      <small class="muted">{% if v.state == 'reserved' %}moves in {{ v.tenancy.move_in|date:"d M Y" }}{% else %}since {{ v.tenancy.move_in|date:"d M Y" }}{% endif %}{% if v.state == 'notice' %} · last day {{ v.tenancy.last_day|date:"d M" }}{% endif %}</small></p>
+      <p class="small">{{ v.tenancy.rent|inr }} {{ v.tenancy.get_cycle_display|lower }}{% if v.next %} · next due {{ v.next.start|date:"d M" }}{% endif %}</p>
+    {% else %}
+      <p class="muted small">{{ v.rent|inr }}/month</p>
+    {% endif %}
+    <footer class="inline-form">
+      <a class="btn btn-ghost btn-sm" href="{% url 'pg_bed' v.bed.pk %}">Details</a>
+      {% if v.state == 'vacant' and 'work' in caps %}<a class="btn btn-primary btn-sm" href="{% url 'pg_move_in' v.bed.pk %}">Move in</a>{% endif %}
+      {% if v.state == 'vacant' and 'manage' in caps %}
+      <details class="bed-remove"><summary class="btn btn-ghost btn-sm">Remove</summary>
+        <form method="post" action="{% url 'pg_bed_action' v.bed.pk 'remove' %}" class="inline-form" data-confirm="Remove bed {{ v.bed.label }}? It is kept under Removed beds with its history and can be restored.">{% csrf_token %}
+          <input name="reason" placeholder="Reason, e.g. room made 2-sharing" required aria-label="Reason"><button class="btn btn-danger btn-sm">Remove bed</button></form>
+      </details>{% endif %}
+    </footer>
+  </article>
+  {% empty %}<p class="muted">No beds in use.</p>{% endfor %}
+</div>
+
+{% if 'manage' in caps %}
+<form method="post" class="card inline-form">{% csrf_token %}
+  <label>Add <input type="number" name="n" value="1" min="1" max="10" style="width: 70px" aria-label="How many beds"> bed(s)</label>
+  <button class="btn btn-outline btn-sm">Add</button>
+  <span class="muted small">New beds get the next letter.</span>
+</form>
+{% endif %}
+
+<section class="card">
+  <h2>Removed beds</h2>
+  {% if removed %}
+  {% for b in removed %}<div class="stay-line"><span class="room-badge">{{ b.label }}</span><div class="stay-line-main"><b>Removed {{ b.removed_on|date:"d M Y" }}</b><small>{{ b.removed_reason }}{% if b.removed_by %} — {{ b.removed_by }}{% endif %} · {{ b.n }} past stay{{ b.n|pluralize }}</small></div>
+    <a class="btn btn-ghost btn-sm" href="{% url 'pg_bed' b.pk %}">History</a>
+    {% if 'manage' in caps %}<form method="post" action="{% url 'pg_bed_action' b.pk 'restore' %}">{% csrf_token %}<button class="btn btn-outline btn-sm">Restore</button></form>{% endif %}</div>{% endfor %}
+  {% else %}<p class="muted">None.</p>{% endif %}
+</section>
+{% endblock %}

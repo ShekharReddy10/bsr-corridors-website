@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}Move out · {{ t.resident.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Move out — {{ t.resident.name }}</h1><p class="muted">Bed {{ t.bed }} · advance received {{ t.deposit_received|inr }}</p></div>
+  <a class="btn btn-ghost" href="{% url 'pg_tenancy' t.pk %}">Back</a>
+</div>
+<form method="post" class="card" data-settle data-deposit="{{ t.deposit_received }}" data-confirm="Move {{ t.resident.name }} out? The bed becomes vacant.">{% csrf_token %}
+  {% for e in errors %}<div class="msg msg-error">{{ e }}</div>{% endfor %}
+  <div class="form-grid">
+    <div class="field"><label for="mo-day">Moving out on</label><input id="mo-day" type="date" name="day" value="{{ day }}" required><small class="help">The bed is free from this day.</small></div>
+    <div class="field"><label for="mo-unpaid">Unpaid rent</label><input id="mo-unpaid" name="unpaid_rent" value="{{ unpaid_rent }}" inputmode="decimal" data-settle-amount><small class="help">Rent still owed up to the last day.</small></div>
+  </div>
+  <h2>Deductions</h2>
+  <p class="muted small">The standard ones from the item’s settings are filled in — change or clear them. Each needs a reason.</p>
+  <div class="deduction-rows">
+    {% for d in rows %}<div class="inline-form"><input name="reason" value="{{ d.reason }}" placeholder="Reason, e.g. Cleaning" aria-label="Reason"><input name="amount" value="{{ d.amount }}" placeholder="₹" inputmode="decimal" aria-label="Amount" style="width: 110px" data-settle-amount></div>{% endfor %}
+  </div>
+  <p class="total-line">Refund: <b data-settle-total>—</b></p>
+  <p class="muted small">Refund due within {{ refund_days }} days; it shows on Today until you record it as paid.</p>
+  <div class="form-actions"><button class="btn btn-primary">Move out</button></div>
+</form>
+{% endblock %}

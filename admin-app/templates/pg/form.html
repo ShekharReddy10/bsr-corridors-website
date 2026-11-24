@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{{ title }}</h1><a class="btn btn-ghost" href="{{ back }}">Back</a></div>
+<form method="post" class="card" novalidate>{% csrf_token %}
+  {% if form.non_field_errors %}<div class="msg msg-error">{{ form.non_field_errors }}</div>{% endif %}
+  <div class="form-grid">{% for f in form %}{% field f %}{% endfor %}</div>
+  <div class="form-actions"><button class="btn btn-primary">Save</button><a class="btn btn-ghost" href="{{ back }}">Cancel</a></div>
+</form>
+{% if can_delete %}
+<form method="post" class="card danger-zone" data-confirm="Delete this? Anything still in use is kept.">{% csrf_token %}
+  <input type="hidden" name="action" value="delete"><button class="btn btn-danger btn-sm">Delete</button>
+  <span class="muted small">Only possible when nothing uses it.</span>
+</form>
+{% endif %}
+{% endblock %}

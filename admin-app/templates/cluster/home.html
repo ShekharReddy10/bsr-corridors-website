@@ -32,10 +32,11 @@
         {% elif s %}
           <div class="occupancy" title="{{ s.taken }} of {{ s.total }} {{ s.units }} taken tonight"><i style="--pct: {% widthratio s.taken s.total|default:1 100 %}%"></i></div>
           <div class="item-stats">
-            <div><b>{{ s.taken }}/{{ s.total }}</b><span>{{ s.units }} tonight</span></div>
-            <div><b>{{ s.arriving }}</b><span>arriving today</span></div>
-            <div><b>{{ s.departing }}</b><span>leaving today</span></div>
+            <div><b>{{ s.taken }}/{{ s.total }}</b><span>{% if s.units == 'beds' %}beds taken{% else %}{{ s.units }} tonight{% endif %}</span></div>
+            <div><b>{{ s.arriving }}</b><span>{% if s.units == 'beds' %}moving in{% else %}arriving today{% endif %}</span></div>
+            <div><b>{{ s.departing }}</b><span>{% if s.units == 'beds' %}moving out{% else %}leaving today{% endif %}</span></div>
           </div>
+          {% if s.refunds %}<p class="item-alert">{{ s.refunds }} deposit{{ s.refunds|pluralize }} to refund</p>{% endif %}
           {% if s.verify %}<p class="item-alert">{{ s.verify }} UPI payment{{ s.verify|pluralize }} to verify</p>{% endif %}
         {% endif %}
       </div>

@@ -16,6 +16,13 @@ from .models import Item, Membership
 
 CLUSTER_PATHS = ("/cluster/", "/login/", "/logout/", "/healthz/", "/backup/run/", "/static/")
 GUEST_PATHS = ("/invoice/", "/pay/", "/s/")  # signed public links sent to guests
+# Hotel pages a PG / co-living doesn't have (it has floors → rooms → beds instead): they open its PG home.
+HOTEL_ONLY = {"dashboard", "confirm_check", "calendar", "room_month", "stay_list", "stay_new", "upcoming", "stay_detail",
+              "stay_edit", "stay_extend", "stay_reveal_id", "stay_whatsapp", "payment_delete", "stay_action",
+              "guest_list", "guest_detail", "guest_lookup", "rooms", "roomtype_new", "roomtype_edit", "room_new",
+              "room_edit", "room_log", "maintenance_done", "maintenance_delete", "room_delete", "stay_invoice",
+              "stay_pay_link", "wa_in_house", "id_photos_upload", "id_photos_use", "id_photo_unuse", "id_photo_person",
+              "id_photo", "id_photo_delete"}
 NO_CHECK = {"login", "logout", "healthz", "backup_hook", "my_password", "guest_invoice", "pay_page", "short_link"}
 
 
@@ -74,6 +81,12 @@ class ClusterMiddleware:
 
     def process_view(self, request, view_func, view_args, view_kwargs):
         match = request.resolver_match
+        name = match.url_name if match else ""
+        if request.item is not None and name:
+            if request.item.kind != Item.Kind.HOTEL and name in HOTEL_ONLY:
+                return redirect("pg_home")
+            if request.item.kind == Item.Kind.HOTEL and name.startswith("pg_"):
+                raise Http404
         if request.item is None or not request.user.is_authenticated or (match and match.url_name in NO_CHECK):
             return None
         if not request.caps:

@@ -459,3 +459,54 @@
     preview.style.setProperty("--p-dark", choice.dataset.dark);
   });
 })();
+
+// PG / co-living pages.
+(() => {
+  // PG move-in: returning resident by phone, rent by billing cycle, the date-of-month only for a fixed due date.
+  const pgForm = document.querySelector("form[data-pg-move-in]");
+  if (pgForm) {
+    const $ = (n) => pgForm.querySelector(`[name="${n}"]`);
+    const phone = $("r-phone"), cycle = $("t-cycle"), rent = $("t-rent"), rule = $("t-due_rule");
+    const dayWrap = pgForm.querySelector(".due-day-wrap"), note = pgForm.querySelector("[data-returning]");
+    const syncDue = () => { if (dayWrap) dayWrap.hidden = !(rule && rule.value === "fixed" && cycle.value === "monthly"); };
+    if (cycle && rent) cycle.addEventListener("change", () => {
+      const v = rent.dataset["rent" + cycle.value.charAt(0).toUpperCase() + cycle.value.slice(1)];
+      if (v && Number(v) > 0) rent.value = v;
+      syncDue();
+    });
+    if (rule) rule.addEventListener("change", syncDue);
+    syncDue();
+    if (phone) phone.addEventListener("change", async () => {
+      const digits = phone.value.replace(/\D/g, "");
+      if (digits.length < 10) return;
+      try {
+        const r = await fetch(pgForm.dataset.lookup + "?phone=" + encodeURIComponent(phone.value));
+        const d = await r.json();
+        $("resident_id").value = d.found ? d.id : "";
+        if (!d.found) { note.hidden = true; return; }
+        const fill = { "r-name": d.name, "r-address": d.address, "r-id_type": d.id_type, "r-organisation": d.organisation,
+          "r-occupation": d.occupation, "r-emergency_name": d.emergency_name, "r-emergency_relation": d.emergency_relation,
+          "r-emergency_phone": d.emergency_phone, "r-vehicle": d.vehicle };
+        for (const [k, v] of Object.entries(fill)) { const el = $(k); if (el && v && !el.value) el.value = v; }
+        note.textContent = `Returning resident: ${d.name}` + (d.id_masked ? ` · ID ${d.id_masked} saved (leave ID empty to keep it)` : "") +
+          (d.open ? ` · already ${d.open} — shift them instead` : "");
+        note.hidden = false;
+      } catch (e) { /* offline: they type the details */ }
+    });
+  }
+
+  // PG move-out: the refund as you type (advance − unpaid rent − deductions).
+  const settle = document.querySelector("form[data-settle]");
+  if (settle) {
+    const out = settle.querySelector("[data-settle-total]");
+    const num = (v) => Number(String(v).replace(/[₹,\s]/g, "")) || 0;
+    const calc = () => {
+      let left = num(settle.dataset.deposit);
+      settle.querySelectorAll("[data-settle-amount]").forEach((i) => { left -= num(i.value); });
+      const fmt = (n) => "₹" + Math.round(Math.abs(n)).toLocaleString("en-IN");
+      out.textContent = left >= 0 ? fmt(left) : `${fmt(left)} still owed by the resident`;
+    };
+    settle.addEventListener("input", calc);
+    calc();
+  }
+})();

@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     "django.contrib.humanize",
     "core",
     "cluster",
+    "pg",
 ]
 
 # Each cluster item's tables go to its own schema; logins and cluster tables stay in the main database.

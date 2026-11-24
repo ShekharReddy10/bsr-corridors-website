@@ -1,0 +1,28 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}{{ r.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ r.name }}</h1><p class="muted"><a href="tel:{{ r.phone_digits }}">{{ r.phone }}</a> · ID {{ r.get_id_type_display }} <span id="pg-id">{{ r.id_masked|default:"not added" }}</span>{% if 'ids' in caps and r.id_number %} <button class="btn btn-ghost btn-sm" hx-post="{% url 'pg_reveal_id' r.pk %}" hx-target="#pg-id" hx-swap="innerHTML">Show</button>{% endif %}</p></div>
+  <a class="btn btn-ghost" href="{% url 'pg_residents' %}">Back</a>
+</div>
+
+<section class="card">
+  <h2>Stays here</h2>
+  {% for t in tenancies %}<div class="stay-line{% if t.is_open %} is-current{% endif %}"><span class="room-badge">{{ t.bed.room.number }}-{{ t.bed.label }}</span>
+    <div class="stay-line-main"><b><a href="{% url 'pg_tenancy' t.pk %}">{{ t.get_status_display }}</a></b><small>{{ t.move_in|date:"d M Y" }} → {% if t.move_out %}{{ t.move_out|date:"d M Y" }}{% elif t.last_day %}{{ t.last_day|date:"d M Y" }} (last day){% else %}…{% endif %} · {{ t.rent|inr }} {{ t.get_cycle_display|lower }}</small></div></div>
+  {% empty %}<p class="muted">No tenancy yet.</p>{% endfor %}
+</section>
+
+<form method="post" class="card" novalidate>{% csrf_token %}
+  <h2>Details</h2>
+  <div class="form-grid">{% for f in form %}{% field f %}{% endfor %}</div>
+  {% if 'work' in caps %}<div class="form-actions"><button class="btn btn-primary">Save</button></div>{% endif %}
+</form>
+
+<section class="card">
+  <h2>ID photo</h2>
+  {% if r.id_photo %}{% if 'ids' in caps %}<p><a class="btn btn-outline btn-sm" href="{% url 'pg_file' 'id' r.pk %}" target="_blank" rel="noopener">Open ID photo</a></p>{% else %}<p class="muted">Saved (only those allowed to see full IDs can open it).</p>{% endif %}{% endif %}
+  {% if 'work' in caps %}<form method="post" enctype="multipart/form-data" class="inline-form">{% csrf_token %}<input type="hidden" name="action" value="id-photo">
+    <label class="field"><span class="label">{% if r.id_photo %}Replace{% else %}Upload{% endif %} (photo or PDF)</span><input type="file" name="file" accept="image/*,application/pdf"></label><button class="btn btn-outline btn-sm">Upload</button></form>{% endif %}
+</section>
+{% endblock %}

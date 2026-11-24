@@ -13,7 +13,7 @@ from django.db import connections
 from . import current
 from .models import Item
 
-APPS_FOR = {Item.Kind.HOTEL: ["core"], Item.Kind.PG: ["core"], Item.Kind.COLIVING: ["core"]}  # PG apps: phase 3
+APPS_FOR = {Item.Kind.HOTEL: ["core"], Item.Kind.PG: ["core", "pg"], Item.Kind.COLIVING: ["core", "pg"]}
 
 
 def schema_name(code: str) -> str:

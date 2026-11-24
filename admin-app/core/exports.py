@@ -145,6 +145,16 @@ BACKUP_MODELS = [RoomType, Room, Guest, Stay, StayGuest, IdPhoto, StayIdPhoto, P
                  ShortLink]  # links already sent to guests keep working after a restore
 
 
+def item_extra_models() -> list:
+    """The current item's own tables beyond the shared ones: floors, rooms, beds, residents… for a PG / co-living."""
+    from cluster import current
+    item = current.get()
+    if item is None or item.kind == "hotel":
+        return []
+    from pg.models import Bed, BedSpell, Floor, Resident, Room as PgRoom, RoomType as PgRoomType, Tenancy
+    return [Floor, PgRoomType, PgRoom, Bed, Resident, Tenancy, BedSpell]  # parents before children
+
+
 def backup_json() -> bytes:
     """Full backup in Django fixture format (restore with `manage.py loaddata`).
 
@@ -155,5 +165,5 @@ def backup_json() -> bytes:
     from cluster.models import Item, Membership
     # Logins and the cluster's own tables live with BSR Corridors' data: they go in its backup only.
     shared = [get_user_model(), Item, Membership] if current.is_default() else []
-    objects = [obj for model in [*shared, *BACKUP_MODELS] for obj in model.objects.order_by("pk")]
+    objects = [obj for model in [*shared, *BACKUP_MODELS, *item_extra_models()] for obj in model.objects.order_by("pk")]
     return serializers.serialize("json", objects, indent=1).encode()

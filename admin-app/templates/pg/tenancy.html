@@ -1,0 +1,84 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}{{ r.name }} · tenancy{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ r.name }}</h1>
+    <p class="muted"><span class="bed-pill s-{{ t.status }}">{{ t.get_status_display }}</span> · bed {{ t.bed.label }}, <a href="{% url 'pg_room' t.bed.room_id %}">room {{ t.bed.room.number }}</a> · <a href="tel:{{ r.phone_digits }}">{{ r.phone }}</a></p></div>
+  <div class="inline-form"><a class="btn btn-outline" href="{% url 'pg_resident' r.pk %}">Resident details</a><a class="btn btn-ghost" href="{% url 'pg_bed' t.bed_id %}">Bed</a></div>
+</div>
+
+<div class="grid-2">
+<section class="card">
+  <h2>Tenancy</h2>
+  <dl class="dl">
+    <dt>{% if t.status == 'reserved' %}Moves in{% else %}Moved in{% endif %}</dt><dd>{{ t.move_in|date:"d M Y" }}</dd>
+    <dt>Rent</dt><dd>{{ t.rent|inr }} {{ t.get_cycle_display|lower }} (electricity and food included)</dd>
+    <dt>Rent due</dt><dd>{% if t.cycle == 'monthly' and t.due_rule == 'fixed' %}On the {{ t.due_day }} of every month{% elif t.cycle == 'monthly' %}On the {{ t.move_in|date:"jS" }} of every month{% elif t.cycle == 'weekly' %}Every {{ t.move_in|date:"l" }}{% else %}Every day{% endif %}{% if next %} · next {{ next.start|date:"d M Y" }} ({{ next.amount|inr }}{% if next.part %}, part period{% endif %}){% endif %}</dd>
+    <dt>Advance</dt><dd>{{ t.deposit_received|inr }} received of {{ t.deposit|inr }}</dd>
+    <dt>Notice period</dt><dd>{{ t.notice_days }} days{% if t.notice_given_on %} · given {{ t.notice_given_on|date:"d M Y" }}{% endif %}</dd>
+    {% if t.last_day %}<dt>Last day</dt><dd>{{ t.last_day|date:"d M Y" }}</dd>{% endif %}
+    {% if t.move_out %}<dt>Moved out</dt><dd>{{ t.move_out|date:"d M Y" }}</dd>{% endif %}
+    <dt>Agreement</dt><dd>{% if t.agreement %}<a href="{% url 'pg_file' 'agreement' t.pk %}" target="_blank" rel="noopener">Open</a>{% else %}<span class="muted">Not uploaded</span>{% endif %}</dd>
+    {% if t.notes %}<dt>Notes</dt><dd>{{ t.notes|linebreaksbr }}</dd>{% endif %}
+    {% if t.created_by %}<dt>Added by</dt><dd>{{ t.created_by }}</dd>{% endif %}
+  </dl>
+  {% if 'work' in caps and t.is_open %}
+  <form method="post" action="{% url 'pg_tenancy_action' t.pk 'agreement' %}" enctype="multipart/form-data" class="inline-form">{% csrf_token %}
+    <label class="field"><span class="label">Rental agreement (photo or PDF)</span><input type="file" name="file" accept="image/*,application/pdf"></label><button class="btn btn-outline btn-sm">Upload</button></form>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Beds</h2>
+  {% for s in spells %}<div class="stay-line{% if not s.end %} is-current{% endif %}"><span class="room-badge">{{ s.bed.room.number }}-{{ s.bed.label }}</span><div class="stay-line-main"><small>{{ s.start|date:"d M Y" }} → {% if s.end %}{{ s.end|date:"d M Y" }}{% else %}now{% endif %}</small></div></div>{% endfor %}
+  {% if schedule %}
+  <h2 style="margin-top: 18px">Rent periods so far</h2>
+  {% for p in schedule %}<div class="stay-line"><div class="stay-line-main"><small>{{ p.start|date:"d M" }} → {{ p.end|date:"d M Y" }}{% if p.part %} (part){% endif %}</small></div><b>{{ p.amount|inr }}</b></div>{% endfor %}
+  <p class="muted small">Collecting rent and tracking dues comes next (Phase 4).</p>
+  {% endif %}
+</section>
+</div>
+
+{% if t.status == 'moved_out' %}
+<section class="card">
+  <h2>Deposit settlement</h2>
+  <dl class="dl">
+    <dt>Advance received</dt><dd>{{ t.deposit_received|inr }}</dd>
+    <dt>Unpaid rent</dt><dd>− {{ t.unpaid_rent|inr }}</dd>
+    {% for d in t.deductions %}<dt>{{ d.reason }}</dt><dd>− {{ d.amount|inr }}</dd>{% endfor %}
+    <dt><b>{% if t.refund < 0 %}Still owed by resident{% else %}Refund{% endif %}</b></dt><dd><b>{% if t.refund < 0 %}{{ t.refund|inr|cut:"-" }}{% else %}{{ t.refund|inr }}{% endif %}</b>{% if t.refund_due_by and not t.refund_paid_on %} · due by {{ t.refund_due_by|date:"d M Y" }}{% endif %}{% if t.refund_paid_on %} · paid {{ t.refund_paid_on|date:"d M Y" }} ({{ t.refund_mode }}){% endif %}</dd>
+  </dl>
+  {% if t.refund_pending and 'pay' in caps %}
+  <form method="post" action="{% url 'pg_tenancy_action' t.pk 'refund' %}" class="inline-form">{% csrf_token %}{% for f in refund_form %}<label>{{ f.label }} {{ f }}</label>{% endfor %}<button class="btn btn-primary btn-sm">Refund paid</button></form>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if 'work' in caps %}
+{% if t.status == 'reserved' %}
+<section class="card action-card">
+  <h2>Reservation</h2>
+  <form method="post" action="{% url 'pg_tenancy_action' t.pk 'confirm' %}" class="inline-form">{% csrf_token %}
+    <label>Moved in on <input type="date" name="day" value="{% now 'Y-m-d' %}"></label><button class="btn btn-primary btn-sm">Moved in</button></form>
+  <form method="post" action="{% url 'pg_tenancy_action' t.pk 'shift' %}" class="inline-form">{% csrf_token %}{{ shift_form.bed }}<input type="hidden" name="s-day" value="{{ t.move_in|date:'Y-m-d' }}"><button class="btn btn-outline btn-sm">Book this bed instead</button></form>
+  <form method="post" action="{% url 'pg_tenancy_action' t.pk 'cancel' %}" class="inline-form" data-confirm="Cancel this reservation? The bed becomes free.">{% csrf_token %}
+    <input name="reason" placeholder="Reason (optional)" aria-label="Reason"><button class="btn btn-danger btn-sm">Cancel reservation</button></form>
+  {% if t.deposit_received %}<p class="muted small">Token advance received: {{ t.deposit_received|inr }} — settle it with the resident if they cancel.</p>{% endif %}
+</section>
+{% elif t.status == 'staying' or t.status == 'notice' %}
+<section class="card action-card">
+  <h2>Actions</h2>
+  {% if t.status == 'staying' %}
+  <form method="post" action="{% url 'pg_tenancy_action' t.pk 'notice' %}" class="inline-form">{% csrf_token %}
+    <label>{{ notice_form.given_on.label }} {{ notice_form.given_on }}</label><label>{{ notice_form.last_day.label }} {{ notice_form.last_day }}</label>
+    <button class="btn btn-outline btn-sm">Give notice</button><small class="muted">Empty last day: {{ t.notice_days }} days from the notice date.</small></form>
+  {% else %}
+  <form method="post" action="{% url 'pg_tenancy_action' t.pk 'withdraw-notice' %}" class="inline-form" data-confirm="Withdraw the notice? They stay on.">{% csrf_token %}<button class="btn btn-ghost btn-sm">Withdraw notice</button></form>
+  {% endif %}
+  <form method="post" action="{% url 'pg_tenancy_action' t.pk 'shift' %}" class="inline-form">{% csrf_token %}
+    <label>{{ shift_form.bed.label }} {{ shift_form.bed }}</label><label>{{ shift_form.day.label }} {{ shift_form.day }}</label><button class="btn btn-outline btn-sm">Shift bed</button></form>
+  <a class="btn btn-primary" href="{% url 'pg_move_out' t.pk %}">Move out &amp; settle deposit</a>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

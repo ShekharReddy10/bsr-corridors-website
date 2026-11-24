@@ -13,14 +13,26 @@
 </head>
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}' data-base="{% if item %}{{ item.prefix }}{% else %}/{% endif %}"
   {% if theme %}style="--gold: {{ theme.0 }}; --gold-dark: {{ theme.1 }}; --dark: {{ theme.2 }};"{% endif %}
-  class="{% if item %}in-item{% else %}in-cluster{% endif %}">
+  class="{% if item %}in-item{% if item.kind != 'hotel' %} in-pg{% endif %}{% else %}in-cluster{% endif %}">
 {% with url=request.resolver_match.url_name %}
 {% if item %}
   <aside class="sidebar" aria-label="Main navigation">
     {% if user.is_superuser or my_items|length > 1 %}<a class="sidebar-cluster" href="{% url 'cluster_home' %}">← {{ CLUSTER_NAME }}</a>{% endif %}
-    <a class="sidebar-brand" href="{% url 'dashboard' %}">
+    <a class="sidebar-brand" href="{% if item.kind != 'hotel' %}{% url 'pg_home' %}{% else %}{% url 'dashboard' %}{% endif %}">
       <img src="{% static 'img/icon.png' %}" alt="" width="36" height="36"> <span>{{ HOTEL_NAME }}<small class="kind-badge">{{ item.get_kind_display }}</small></span>
     </a>
+    {% if item.kind != 'hotel' %}
+    {% if 'work' in caps %}<a class="btn btn-primary sidebar-new" href="{% url 'pg_home' %}#vacant">+ Move in</a>{% endif %}
+    <nav>
+      <a href="{% url 'pg_home' %}" {% if url == 'pg_home' %}aria-current="page"{% endif %}>Today</a>
+      <a href="{% url 'pg_residents' %}" {% if 'pg_resident' in url or url == 'pg_tenancy' or url == 'pg_move_out' %}aria-current="page"{% endif %}>Residents</a>
+      <a href="{% url 'pg_setup' %}" {% if 'pg_setup' in url or url == 'pg_floor' or url == 'pg_room' or 'pg_bed' in url %}aria-current="page"{% endif %}>Floors &amp; rooms</a>
+      {% if 'expenses' in caps %}<a href="{% url 'expense_list' %}" {% if 'expense' in url %}aria-current="page"{% endif %}>Expenses</a>{% endif %}
+      <a href="{% url 'whatsapp' %}" {% if url == 'whatsapp' or 'wa_' in url %}aria-current="page"{% endif %}>WhatsApp</a>
+      <a href="{% url 'backups' %}" {% if url == 'backups' %}aria-current="page"{% endif %}>Backups</a>
+      <a href="{% url 'settings' %}" {% if url == 'settings' %}aria-current="page"{% endif %}>Settings &amp; log</a>
+    </nav>
+    {% else %}
     {% if 'work' in caps %}<a class="btn btn-primary sidebar-new" href="{% url 'stay_new' %}">+ New stay</a>{% endif %}
     <nav>
       <a href="{% url 'dashboard' %}" {% if url == 'dashboard' %}aria-current="page"{% endif %}>Today</a>
@@ -37,6 +49,7 @@
       <a href="{% url 'settings' %}" {% if url == 'settings' %}aria-current="page"{% endif %}>Settings &amp; log</a>
       {% if 'manage' in caps %}<a href="{% url 'testing' %}" {% if url == 'testing' %}aria-current="page"{% endif %}>Testing</a>{% endif %}
     </nav>
+    {% endif %}
     <form method="post" action="{% url 'logout' %}" class="sidebar-logout">{% csrf_token %}<small class="muted">{{ user.get_full_name|default:user.username }}</small><button class="btn btn-ghost">Sign out</button></form>
   </aside>
 {% else %}
@@ -77,7 +90,25 @@
     <div class="page-enter">{% block content %}{% endblock %}</div>
   </main>
 
-{% if item %}
+{% if item and item.kind != 'hotel' %}
+  <nav class="tabbar" aria-label="Main navigation">
+    <a href="{% url 'pg_home' %}" {% if url == 'pg_home' %}aria-current="page"{% endif %}><span class="ti">◉</span>Today</a>
+    <a href="{% url 'pg_setup' %}" {% if 'pg_setup' in url or url == 'pg_floor' or url == 'pg_room' or 'pg_bed' in url %}aria-current="page"{% endif %}><span class="ti">▦</span>Rooms</a>
+    {% if 'work' in caps %}<a href="{% url 'pg_home' %}#vacant" class="tab-new"><span class="ti">＋</span>Move in</a>{% endif %}
+    <a href="{% url 'pg_residents' %}" {% if 'pg_resident' in url or url == 'pg_tenancy' %}aria-current="page"{% endif %}><span class="ti">☺</span>Residents</a>
+    <details class="tab-more">
+      <summary><span class="ti">⋯</span>More</summary>
+      <div class="more-sheet">
+        {% if 'expenses' in caps %}<a href="{% url 'expense_list' %}">Expenses</a>{% endif %}
+        <a href="{% url 'whatsapp' %}">WhatsApp messages</a>
+        <a href="{% url 'backups' %}">Backups</a>
+        <a href="{% url 'settings' %}">Settings &amp; log</a>
+        {% if user.is_superuser or my_items|length > 1 %}<a href="{% url 'cluster_home' %}?all">{{ CLUSTER_NAME }}</a>{% endif %}
+        <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button>Sign out</button></form>
+      </div>
+    </details>
+  </nav>
+{% elif item %}
   <nav class="tabbar" aria-label="Main navigation">
     <a href="{% url 'dashboard' %}" {% if url == 'dashboard' %}aria-current="page"{% endif %}><span class="ti">◉</span>Today</a>
     <a href="{% url 'calendar' %}" {% if url == 'calendar' or url == 'room_month' %}aria-current="page"{% endif %}><span class="ti">▦</span>Calendar</a>

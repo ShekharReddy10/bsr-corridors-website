@@ -76,10 +76,13 @@ class Command(BaseCommand):
                     Membership.objects.filter(user_id=o.user_id, item_id=o.item_id).exclude(pk=o.pk).delete()
                 elif isinstance(o, AppSetting) and o.key in settings_:
                     o.pk = settings_[o.key]
-                obj.save(using=alias if o._meta.app_label == "core" else "default")
+                obj.save(using=alias if o._meta.app_label in ("core", "pg") else "default")
                 count += 1
             # Postgres: move each table's ID counter past the restored rows, or the next new record clashes with one.
-            for conn_alias, models in ((alias, list(apps.get_app_config("core").get_models())),
+            item_models = list(apps.get_app_config("core").get_models())
+            if target is not None and target.kind != "hotel":
+                item_models += list(apps.get_app_config("pg").get_models())
+            for conn_alias, models in ((alias, item_models),
                                        ("default", [*apps.get_app_config("auth").get_models(),
                                                     *apps.get_app_config("cluster").get_models()])):
                 conn = connections[conn_alias]

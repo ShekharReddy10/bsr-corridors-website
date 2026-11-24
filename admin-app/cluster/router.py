@@ -1,12 +1,14 @@
 """Send each table to the right place.
 
-Item apps (core = hotel tables; PG/co-living apps later) go to the current item's connection. Everything else
-(logins, sessions, cache, the cluster tables) always stays in the main database.
+Item apps (core = hotel tables and what every item has: expenses, messages, backups…; pg = PG / co-living tables) go
+to the current item's connection. Everything else (logins, sessions, cache, the cluster tables) always stays in the
+main database. The PG tables are never created in the main database: BSR Corridors' tables stay as they are.
 """
 
 from . import current
 
-ITEM_APPS = {"core"}
+ITEM_APPS = {"core", "pg"}
+ITEM_ONLY_APPS = {"pg"}  # only in an item's own schema / database
 
 
 class ClusterRouter:
@@ -20,5 +22,5 @@ class ClusterRouter:
 
     def allow_migrate(self, db, app_label, model_name=None, **hints):
         if db == "default":
-            return True  # BSR Corridors' tables and the shared tables, as always
+            return app_label not in ITEM_ONLY_APPS  # BSR Corridors' tables and the shared tables, as always
         return app_label in ITEM_APPS

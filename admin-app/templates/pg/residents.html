@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}Residents{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Residents</h1></div>
+<form class="filters" method="get">
+  <input type="search" name="q" value="{{ q }}" placeholder="Name, phone or room" aria-label="Search">
+  <select name="show" aria-label="Show"><option value="current" {% if show == 'current' %}selected{% endif %}>Current &amp; reserved</option><option value="all" {% if show == 'all' %}selected{% endif %}>Everyone, past too</option></select>
+  <button class="btn btn-outline">Search</button>
+</form>
+<section class="card">
+  {% for r, t in rows %}
+  <div class="stay-line"><span class="room-badge">{% if t %}{{ t.bed.room.number }}-{{ t.bed.label }}{% else %}—{% endif %}</span>
+    <div class="stay-line-main"><b><a href="{% url 'pg_resident' r.pk %}">{{ r.name }}</a></b><small>{{ r.phone }}{% if t %} · {{ t.get_status_display }}{% if t.status == 'reserved' %} from {{ t.move_in|date:"d M" }}{% endif %}{% endif %}{% if r.organisation %} · {{ r.organisation }}{% endif %}</small></div>
+    {% if t %}<a class="btn btn-ghost btn-sm" href="{% url 'pg_tenancy' t.pk %}">Tenancy</a>{% endif %}</div>
+  {% empty %}<p class="muted">No residents found.</p>{% endfor %}
+</section>
+{% if page.has_other_pages %}<nav class="pager">{% if page.has_previous %}<a class="btn btn-ghost btn-sm" href="?q={{ q|urlencode }}&show={{ show }}&page={{ page.previous_page_number }}">Previous</a>{% endif %}<span class="muted">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a class="btn btn-ghost btn-sm" href="?q={{ q|urlencode }}&show={{ show }}&page={{ page.next_page_number }}">Next</a>{% endif %}</nav>{% endif %}
+{% endblock %}
