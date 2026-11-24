@@ -12,18 +12,18 @@
 </div>
 {% for f in failures %}<div class="msg msg-error">Last night’s backup of <b>{{ f.0 }}</b> failed: {{ f.1 }}</div>{% endfor %}
 <section class="card">
-  <div class="table-wrap"><table class="table overview-table">
+  <div class="table-wrap"><table class="table table-cards overview-table">
     <thead><tr><th>Property</th><th>Taken</th><th class="num">Vacant</th><th>Today</th><th>Needs attention</th><th>Last backup</th><th>Space</th><th class="num">People</th></tr></thead>
     <tbody>
     {% for r in rows %}{% with i=r.item s=r.snap %}
       <tr{% if i.archived %} class="is-archived"{% endif %} style="--c-accent: {{ i.colors.0 }}">
-        <td data-label="Property"><a href="{{ i.prefix }}"><b>{{ i.name }}</b></a><br><small class="muted"><span class="dot-theme"></span>{{ i.get_kind_display }}{% if i.archived %} · archived{% endif %}{% if not r.drive %} · <span class="warn">no Google Drive</span>{% endif %}</small></td>
+        <td data-label="Property"><a href="{{ i.prefix }}"><b>{{ i.name }}</b></a><small class="muted ov-kind"><span class="dot-theme"></span>{{ i.get_kind_display }}{% if i.archived %} · archived{% endif %}{% if not r.drive %} · <span class="warn">no Google Drive</span>{% endif %}</small></td>
         {% if s.error %}<td colspan="4" data-label="Today"><span class="warn">Can’t read its data right now.</span></td>
         {% elif s %}
-        <td data-label="Taken"><b>{{ s.taken }}/{{ s.total }}</b> {{ s.units }}<div class="occupancy"><i style="--pct: {% widthratio s.taken s.total|default:1 100 %}%"></i></div></td>
+        <td data-label="Taken"><span class="ov-cell"><span><b>{{ s.taken }}/{{ s.total }}</b> {{ s.units }}</span><span class="occupancy"><i style="--pct: {% widthratio s.taken s.total|default:1 100 %}%"></i></span></span></td>
         <td data-label="Vacant" class="num">{{ s.vacant }}</td>
         <td data-label="Today">{% if s.units == 'beds' %}{{ s.arriving }} moving in · {{ s.departing }} moving out{% else %}{{ s.arriving }} arriving · {{ s.departing }} leaving{% endif %}</td>
-        <td data-label="Needs attention">{% for a in r.alerts %}<span class="tag">{{ a }}</span> {% empty %}<span class="muted">—</span>{% endfor %}</td>
+        <td data-label="Needs attention"><span class="ov-cell ov-tags">{% for a in r.alerts %}<span class="tag">{{ a }}</span>{% empty %}<span class="muted">—</span>{% endfor %}</span></td>
         {% else %}<td colspan="4" class="muted" data-label="Today">Archived</td>{% endif %}
         <td data-label="Last backup">{% if r.backup %}{% if r.backup.ok %}<span class="ok">✓</span>{% else %}<span class="warn">Failed</span>{% endif %} {{ r.backup.started_at|date:"d M, H:i" }}{% elif not i.archived %}<span class="muted">None yet</span>{% else %}—{% endif %}</td>
         <td data-label="Space">{% if r.own_db %}Own database{% elif r.mb is not None %}{{ r.mb }} MB{% else %}—{% endif %}</td>

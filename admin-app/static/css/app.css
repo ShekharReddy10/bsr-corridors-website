@@ -551,7 +551,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .swatch { width: 12px; height: 12px; border-radius: 50%; background: var(--sw); flex: none; }
 @media (min-width: 768px) { .switcher { display: none; } }
 
-.tabbar-cluster { grid-template-columns: repeat(3, 1fr); }
+.tabbar-cluster { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 1fr; }
 .tabbar-cluster form { display: contents; }
 .tabbar-cluster button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   background: none; border: 0; color: #cfd6d9; font: inherit; font-size: .72rem; cursor: pointer; }
@@ -709,7 +709,7 @@ details.waive > summary { cursor: pointer; color: var(--ink-soft); }
 .group-tools input[type="search"] { flex: 1 1 260px; }
 .ok { color: var(--green); font-weight: 700; }
 .dot-theme { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c-accent, var(--gold)); margin-right: 6px; vertical-align: middle; }
-.overview-table .occupancy { margin-top: 4px; max-width: 140px; }
+.overview-table .occupancy { margin-top: 4px; width: 110px; }
 .overview-table tr.is-archived { opacity: .6; }
 .overview-table .tag { margin: 1px 0; }
 .person-badge { background: var(--c-accent, var(--dark)); }
@@ -730,4 +730,14 @@ details.waive > summary { cursor: pointer; color: var(--ink-soft); }
 @media (max-width: 720px) {
   .partner-head { display: none; }
   .partner-row { grid-template-columns: 1fr 1fr; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+}
+.ov-kind { display: block; }
+.ov-cell { display: inline-flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.ov-tags { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+@media (max-width: 1023px) {
+  .overview-table td[data-label="Property"] { display: block; text-align: left; font-size: 1.02rem; padding-bottom: 6px; }
+  .overview-table td[data-label="Property"]::before { display: none; }
+  .overview-table .ov-cell { align-items: flex-end; }
+  .overview-table .ov-tags { justify-content: flex-end; max-width: 70%; }
+
 }

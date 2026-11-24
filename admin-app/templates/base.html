@@ -147,8 +147,22 @@
 {% else %}
   <nav class="tabbar tabbar-cluster" aria-label="Main navigation">
     <a href="{% url 'cluster_home' %}" {% if url == 'cluster_home' %}aria-current="page"{% endif %}><span class="ti">▣</span>Properties</a>
-    {% if user.is_superuser %}<a href="{% url 'users' %}" {% if url == 'users' %}aria-current="page"{% endif %}><span class="ti">☺</span>Users</a>{% endif %}
+    {% if user.is_superuser %}
+    <a href="{% url 'cluster_overview' %}" {% if url == 'cluster_overview' %}aria-current="page"{% endif %}><span class="ti">◉</span>Overview</a>
+    <a href="{% url 'cluster_search' %}" {% if url == 'cluster_search' %}aria-current="page"{% endif %}><span class="ti">⌕</span>Find</a>
+    <details class="tab-more">
+      <summary><span class="ti">⋯</span>More</summary>
+      <div class="more-sheet">
+        <a href="{% url 'users' %}">Users &amp; access</a>
+        <a href="{% url 'cluster_archive' %}">Archive</a>
+        <a href="{% url 'cluster_activity' %}">Activity log</a>
+        <a href="{% url 'my_password' %}">Change my password</a>
+        <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button>Sign out</button></form>
+      </div>
+    </details>
+    {% else %}
     <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button><span class="ti">⏻</span>Sign out</button></form>
+    {% endif %}
   </nav>
 {% endif %}
 {% endwith %}
