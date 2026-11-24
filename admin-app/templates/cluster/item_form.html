@@ -51,6 +51,8 @@
 {% if obj %}
 <section class="card">
   <h2>Google Drive</h2>
+  {% if drive_url %}<p><a class="btn btn-outline btn-sm" href="{{ drive_url }}" target="_blank" rel="noopener">Open {{ obj.name }}’s folder in Google Drive</a></p>{% endif %}
+  <p class="muted small">Everything {{ obj.name }} saves — backups, invoices, photos, ID and resident documents, expense receipts, reports — goes into its own folder{% if not obj.is_default %} “{{ obj.drive_folder|default:obj.name }}”{% endif %}, in sub-folders. You can connect the same Google account to several properties: each keeps its own folder.</p>
   {% if obj.is_default %}<p class="muted">Set in Render for BSR Corridors.</p>
   {% else %}
     <div class="inline-form">

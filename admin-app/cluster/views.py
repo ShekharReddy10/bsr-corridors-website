@@ -238,6 +238,8 @@ def item_edit(request, code):
             changed = [str(form.fields[n].label or n).lower() for n in form.changed_data
                        if n not in ("money_password", "money_confirm")]
             form.save()
+            if "drive_folder" in form.changed_data or "name" in form.changed_data:
+                _make_folder(request, item)  # the Drive folder follows the new name
             before = _partners_text(item)
             partners.save()
             if (after := _partners_text(item)) != before:
@@ -253,8 +255,30 @@ def item_edit(request, code):
             return redirect("item_edit", code=code)
     return render(request, "cluster/item_form.html", {
         "form": form, "obj": item, "web_drive_ready": bool(settings.GOOGLE_WEB_CLIENT_ID), "themes": theme_list(),
-        "usage": schema_usage().get(item.code), "partners": partners,
+        "usage": schema_usage().get(item.code), "partners": partners, "drive_url": _drive_folder_url(item),
     })
+
+
+def _make_folder(request, item) -> None:
+    """Create (or rename) the property's own folder in its Drive now, so its link can be shown straight away."""
+    from core import gdrive
+    try:
+        with current.using(item):
+            if gdrive.is_configured():
+                gdrive.ensure_folder()
+    except Exception as exc:
+        log.exception("Drive folder for %s", item.code)
+        messages.warning(request, f"Connected, but the folder couldn’t be made yet ({exc}). It is made with the first "
+                                  "backup or upload.")
+
+
+def _drive_folder_url(item) -> str:
+    from core import gdrive
+    try:
+        with current.using(item):
+            return gdrive.folder_url() if gdrive.is_configured() else ""
+    except Exception:
+        return ""
 
 
 def _upload_photo(request, item, which):
@@ -369,6 +393,7 @@ def drive_callback(request):
         item.drive_email = ""
     item.save(update_fields=["drive_token", "drive_email"])
     Activity.record("drive", f"{item.name}: Google Drive connected", item)
+    _make_folder(request, item)
     messages.success(request, f"{item.name}: Google Drive connected{f' ({item.drive_email})' if item.drive_email else ''}.")
     return redirect("item_edit", code=item.code)
 

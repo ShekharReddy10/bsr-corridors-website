@@ -573,3 +573,54 @@ class PgTests(TransactionTestCase):
         r = self.client.post("/p/pgthree/settings/", {"confirm": "PURGE", "years": "1"})
         self.assertEqual(r.status_code, 404)
 
+    def test_own_drive_folder_even_on_a_shared_google_account(self):
+        from unittest import mock
+        from django.test import override_settings
+        from core import gdrive
+        from core.models import AppSetting
+
+        class FakeDrive:  # the Drive API, just enough: folders by id, names
+            def __init__(self):
+                self.names, self.n = {}, 0
+
+            def files(self):
+                return self
+
+            def create(self, body, fields):
+                self.n += 1
+                fid = f"folder{self.n}"
+                self.names[fid] = body["name"]
+                return mock.Mock(execute=lambda: {"id": fid})
+
+            def get(self, fileId, fields):
+                return mock.Mock(execute=lambda: {"id": fileId, "name": self.names[fileId], "trashed": False})
+
+            def update(self, fileId, body):
+                self.names[fileId] = body["name"]
+                return mock.Mock(execute=lambda: {})
+
+        drive = FakeDrive()  # one Google account shared by two properties
+        self.item.drive_token = "token"
+        self.item.save()
+        with override_settings(GOOGLE_WEB_CLIENT_ID="id", GOOGLE_WEB_CLIENT_SECRET="secret"), \
+                mock.patch.object(gdrive, "_service", lambda: drive):
+            self.assertEqual(gdrive.folder_url(), "")
+            url = gdrive.ensure_folder()
+            self.assertEqual(url, "https://drive.google.com/drive/folders/folder1")
+            self.assertEqual(drive.names["folder1"], "BSR Ladies PG")  # named after the property
+            self.assertEqual(gdrive.ensure_folder(), url)  # remembered, not made twice
+            self.client.force_login(self.admin)
+            page = self.client.get("/properties/pgthree/")
+            self.assertContains(page, url)
+            self.assertContains(page, "Open BSR Ladies PG’s folder in Google Drive")
+            # Its own folder name, set on the property's page: the folder is renamed, files stay in it.
+            self.item.drive_folder = "Ladies PG files"
+            self.item.save()
+            gdrive.ensure_folder()
+            self.assertEqual(drive.names["folder1"], "Ladies PG files")
+        # The folder is remembered per property: another property (here BSR Corridors) on the same Google account
+        # doesn't see it, and makes its own.
+        with current.using(Item.objects.get(is_default=True)):
+            self.assertEqual(AppSetting.get("gdrive_root", ""), "")
+        self.assertEqual(AppSetting.get("gdrive_root"), "folder1")
+

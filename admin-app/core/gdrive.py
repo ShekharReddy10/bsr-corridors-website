@@ -83,8 +83,34 @@ def _upload(svc, data: bytes, name: str, mimetype: str, folder: str, *, as_sheet
     return svc.files().create(body=body, media_body=media, fields="id,webViewLink").execute()
 
 
+FOLDER_URL = "https://drive.google.com/drive/folders/{}"
+
+
+def _root_name() -> str:
+    return (cluster_current.drive() or {}).get("folder") or settings.GDRIVE_ROOT_FOLDER
+
+
+def folder_url() -> str:
+    """The property's own folder in its Google Drive (everything it saves goes inside). "" until it's made."""
+    folder_id = AppSetting.get("gdrive_root")
+    return FOLDER_URL.format(folder_id) if folder_id else ""
+
+
+def ensure_folder() -> str:
+    """Make the property's folder now (e.g. right after connecting), named as set on the property's page — renaming
+    it if that name changed. Returns its link. Several properties can share one Google account: each has its own
+    folder (remembered by ID per property), so their files never mix."""
+    svc = _service()
+    name = _root_name()
+    folder_id = _folder(svc, "gdrive_root", name)
+    current_name = svc.files().get(fileId=folder_id, fields="name").execute().get("name")
+    if current_name != name:
+        svc.files().update(fileId=folder_id, body={"name": name}).execute()
+    return FOLDER_URL.format(folder_id)
+
+
 def _folders(svc) -> tuple[str, str, str]:
-    root = _folder(svc, "gdrive_root", (cluster_current.drive() or {}).get("folder") or settings.GDRIVE_ROOT_FOLDER)
+    root = _folder(svc, "gdrive_root", _root_name())
     backups = _folder(svc, "gdrive_backups", "Backups", root)
     exports = _folder(svc, "gdrive_exports", "Exports", root)
     return root, backups, exports
