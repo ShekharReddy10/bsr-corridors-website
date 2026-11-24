@@ -682,3 +682,38 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); bord
 .item-thumb-logo { width: 64px; object-fit: contain; background: #fff; }
 .photo-pair { display: grid; gap: 12px; }
 .db-usage.is-warn { border-color: var(--red); }
+
+/* PG complaints and vacancies */
+.nav-count { display: inline-block; min-width: 1.4em; padding: 0 6px; border-radius: 999px; background: var(--red); color: #fff; font-size: .72rem; text-align: center; line-height: 1.5; margin-left: 4px; }
+.complaint .stay-line-main { gap: 2px; }
+.complaint-details { font-size: .9rem; color: var(--ink); }
+.complaint-actions { flex-wrap: wrap; justify-content: flex-end; }
+.complaint-fix > summary { list-style: none; }
+.complaint-fix > summary::-webkit-details-marker { display: none; }
+.complaint-fix[open] > form { margin-top: 8px; }
+.tag.c-open { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red); }
+.tag.c-working { background: color-mix(in srgb, var(--gold) 18%, transparent); color: var(--ink); }
+.tag.c-fixed { background: color-mix(in srgb, var(--green) 16%, transparent); color: var(--green); }
+.vacancy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-bottom: 14px; }
+.vacancy-grid > .card { margin: 0; }
+.share-text { width: 100%; font: inherit; font-size: .92rem; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg); color: var(--ink); resize: vertical; }
+details.waive { margin: 8px 0 14px; }
+details.waive > summary { cursor: pointer; color: var(--ink-soft); }
+@media (max-width: 640px) {
+  .complaint { flex-wrap: wrap; }
+  .complaint-actions { width: 100%; justify-content: flex-start; }
+  .complaint-fix form input { flex: 1 1 140px; }
+}
+
+/* Group-wide pages: overview, find a person, activity log */
+.group-tools input[type="search"] { flex: 1 1 260px; }
+.ok { color: var(--green); font-weight: 700; }
+.dot-theme { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c-accent, var(--gold)); margin-right: 6px; vertical-align: middle; }
+.overview-table .occupancy { margin-top: 4px; max-width: 140px; }
+.overview-table tr.is-archived { opacity: .6; }
+.overview-table .tag { margin: 1px 0; }
+.person-badge { background: var(--c-accent, var(--dark)); }
+.log-line { display: grid; grid-template-columns: 150px 1fr; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: .92rem; }
+.log-line:last-child { border-bottom: 0; }
+.log-line time { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) { .log-line { grid-template-columns: 1fr; gap: 2px; } }

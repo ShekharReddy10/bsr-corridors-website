@@ -28,7 +28,14 @@ def app(request):
         from cluster.views import items_for
         return [i for i in items_for(request.user) if not i.archived] if request.user.is_authenticated else []
 
+    @cache
+    def open_complaints():
+        """PG / co-living menu: how many complaints are open."""
+        from pg.models import Complaint
+        return Complaint.objects.exclude(status=Complaint.Status.FIXED).count()
+
     item = getattr(request, "item", None)
     return {"HOTEL_NAME": hotel_name(), "wa_welcome": wa_welcome, "wa_departure": wa_departure,
+            "open_complaints": open_complaints if item is not None and item.kind != "hotel" else 0,
             "wa_buttons": wa_buttons, "item": item, "caps": getattr(request, "caps", set()),
             "theme": item.colors if item else None, "my_items": my_items, "CLUSTER_NAME": settings.CLUSTER_NAME}

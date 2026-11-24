@@ -7,9 +7,8 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model, update_session_auth_hash
 from django.shortcuts import get_object_or_404, redirect, render
 
-from cluster.models import Item, Membership
+from cluster.models import Activity, Item, Membership
 
-from ..models import AuditLog
 
 MIN_LENGTH = 10
 
@@ -49,7 +48,7 @@ def users(request):
                 messages.error(request, problem)
             else:
                 u = User.objects.create_user(username, password=request.POST["password"], first_name=name)
-                AuditLog.record("users", f"Login created for {name or username} ({username})")
+                Activity.record("access", f"Login created for {name or username} ({username})")
                 messages.success(request, f"Login created for {u.get_full_name() or username}. Share the password with them privately.")
         elif action == "access":
             u = get_object_or_404(User, pk=request.POST.get("user"), is_superuser=False)
@@ -66,13 +65,13 @@ def users(request):
                 else:
                     u.set_password(request.POST["password"])
                     u.save()
-                    AuditLog.record("users", f"Password reset for {u.get_full_name() or u.username}")
+                    Activity.record("access", f"Password reset for {u.get_full_name() or u.username}")
                     messages.success(request, f"New password set for {u.get_full_name() or u.username}.")
             else:
                 u.is_active = not u.is_active
                 u.save(update_fields=["is_active"])
                 state = "switched on" if u.is_active else "switched off"
-                AuditLog.record("users", f"Login {state} for {u.get_full_name() or u.username}")
+                Activity.record("access", f"Login {state} for {u.get_full_name() or u.username}")
                 messages.success(request, f"Login {state} for {u.get_full_name() or u.username}.")
         return redirect("users")
     items = list(Item.objects.order_by("archived", "sort_order", "name"))
@@ -85,21 +84,33 @@ def users(request):
                                                   "min_length": MIN_LENGTH})
 
 
+def _access_text(m) -> str:
+    if m is None:
+        return "no access"
+    extra = [w for w, on in (("money", m.money_access), ("full IDs", m.see_full_ids), ("delete", m.can_delete)) if on]
+    return m.get_role_display() + (f" + {', '.join(extra)}" if extra else "")
+
+
 def _save_access(user, data) -> None:
-    """One row per cluster item: a role (or no access) and the three switches."""
+    """One row per cluster item: a role (or no access) and the three switches. The group's log says what changed."""
     roles = dict(Membership.Role.choices)
-    summary = []
+    changes = []
     for item in Item.objects.all():
+        before = _access_text(Membership.objects.filter(user=user, item=item).first())
         role = data.get(f"role-{item.pk}", "")
         if role not in roles:
             Membership.objects.filter(user=user, item=item).delete()
-            continue
-        Membership.objects.update_or_create(user=user, item=item, defaults={
-            "role": role, "money_access": data.get(f"money-{item.pk}") == "1",
-            "see_full_ids": data.get(f"ids-{item.pk}") == "1", "can_delete": data.get(f"delete-{item.pk}") == "1",
-        })
-        summary.append(f"{item.name}: {roles[role]}")
-    AuditLog.record("users", f"Access for {user.get_full_name() or user.username}: {'; '.join(summary) or 'none'}")
+            after = "no access"
+        else:
+            m, _ = Membership.objects.update_or_create(user=user, item=item, defaults={
+                "role": role, "money_access": data.get(f"money-{item.pk}") == "1",
+                "see_full_ids": data.get(f"ids-{item.pk}") == "1", "can_delete": data.get(f"delete-{item.pk}") == "1",
+            })
+            after = _access_text(m)
+        if after != before:
+            changes.append(f"{item.name}: {before} → {after}")
+    if changes:
+        Activity.record("access", f"Access for {user.get_full_name() or user.username} — {'; '.join(changes)}")
 
 
 def my_password(request):
@@ -114,7 +125,7 @@ def my_password(request):
             request.user.set_password(request.POST["password"])
             request.user.save()
             update_session_auth_hash(request, request.user)  # stay signed in
-            AuditLog.record("users", "Changed own password")
+            Activity.record("access", "Changed own password")
             messages.success(request, "Your password is changed.")
             return redirect("cluster_home")
         return redirect("my_password")

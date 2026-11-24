@@ -382,7 +382,8 @@ One resident per phone number (like hotel guests).
 1. Resident gives notice → **On notice**, last day set.
 2. On the last day: final dues worked out (rent until the last day).
 3. **Deposit settlement:** deposit − unpaid dues − deductions (standard ones from the property's settings plus
-   any extra, each with a reason) = refund, due within the property's refund period.
+   any extra, each with a reason) = refund, due within the property's refund period. Some or all of the rent owed
+   can be **waived** at move-out, with a reason; waived rent is never counted as rent received. [Asked]
 4. The refund is recorded when paid; until then it shows on the dashboard as *deposit to refund*.
 5. Bed becomes vacant; the move-out WhatsApp message opens.
 6. The tenancy and settlement stay in the bed's and resident's history.
@@ -411,7 +412,8 @@ One resident per phone number (like hotel guests).
 ### 8.9 Complaints [Suggested]
 
 A simple list per property: room, issue (water, Wi-Fi, cleaning…), raised date, status, fixed by. Linked to
-maintenance.
+maintenance: a complaint can put its bed or room under maintenance until it is fixed (put back in use then). When
+fixed, a WhatsApp message to the resident is one tap away.
 
 ---
 

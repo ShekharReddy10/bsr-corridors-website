@@ -27,6 +27,8 @@
       <a href="{% url 'pg_home' %}" {% if url == 'pg_home' %}aria-current="page"{% endif %}>Today</a>
       <a href="{% url 'pg_residents' %}" {% if 'pg_resident' in url or url == 'pg_tenancy' or url == 'pg_move_out' %}aria-current="page"{% endif %}>Residents</a>
       <a href="{% url 'pg_setup' %}" {% if 'pg_setup' in url or url == 'pg_floor' or url == 'pg_room' or 'pg_bed' in url %}aria-current="page"{% endif %}>Floors &amp; rooms</a>
+      <a href="{% url 'pg_complaints' %}" {% if 'pg_complaint' in url %}aria-current="page"{% endif %}>Complaints{% if open_complaints %} <span class="nav-count">{{ open_complaints }}</span>{% endif %}</a>
+      <a href="{% url 'pg_vacancy' %}" {% if url == 'pg_vacancy' %}aria-current="page"{% endif %}>Vacancies</a>
       {% if 'money' in caps %}<a href="{% url 'pg_revenue' %}" {% if url == 'pg_revenue' %}aria-current="page"{% endif %}>Money</a>{% endif %}
       {% if 'expenses' in caps %}<a href="{% url 'expense_list' %}" {% if 'expense' in url %}aria-current="page"{% endif %}>Expenses</a>{% endif %}
       <a href="{% url 'pg_messages' %}" {% if 'pg_message' in url %}aria-current="page"{% endif %}>WhatsApp</a>
@@ -60,7 +62,12 @@
     </a>
     <nav>
       <a href="{% url 'cluster_home' %}" {% if url == 'cluster_home' %}aria-current="page"{% endif %}>Properties</a>
-      {% if user.is_superuser %}<a href="{% url 'users' %}" {% if url == 'users' %}aria-current="page"{% endif %}>Users &amp; access</a>{% endif %}
+      {% if user.is_superuser %}
+      <a href="{% url 'cluster_overview' %}" {% if url == 'cluster_overview' %}aria-current="page"{% endif %}>Overview</a>
+      <a href="{% url 'cluster_search' %}" {% if url == 'cluster_search' %}aria-current="page"{% endif %}>Find a person</a>
+      <a href="{% url 'users' %}" {% if url == 'users' %}aria-current="page"{% endif %}>Users &amp; access</a>
+      <a href="{% url 'cluster_activity' %}" {% if url == 'cluster_activity' %}aria-current="page"{% endif %}>Activity log</a>
+      {% endif %}
     </nav>
     <form method="post" action="{% url 'logout' %}" class="sidebar-logout">{% csrf_token %}<small class="muted">{{ user.get_full_name|default:user.username }}</small><button class="btn btn-ghost">Sign out</button></form>
   </aside>
@@ -100,6 +107,8 @@
     <details class="tab-more">
       <summary><span class="ti">⋯</span>More</summary>
       <div class="more-sheet">
+        <a href="{% url 'pg_complaints' %}">Complaints{% if open_complaints %} ({{ open_complaints }}){% endif %}</a>
+        <a href="{% url 'pg_vacancy' %}">Vacancies</a>
         {% if 'money' in caps %}<a href="{% url 'pg_revenue' %}">Money</a>{% endif %}
         {% if 'expenses' in caps %}<a href="{% url 'expense_list' %}">Expenses</a>{% endif %}
         <a href="{% url 'pg_messages' %}">WhatsApp messages</a>

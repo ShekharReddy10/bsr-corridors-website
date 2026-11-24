@@ -23,6 +23,9 @@ MESSAGES = [
      "Your advance of {deposit} will be settled when you move out, after any rent due and deductions."),
     ("Move-out", "move_out",
      "Dear {first_name},\n\nThank you for staying with us at {property}.\n\n{settlement}\n\nWe wish you all the best."),
+    ("Complaint fixed", "fixed",
+     "Dear {first_name},\n\nYour complaint ({issue}) raised on {raised_on} has been fixed.\n\n"
+     "If anything is still not right, please let us know. Thank you."),
 ]
 
 

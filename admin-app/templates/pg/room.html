@@ -41,6 +41,13 @@
 {% endif %}
 
 <section class="card">
+  <div class="card-head"><h2>Complaints</h2>{% if 'work' in caps %}<a class="btn btn-outline btn-sm" href="{% url 'pg_complaint_new' %}?place=r{{ room.pk }}&next={{ request.path|urlencode }}">+ Complaint</a>{% endif %}</div>
+  {% for c in complaints %}<div class="stay-line{% if c.age >= 3 %} is-warn{% endif %}"><span class="room-badge">{% if c.bed %}{{ c.bed.label }}{% else %}{{ room.number }}{% endif %}</span><div class="stay-line-main"><b>{{ c.get_category_display }} <span class="tag c-{{ c.status }}">{{ c.get_status_display }}</span></b><small>{% if c.details %}{{ c.details|truncatechars:70 }} · {% endif %}raised {{ c.raised_on|date:"d M" }}</small></div></div>
+  {% empty %}<p class="muted">No open complaints.</p>{% endfor %}
+  {% if complaints %}<p><a href="{% url 'pg_complaints' %}?room={{ room.pk }}&show=open">Open the complaints list</a></p>{% endif %}
+</section>
+
+<section class="card">
   <h2>Removed beds</h2>
   {% if removed %}
   {% for b in removed %}<div class="stay-line"><span class="room-badge">{{ b.label }}</span><div class="stay-line-main"><b>Removed {{ b.removed_on|date:"d M Y" }}</b><small>{{ b.removed_reason }}{% if b.removed_by %} — {{ b.removed_by }}{% endif %} · {{ b.n }} past stay{{ b.n|pluralize }}</small></div>

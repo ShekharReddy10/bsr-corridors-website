@@ -9,7 +9,7 @@ from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 
 from . import current
-from .models import THEMES, Item
+from .models import THEMES, Activity, Item
 
 log = logging.getLogger(__name__)
 
@@ -44,13 +44,17 @@ def snapshot(item) -> dict:
             if item.kind != Item.Kind.HOTEL:
                 return _pg_snapshot(t)
             live = Stay.objects.live()
-            rooms = Room.objects.filter(is_active=True).count()
-            taken = live.overlapping(t, t + timedelta(days=1)).values("room_id").distinct().count()
+            rooms = Room.objects.filter(is_active=True)
+            busy = set(live.overlapping(t, t + timedelta(days=1)).values_list("room_id", flat=True))
+            taken = len(busy)
+            free = rooms.exclude(pk__in=busy).exclude(status=Room.Status.MAINTENANCE).count()
+            rooms = rooms.count()
             return {
                 "units": "rooms", "taken": taken, "total": rooms,
                 "arriving": live.filter(status=Stay.Status.UPCOMING, check_in=t).count(),
                 "departing": live.filter(status=Stay.Status.CHECKED_IN, check_out=t).count(),
                 "verify": payments.to_verify().count(),
+                "vacant": free,
             }
     except Exception:  # its database can't be reached or isn't up to date: the card says so, others still show
         log.exception("Snapshot failed for %s", item.code)
@@ -60,7 +64,7 @@ def snapshot(item) -> dict:
 def _pg_snapshot(t) -> dict:
     """PG / co-living: beds taken today, move-ins and last days today, deposits waiting to be refunded."""
     from pg import money, services as pg
-    from pg.models import Bed, Tenancy
+    from pg.models import Bed, Complaint, Tenancy
     c = pg.counts(pg.bed_views(Bed.objects.in_use().select_related("room"), t))
     open_ = Tenancy.objects
     return {
@@ -69,6 +73,8 @@ def _pg_snapshot(t) -> dict:
         "departing": open_.filter(status=Tenancy.Status.NOTICE, last_day__lte=t).count(),
         "verify": money.to_verify().count(),
         "refunds": open_.filter(status=Tenancy.Status.MOVED_OUT, refund__gt=0, refund_paid_on__isnull=True).count(),
+        "complaints": Complaint.objects.exclude(status=Complaint.Status.FIXED).count(),
+        "vacant": c["vacant"], "maintenance": c["maintenance"],
     }
 
 
@@ -108,6 +114,7 @@ def theme(request, code):
         if chosen in THEMES:
             item.theme = chosen
             item.save(update_fields=["theme"])
+            Activity.record("property", f"{item.name}: theme changed to {THEMES[chosen][0]}", item)
             messages.success(request, f"{item.name}: theme changed to {THEMES[chosen][0]}.")
             return redirect("cluster_home")
         messages.error(request, "Pick one of the themes.")
@@ -150,6 +157,7 @@ def item_new(request):
             messages.error(request, f"Couldn’t create the tables for {item.name}: {exc}. Nothing was saved.")
             return render(request, "cluster/item_form.html", {"form": form, "obj": None, "themes": theme_list()})
         _set_money_password(item, form.cleaned_data["money_password"])
+        Activity.record("property", f"{item.name} added ({item.get_kind_display()}, code {item.code})", item)
         manager = item.managed_by
         if manager and not manager.is_superuser:
             Membership.objects.get_or_create(user=manager, item=item, defaults={"role": Membership.Role.MANAGER})
@@ -171,11 +179,13 @@ def item_edit(request, code):
             else:
                 item.archived = not item.archived
                 item.save(update_fields=["archived"])
+                Activity.record("property", f"{item.name} {'archived' if item.archived else 'brought back'}", item)
                 messages.success(request, f"{item.name} {'archived — hidden and read-only' if item.archived else 'is back'}.")
             return redirect("item_edit", code=code)
         if action == "drive-disconnect":
             item.drive_token, item.drive_email = "", ""
             item.save(update_fields=["drive_token", "drive_email"])
+            Activity.record("drive", f"{item.name}: Google Drive disconnected", item)
             messages.success(request, "Google Drive disconnected. Files already in that Drive stay there.")
             return redirect("item_edit", code=code)
         if action in {"cover", "logo"}:
@@ -185,15 +195,23 @@ def item_edit(request, code):
             try:
                 copied = move(item, request.POST.get("db_url", "").strip())
             except MoveFailed as exc:
+                Activity.record("database", f"{item.name}: move to its own database failed — {exc}"[:500], item)
                 messages.error(request, f"Not moved: {exc}")
             else:
+                Activity.record("database", f"{item.name} moved to its own database ({sum(copied.values())} records "
+                                            "copied and checked)", item)
                 messages.success(request, f"{item.name} moved to its own database — {sum(copied.values())} records "
                                           f"copied and checked. The old copy is kept as a fallback.")
             return redirect("item_edit", code=code)
         if form.is_valid():
+            changed = [str(form.fields[n].label or n).lower() for n in form.changed_data
+                       if n not in ("money_password", "money_confirm")]
             form.save()
+            if changed:
+                Activity.record("property", f"{item.name}: changed {', '.join(changed)}", item)
             if form.cleaned_data.get("money_password"):
                 _set_money_password(item, form.cleaned_data["money_password"])
+                Activity.record("money_password", f"{item.name}: money password reset", item)
                 messages.success(request, f"{item.name}: saved, and the money password is changed.")
             else:
                 messages.success(request, f"{item.name}: saved.")
@@ -222,6 +240,7 @@ def _upload_photo(request, item, which):
             return redirect("item_edit", code=item.code)
     setattr(item, f"{which}_id", file_id)
     item.save(update_fields=[f"{which}_id"])
+    Activity.record("property", f"{item.name}: {'cover photo' if which == 'cover' else 'logo'} changed", item)
     from django.core.cache import cache
     cache.delete(f"item-photo:{item.code}:{which}")
     messages.success(request, f"{'Cover photo' if which == 'cover' else 'Logo'} saved.")
@@ -314,6 +333,7 @@ def drive_callback(request):
     except Exception:
         item.drive_email = ""
     item.save(update_fields=["drive_token", "drive_email"])
+    Activity.record("drive", f"{item.name}: Google Drive connected", item)
     messages.success(request, f"{item.name}: Google Drive connected{f' ({item.drive_email})' if item.drive_email else ''}.")
     return redirect("item_edit", code=item.code)
 
@@ -349,3 +369,114 @@ def schema_usage() -> dict:
                        JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind = 'r' AND n.nspname = ANY(%s)
                        GROUP BY n.nspname""", [list(schemas)])
         return {schemas[name]: round(size / 1024 / 1024, 1) for name, size in cur.fetchall()}
+
+
+# ── Group-wide pages (§11, admin only): overview, person search, activity log ──
+
+
+def _last_backup(item):
+    from core.models import BackupRun
+    try:
+        with current.using(item):
+            return BackupRun.objects.filter(kind=BackupRun.Kind.BACKUP).order_by("-pk").first()
+    except Exception:
+        return None
+
+
+@admin_only
+def overview(request):
+    """Each property's occupancy, vacancies, things needing attention, backups and space — no money (D6)."""
+    from django.db.models import Count
+    from .models import Membership
+    items = Item.objects.order_by("archived", "sort_order", "name")
+    usage = schema_usage()
+    people = dict(Membership.objects.values_list("item_id").annotate(n=Count("pk")))
+    rows, total = [], {"rooms": [0, 0], "beds": [0, 0]}
+    for i in items:
+        snap = snapshot(i) if not i.archived else None
+        if snap and not snap.get("error"):
+            total[snap["units"]][0] += snap["taken"]
+            total[snap["units"]][1] += snap["total"]
+        alerts = []
+        if snap and not snap.get("error"):
+            for key, text in (("verify", "UPI payment{s} to check"), ("refunds", "deposit{s} to refund"),
+                              ("complaints", "open complaint{s}"), ("maintenance", "under maintenance")):
+                if snap.get(key):
+                    alerts.append(f"{snap[key]} " + text.format(s="" if snap[key] == 1 else "s"))
+        backup = _last_backup(i) if not i.archived else None
+        rows.append({"item": i, "snap": snap, "alerts": alerts, "backup": backup, "people": people.get(i.pk, 0),
+                     "mb": usage.get(i.code), "own_db": bool(i.db_url), "drive": bool(i.drive_token) or i.is_default})
+    return render(request, "cluster/overview.html", {
+        "rows": rows, "db": db_usage(), "total": total, "cluster_name": settings.CLUSTER_NAME,
+        "failures": backup_failures(),
+    })
+
+
+def _digits(q: str) -> str:
+    return "".join(c for c in q if c.isdigit())
+
+
+@admin_only
+def search(request):
+    """Find a guest or resident by phone (or name) in every property (S20)."""
+    from core.models import Guest
+    q = request.GET.get("q", "").strip()
+    digits = _digits(q)
+    results, problems = [], []
+    usable = len(digits) >= 4 or (not digits and len(q) >= 3)
+    if q and usable:
+        for item in Item.objects.order_by("archived", "sort_order", "name"):
+            try:
+                with current.using(item):
+                    results += _search_item(item, q, digits, Guest)
+            except Exception:
+                log.exception("Search failed in %s", item.code)
+                problems.append(item.name)
+    return render(request, "cluster/search.html", {
+        "q": q, "results": results, "problems": problems, "too_short": bool(q) and not usable,
+        "cluster_name": settings.CLUSTER_NAME,
+    })
+
+
+def _search_item(item, q, digits, Guest) -> list[dict]:
+    from django.db.models import Q
+    from django.urls import reverse
+    prefix = item.prefix.rstrip("/")
+    out = []
+    if item.kind == Item.Kind.HOTEL:
+        cond = Q(phone_key__contains=digits[-10:]) if digits else Q(name__icontains=q)
+        for g in Guest.objects.filter(cond).order_by("name")[:25]:
+            last = g.stays.order_by("-check_in").first()
+            out.append({"item": item, "name": g.name, "phone": g.phone, "who": "Guest",
+                        "status": (f"{last.get_status_display()} · {last.check_in:%d %b %Y}" if last else "No stays"),
+                        "url": prefix + reverse("guest_detail", args=[g.pk])})
+    else:
+        from pg.models import Resident, Tenancy
+        cond = Q(phone_key__contains=digits[-10:]) if digits else Q(name__icontains=q)
+        for r in Resident.objects.filter(cond).order_by("name")[:25]:
+            t = r.tenancies.exclude(status=Tenancy.Status.CANCELLED).select_related("bed__room").order_by("-move_in").first()
+            status = "No stays"
+            if t is not None:
+                when = (f"moved out {t.move_out:%d %b %Y}" if t.move_out else
+                        f"moves in {t.move_in:%d %b %Y}" if t.status == Tenancy.Status.RESERVED else
+                        f"since {t.move_in:%d %b %Y}")
+                status = f"{t.get_status_display()} · bed {t.bed} · {when}"
+            out.append({"item": item, "name": r.name, "phone": r.phone, "who": "Resident", "status": status,
+                        "url": prefix + reverse("pg_resident", args=[r.pk])})
+    return out
+
+
+@admin_only
+def activity(request):
+    from django.core.paginator import Paginator
+    qs = Activity.objects.select_related("item")
+    what = request.GET.get("what", "")
+    if what in Activity.ACTIONS:
+        qs = qs.filter(action=what)
+    if (code := request.GET.get("item", "")):
+        qs = qs.filter(item__code=code)
+    page = Paginator(qs, 50).get_page(request.GET.get("page"))
+    return render(request, "cluster/activity.html", {
+        "page": page, "what": what, "code": code, "actions": Activity.ACTIONS.items(),
+        "items": Item.objects.order_by("sort_order", "name"), "cluster_name": settings.CLUSTER_NAME,
+    })

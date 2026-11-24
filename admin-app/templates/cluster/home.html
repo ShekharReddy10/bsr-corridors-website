@@ -5,6 +5,15 @@
   <div><h1>{{ cluster_name }}</h1><p class="muted">{% if user.is_superuser %}All properties.{% else %}The properties you can open.{% endif %} Today at a glance — money is inside each property.</p></div>
   {% if user.is_superuser %}<a class="btn btn-primary" href="{% url 'item_new' %}">+ Add property</a>{% endif %}
 </div>
+{% if user.is_superuser %}
+<form class="filters group-tools" method="get" action="{% url 'cluster_search' %}">
+  <input type="search" name="q" placeholder="Find a guest or resident by phone or name" aria-label="Find a person" inputmode="search">
+  <button class="btn btn-outline">Find</button>
+  <a class="btn btn-ghost" href="{% url 'cluster_overview' %}">Overview</a>
+  <a class="btn btn-ghost" href="{% url 'users' %}">Users &amp; access</a>
+  <a class="btn btn-ghost" href="{% url 'cluster_activity' %}">Activity log</a>
+</form>
+{% endif %}
 
 {% if db %}
 <section class="card db-usage{% if db.warn %} is-warn{% endif %}">
@@ -36,6 +45,7 @@
             <div><b>{{ s.arriving }}</b><span>{% if s.units == 'beds' %}moving in{% else %}arriving today{% endif %}</span></div>
             <div><b>{{ s.departing }}</b><span>{% if s.units == 'beds' %}moving out{% else %}leaving today{% endif %}</span></div>
           </div>
+          {% if s.complaints %}<p class="item-alert">{{ s.complaints }} open complaint{{ s.complaints|pluralize }}</p>{% endif %}
           {% if s.refunds %}<p class="item-alert">{{ s.refunds }} deposit{{ s.refunds|pluralize }} to refund</p>{% endif %}
           {% if s.verify %}<p class="item-alert">{{ s.verify }} UPI payment{{ s.verify|pluralize }} to verify</p>{% endif %}
         {% endif %}

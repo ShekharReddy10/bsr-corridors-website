@@ -18,6 +18,7 @@ from cluster import current
 from core.services import today
 
 from . import services
+from .complaints import open_complaints
 from .messages import due_rule_text
 from .forms import (BedForm, FloorForm, NoticeForm, RefundForm, ResidentForm, RoomForm, RoomTypeForm, ShiftForm,
                     TenancyForm)
@@ -62,9 +63,16 @@ def home(request):
         "refunds": [x for x in open_.filter(status=T.MOVED_OUT, refund__gt=0, refund_paid_on__isnull=True)
                     .order_by("refund_due_by")],
         "vacant": [v.bed for v in views if v.state == "vacant"], "set_up": Room.objects.exists(), "today": t,
-        **_rent_today(t),
+        "complaints": _aged(open_complaints()), **_rent_today(t),
     }
     return render(request, "pg/home.html", ctx)
+
+
+def _aged(complaints) -> list:
+    out = list(complaints)
+    for c in out:
+        c.age = (today() - c.raised_on).days
+    return out
 
 
 def _rent_today(t) -> dict:
@@ -106,7 +114,8 @@ def room(request, pk):
         v.next = services.next_due(v.tenancy) if v.tenancy is not None and v.state != "reserved" else None
     removed = rm.beds.filter(removed_on__isnull=False).annotate(n=Count("spells")).order_by("label")
     return render(request, "pg/room.html", {"room": rm, "beds": beds, "removed": removed,
-                                            "counts": services.counts(beds)})
+                                            "counts": services.counts(beds),
+                                            "complaints": _aged(open_complaints().filter(room=rm))})
 
 
 def bed(request, pk):
@@ -688,4 +697,139 @@ def revenue(request):
     return render(request, "pg/revenue.html", {
         "m": mo, "expenses": expenses, "profit": mo.received - expenses, "months": months,
         "held_deposits": money.deposits_held(), "owing": money.owing(),
+    })
+
+
+# ── Complaints (§8.9) ─────────────────────────────────────────────────────────
+
+
+def _places():
+    """Choices for "Where": each room, then each bed in use with who is in it."""
+    views = services.bed_views(_all_beds().in_use())
+    rooms = {}
+    for v in views:
+        rooms.setdefault(v.bed.room, []).append(v)
+    out = []
+    for rm, beds in rooms.items():
+        out.append((f"r{rm.pk}", f"Room {rm.number} (whole room)"))
+        for v in beds:
+            who = f" — {v.tenancy.resident.name}" if v.tenancy is not None and v.state in ("occupied", "notice") else ""
+            out.append((f"b{v.bed.pk}", f"Bed {v.bed}{who}"))
+    return out
+
+
+def _place(value: str):
+    """(room, bed) from "r12" / "b34"."""
+    value = value or ""
+    kind, pk = value[:1], value[1:]
+    if kind == "b" and pk.isdigit():
+        b = Bed.objects.select_related("room").filter(pk=pk, removed_on__isnull=True).first()
+        if b:
+            return b.room, b
+    if kind == "r" and pk.isdigit():
+        rm = Room.objects.filter(pk=pk).first()
+        if rm:
+            return rm, None
+    raise ValidationError("Pick the room or bed.")
+
+
+def complaints(request):
+    from .models import Complaint, PgMessage
+    show = request.GET.get("show", "open")
+    qs = Complaint.objects.select_related("room", "bed__room", "tenancy__resident")
+    if show == "open":
+        qs = qs.exclude(status=Complaint.Status.FIXED).order_by("raised_on", "pk")
+    elif show == "fixed":
+        qs = qs.filter(status=Complaint.Status.FIXED).order_by("-fixed_on", "-pk")
+    if (cat := request.GET.get("category", "")) in Complaint.Category.values:
+        qs = qs.filter(category=cat)
+    if (rm := request.GET.get("room", "")).isdigit():
+        qs = qs.filter(room_id=rm)
+    page = Paginator(qs, 40).get_page(request.GET.get("page"))
+    for c in page:
+        c.age = (today() - c.raised_on).days
+    n_open = Complaint.objects.exclude(status=Complaint.Status.FIXED).count()
+    return render(request, "pg/complaints.html", {
+        "page": page, "show": show, "category": cat, "categories": Complaint.Category.choices, "n_open": n_open,
+        "today": today(), "fixed_msg": PgMessage.objects.filter(use=PgMessage.Use.FIXED).first(),
+    })
+
+
+def complaint_new(request):
+    from . import complaints as cs
+    from .models import Complaint
+    initial = request.GET.get("place", "")
+    data = {"place": initial, "category": "", "details": "", "raised_on": today().isoformat(), "hold": ""}
+    errors = []
+    if request.method == "POST":
+        data = {k: request.POST.get(k, "").strip() for k in data}
+        try:
+            room_, bed_ = _place(data["place"])
+            if data["category"] not in Complaint.Category.values:
+                raise ValidationError("Pick what the complaint is about.")
+            hold = data["hold"] if data["hold"] in Complaint.Hold.values else ""
+            tenancy = None
+            if bed_ is not None and (v := services.bed_views([bed_])[0]).state in ("occupied", "notice"):
+                tenancy = v.tenancy
+            c = cs.raise_complaint(room=room_, bed=bed_, tenancy=tenancy, category=data["category"],
+                                   details=data["details"], raised_on=parse_date(data["raised_on"]) or today(),
+                                   hold=hold, by=_who(request))
+        except ValidationError as exc:
+            errors = exc.messages
+        else:
+            messages.success(request, f"Complaint noted: {c.get_category_display()}, {c.place.lower()}"
+                                      + (" — under maintenance until fixed." if c.hold else "."))
+            nxt = request.POST.get("next", "")
+            return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else "pg_complaints")
+    return render(request, "pg/complaint_form.html", {
+        "places": _places(), "categories": Complaint.Category.choices, "holds": Complaint.Hold.choices[1:],
+        "data": data, "errors": errors, "next": request.GET.get("next", request.POST.get("next", "")),
+    })
+
+
+@require_POST
+def complaint_action(request, pk, action):
+    from . import complaints as cs
+    from . import messages as pgm
+    from core.views.whatsapp import open_chat
+    from .models import Complaint, PgMessage
+    c = get_object_or_404(Complaint.objects.select_related("room", "bed__room", "tenancy__resident"), pk=pk)
+    back = request.POST.get("next", "")
+    back = redirect(back if back.startswith("/") and not back.startswith("//") else "pg_complaints")
+    try:
+        if action == "start":
+            cs.start(c)
+            messages.success(request, f"{c.get_category_display()}, {c.place.lower()}: being fixed.")
+        elif action == "fix":
+            cs.fix(c, fixed_by=request.POST.get("fixed_by", ""), note=request.POST.get("note", ""),
+                   day=parse_date(request.POST.get("day", "")) or today())
+            messages.success(request, f"{c.get_category_display()}, {c.place.lower()}: fixed.")
+        elif action == "reopen":
+            cs.reopen(c)
+            messages.info(request, f"{c.get_category_display()}, {c.place.lower()}: open again.")
+        elif action == "message":
+            msg = PgMessage.objects.filter(use=PgMessage.Use.FIXED).first()
+            if msg is None or c.tenancy is None or not c.tenancy.resident.phone:
+                raise ValidationError("No resident's phone number for this complaint.")
+            return open_chat(request, c.tenancy.resident.phone,
+                             pgm.build(c.tenancy, msg, _base(request), by=_who(request), complaint=c))
+        else:
+            raise Http404
+    except ValidationError as exc:
+        _error(request, exc)
+    return back
+
+
+# ── Vacancy view: to share with people asking for a bed (§8.7 #7) ────────────
+
+
+def vacancy(request):
+    from urllib.parse import quote
+    from core.whatsapp import with_footer
+    groups = services.vacancies()
+    item = current.get()
+    text = services.vacancy_text(groups, current.name(), item)
+    return render(request, "pg/vacancy.html", {
+        "groups": groups, "text": text, "share": f"https://wa.me/?text={quote(with_footer(text))}", "today": today(),
+        "now": sum(len(g.now) for g in groups), "soon": sum(len(g.soon) for g in groups),
     })

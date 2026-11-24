@@ -33,6 +33,14 @@
 </section>
 {% endif %}
 
+{% if complaints %}
+<section class="card">
+  <div class="card-head"><h2>Complaints</h2><a class="count" href="{% url 'pg_complaints' %}">{{ complaints|length }} open</a></div>
+  {% for c in complaints|slice:":5" %}<div class="stay-line{% if c.age >= 3 %} is-warn{% endif %}"><span class="room-badge">{% if c.bed %}{{ c.bed }}{% else %}{{ c.room.number }}{% endif %}</span><div class="stay-line-main"><b>{{ c.get_category_display }}</b><small>{% if c.details %}{{ c.details|truncatechars:60 }} · {% endif %}{% if c.age == 0 %}today{% else %}{{ c.age }} day{{ c.age|pluralize }} ago{% endif %}{% if c.status == 'working' %} · being fixed{% endif %}</small></div></div>{% endfor %}
+  {% if complaints|length > 5 %}<p><a href="{% url 'pg_complaints' %}">All {{ complaints|length }} open complaints</a></p>{% endif %}
+</section>
+{% endif %}
+
 {% if moving_in or moving_out or notice_week or refunds %}
 <section class="card">
   <h2>To do</h2>
@@ -59,6 +67,7 @@
   <div class="chips">{% for b in vacant %}{% if 'work' in caps %}<a class="chip" href="{% url 'pg_move_in' b.pk %}" title="Move someone in">{{ b.room.number }}-{{ b.label }} · {{ b.room.room_type.name }}</a>{% else %}<a class="chip" href="{% url 'pg_bed' b.pk %}">{{ b.room.number }}-{{ b.label }}</a>{% endif %}{% endfor %}</div>
   <p class="muted small">Tap a bed to move someone in (a future date reserves it).</p>
   {% else %}<p class="muted">Every bed is taken.</p>{% endif %}
+  <p><a class="btn btn-outline btn-sm" href="{% url 'pg_vacancy' %}">Share vacancies</a></p>
 </section>
 
 {% if reserved %}

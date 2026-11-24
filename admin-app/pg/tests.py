@@ -316,9 +316,13 @@ class PgTests(TransactionTestCase):
 
     def test_backup_has_the_pg_tables(self):
         from core.exports import backup_json
-        self.tenancy()
+        from django.apps import apps
+        money.record(self.tenancy(), Decimal("500"), mode="cash")
         dump = backup_json().decode()
-        for model in ("pg.floor", "pg.room", "pg.bed", "pg.resident", "pg.tenancy", "pg.bedspell"):
+        for model in apps.get_app_config("pg").get_models():  # every PG table with rows is in the backup
+            if model.objects.exists():
+                self.assertIn(f'"model": "{model._meta.label_lower}"', dump)
+        for model in ("pg.bedspell", "pg.rentdue", "pg.rentpayment", "pg.pgmessage"):
             self.assertIn(f'"model": "{model}"', dump)
         self.assertNotIn("1234 5678 9012", dump)  # ID numbers stay encrypted
 
@@ -398,3 +402,120 @@ class PgTests(TransactionTestCase):
         self.assertRedirects(self.client.get("/p/pgthree/whatsapp/"), "/p/pgthree/pg/messages/",
                              fetch_redirect_response=False)
 
+
+    # ── Phase 5: complaints, vacancies, the waiver on the move-out page, group pages reaching into a PG ──
+
+    def test_complaints_hold_and_release_maintenance(self):
+        from . import complaints as cs
+        from .models import Complaint
+        c1 = cs.raise_complaint(room=self.room, bed=self.b, category="water", details="No water", hold="bed")
+        c2 = cs.raise_complaint(room=self.room, bed=self.b, category="furniture", hold="bed")
+        self.assertEqual(self.state(self.b), "maintenance")
+        self.assertEqual((c1.hold, c2.hold), ("bed", ""))  # the second found it already under maintenance
+        cs.start(c1)
+        with self.assertRaises(ValidationError):
+            cs.start(c1)
+        cs.fix(c2, fixed_by="Carpenter")
+        self.assertEqual(self.state(self.b), "maintenance")  # still held by the first
+        cs.fix(c1, fixed_by="Plumber", note="Pipe changed")
+        self.assertEqual(self.state(self.b), "vacant")
+        cs.reopen(c1)
+        self.assertEqual(self.state(self.b), "maintenance")
+        cs.fix(c1)
+        # A whole room, while someone lives in it: the resident stays; the free bed can't be given meanwhile.
+        self.tenancy()
+        c3 = cs.raise_complaint(room=self.room, category="wifi", hold="room")
+        self.assertEqual((self.state(self.a), self.state(self.b)), ("occupied", "maintenance"))
+        cs.fix(c3)
+        self.assertEqual(self.state(self.b), "vacant")
+        with self.assertRaises(ValidationError):
+            cs.raise_complaint(room=self.room, category="other", hold="bed")  # which bed?
+        self.assertEqual(Complaint.objects.exclude(status="fixed").count(), 0)
+
+    def test_complaint_pages(self):
+        from .models import Complaint
+        t = self.tenancy()
+        self.client.force_login(self.admin)
+        form = self.client.get(f"/p/pgthree/pg/complaints/new/?place=r{self.room.pk}")
+        self.assertContains(form, "Bed 201-A — Ria")
+        r = self.client.post("/p/pgthree/pg/complaints/new/", {"place": f"b{self.a.pk}", "category": "ac",
+                                                               "details": "AC not cooling", "raised_on": today().isoformat()})
+        self.assertRedirects(r, "/p/pgthree/pg/complaints/", fetch_redirect_response=False)
+        c = Complaint.objects.get()
+        self.assertEqual((c.tenancy, c.bed, c.room), (t, self.a, self.room))  # linked to who is in the bed
+        self.assertContains(self.client.get("/p/pgthree/pg/"), "AC not cooling")  # on Today
+        self.assertContains(self.client.get(f"/p/pgthree/pg/room/{self.room.pk}/"), "AC not cooling")
+        self.assertContains(self.client.get("/p/pgthree/pg/complaints/"), "AC not cooling")
+        self.client.post(f"/p/pgthree/pg/complaints/{c.pk}/fix/", {"fixed_by": "AC mechanic"})
+        c.refresh_from_db()
+        self.assertEqual((c.status, c.fixed_by, c.fixed_on), ("fixed", "AC mechanic", today()))
+        self.assertNotContains(self.client.get("/p/pgthree/pg/complaints/"), "AC not cooling")  # open only
+        self.assertContains(self.client.get("/p/pgthree/pg/complaints/?show=fixed"), "AC mechanic")
+        wa = self.client.post(f"/p/pgthree/pg/complaints/{c.pk}/message/", HTTP_X_REQUESTED_WITH="fetch").json()
+        self.assertIn("has been fixed", wa["text"])
+        self.assertIn("ac / geyser, bed 201-a", wa["text"])
+        # View only: can look, can't raise or fix.
+        viewer = get_user_model().objects.create_user("viewer", password="x" * 12)
+        Membership.objects.create(user=viewer, item=self.item, role=R.VIEWER)
+        self.client.force_login(viewer)
+        self.assertEqual(self.client.get("/p/pgthree/pg/complaints/").status_code, 200)
+        self.assertEqual(self.client.get("/p/pgthree/pg/complaints/new/").status_code, 403)
+        self.assertEqual(self.client.post(f"/p/pgthree/pg/complaints/{c.pk}/reopen/").status_code, 403)
+
+    def test_vacancy_view(self):
+        c = services.add_beds(self.room, 1)[0]
+        t = self.tenancy()
+        services.give_notice(t, today(), today() + timedelta(days=5))
+        groups = services.vacancies()
+        self.assertEqual([(g.room_type.name, len(g.now), len(g.soon)) for g in groups], [("2-sharing AC", 2, 1)])
+        self.assertEqual(groups[0].advance, Decimal("10000"))
+        text = services.vacancy_text(groups, "BSR Ladies PG", self.item)
+        self.assertIn("2 beds now — room 201", text)
+        self.assertIn(f"1 bed free from {today() + timedelta(days=5):%d %b} — room 201", text)
+        self.assertNotIn("Ria", text)  # no names
+        self.assertNotIn("9,000", text)  # no rents
+        self.client.force_login(self.admin)
+        page = self.client.get("/p/pgthree/pg/vacancy/")
+        self.assertContains(page, "wa.me/?text=")
+        self.assertContains(page, str(c))
+
+    def test_waive_on_the_move_out_page(self):
+        t = self.tenancy(move_in=today() - timedelta(days=14), cycle="weekly", rent=Decimal("2100"))
+        self.client.force_login(self.admin)
+        page = self.client.get(f"/p/pgthree/pg/tenancy/{t.pk}/move-out/")
+        self.assertContains(page, "Waive some of the rent")
+        r = self.client.post(f"/p/pgthree/pg/tenancy/{t.pk}/move-out/", {"day": today().isoformat(), "waive": "200"})
+        self.assertContains(r, "Give a reason for waiving the rent.")
+        self.client.post(f"/p/pgthree/pg/tenancy/{t.pk}/move-out/", {"day": today().isoformat(), "waive": "200",
+                                                                    "waive_reason": "Fan broken a week"})
+        t.refresh_from_db()
+        self.assertEqual((t.status, t.rent_waived, t.unpaid_rent, t.refund),
+                         (T.MOVED_OUT, Decimal("200"), Decimal("4000"), Decimal("6000")))
+        tp = self.client.get(f"/p/pgthree/pg/tenancy/{t.pk}/")
+        self.assertContains(tp, "Rent waived")
+        self.assertContains(tp, "Fan broken a week")
+
+    def test_group_pages_reach_the_pg(self):
+        from cluster.models import Activity
+        self.tenancy()
+        from .complaints import raise_complaint
+        raise_complaint(room=self.room, category="cleaning")
+        self.client.force_login(self.admin)
+        found = self.client.get("/properties/search/?q=11111")
+        self.assertContains(found, "Ria")
+        self.assertContains(found, "BSR Ladies PG")
+        self.assertContains(found, f"/p/pgthree/pg/residents/{self.ria.pk}/")
+        self.assertContains(self.client.get("/properties/search/?q=12"), "at least 4 digits")
+        ov = self.client.get("/properties/overview/")
+        self.assertContains(ov, "BSR Ladies PG")
+        self.assertContains(ov, "1 open complaint")
+        self.assertNotContains(ov, "9,000")  # no money (D6)
+        self.client.post("/properties/pgthree/theme/", {"theme": "ocean"})
+        self.assertTrue(Activity.objects.filter(action="property", item=self.item, summary__contains="Ocean").exists())
+        self.assertContains(self.client.get("/properties/activity/"), "theme changed to Ocean")
+        # Admin only.
+        desk = get_user_model().objects.create_user("desk", password="x" * 12)
+        Membership.objects.create(user=desk, item=self.item, role=R.OWNER)
+        self.client.force_login(desk)
+        for url in ("/properties/overview/", "/properties/search/?q=11111", "/properties/activity/"):
+            self.assertRedirects(self.client.get(url), "/properties/", fetch_redirect_response=False)

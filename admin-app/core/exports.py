@@ -151,8 +151,8 @@ def item_extra_models() -> list:
     item = current.get()
     if item is None or item.kind == "hotel":
         return []
-    from pg.models import Bed, BedSpell, Floor, Resident, Room as PgRoom, RoomType as PgRoomType, Tenancy
-    return [Floor, PgRoomType, PgRoom, Bed, Resident, Tenancy, BedSpell]  # parents before children
+    from django.apps import apps
+    return list(apps.get_app_config("pg").get_models())  # every PG table; pg/models.py defines parents first
 
 
 def backup_json() -> bytes:

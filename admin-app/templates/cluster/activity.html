@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Activity log{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Activity log</h1><p class="muted">Properties added or changed, logins and access. Each property’s own work (stays, rent, rooms…) is in its Settings &amp; log.</p></div>
+  <a class="btn btn-ghost" href="{% url 'cluster_home' %}">Back</a>
+</div>
+<form class="filters" method="get">
+  <select name="what" aria-label="What" onchange="this.form.submit()"><option value="">Everything</option>{% for k, l in actions %}<option value="{{ k }}" {% if k == what %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+  <select name="item" aria-label="Property" onchange="this.form.submit()"><option value="">All properties</option>{% for i in items %}<option value="{{ i.code }}" {% if i.code == code %}selected{% endif %}>{{ i.name }}</option>{% endfor %}</select>
+  <noscript><button class="btn btn-outline">Show</button></noscript>
+</form>
+<section class="card">
+  {% for a in page %}
+  <div class="log-line"><time datetime="{{ a.at|date:'c' }}">{{ a.at|date:"d M Y, H:i" }}</time><div><span class="tag">{{ a.get_action_label }}</span> {{ a.summary }}<small class="muted">{% if a.by %} — {{ a.by }}{% endif %}</small></div></div>
+  {% empty %}<p class="muted">Nothing yet.</p>{% endfor %}
+</section>
+{% if page.has_other_pages %}<nav class="pager">{% if page.has_previous %}<a class="btn btn-ghost btn-sm" href="?what={{ what }}&item={{ code }}&page={{ page.previous_page_number }}">Newer</a>{% endif %}<span class="muted">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a class="btn btn-ghost btn-sm" href="?what={{ what }}&item={{ code }}&page={{ page.next_page_number }}">Older</a>{% endif %}</nav>{% endif %}
+{% endblock %}

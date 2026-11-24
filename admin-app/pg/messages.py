@@ -27,6 +27,7 @@ FIELDS = {
     "amount_paid": "Payment received", "paid_on": "Its date", "receipt_link": "Its receipt",
     "last_day": "Last day (notice)", "settlement": "Move-out settlement lines", "contact": "Property phone numbers",
     "address": "Property address", "map_link": "Map link",
+    "issue": "Complaint (e.g. Water / plumbing in room 201)", "raised_on": "Complaint raised on",
 }
 
 
@@ -62,7 +63,8 @@ def settlement_text(t: Tenancy) -> str:
     return "\n".join(rows)
 
 
-def context(t: Tenancy, base_url: str = "", payment: RentPayment | None = None, amount: Decimal | None = None) -> dict:
+def context(t: Tenancy, base_url: str = "", payment: RentPayment | None = None, amount: Decimal | None = None,
+            complaint=None) -> dict:
     item = current.get()
     owed = money.balance(t)
     nxt = services.next_due(t)
@@ -75,8 +77,11 @@ def context(t: Tenancy, base_url: str = "", payment: RentPayment | None = None, 
         "contact": getattr(item, "phones", "") or "", "address": getattr(item, "address", "") or "",
         "map_link": getattr(item, "map_link", "") or "", "settlement": settlement_text(t) if t.move_out else "",
         "amount": inr(amount) if amount else "", "payment_link": "", "amount_paid": "", "paid_on": "",
-        "receipt_link": "",
+        "receipt_link": "", "issue": "", "raised_on": "",
     }
+    if complaint is not None:
+        ctx.update({"issue": f"{complaint.get_category_display().lower()}, {complaint.place.lower()}",
+                    "raised_on": _date(complaint.raised_on)})
     if payment is not None:
         ctx.update({"amount_paid": inr(payment.amount), "paid_on": _date(payment.paid_on)})
         if base_url:
@@ -97,9 +102,10 @@ def render(body: str, ctx: dict) -> str:
     return with_footer(re.sub(r"\n{3,}", "\n\n", text).strip())
 
 
-def build(t: Tenancy, msg: PgMessage, base_url: str, *, by: str = "", payment=None, amount=None) -> str:
+def build(t: Tenancy, msg: PgMessage, base_url: str, *, by: str = "", payment=None, amount=None,
+          complaint=None) -> str:
     """The message text. With {payment_link} in it, a UPI link is made for `amount` (default: rent owed now)."""
-    ctx = context(t, base_url, payment, amount)
+    ctx = context(t, base_url, payment, amount, complaint)
     if "{payment_link}" in msg.body and money.upi_ready():
         pay = amount if amount is not None else money.balance(t)
         if pay and pay > 0:

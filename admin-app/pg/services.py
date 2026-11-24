@@ -5,7 +5,7 @@ Every change is one transaction on the item's own database and is written to the
 """
 
 import calendar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -441,3 +441,82 @@ def next_due(tenancy: Tenancy, day: date | None = None) -> Period | None:
 def find_resident(phone: str) -> Resident | None:
     key = Resident.key_for(phone)
     return Resident.objects.filter(phone_key=key).first() if len(key) >= 10 else None
+
+
+# ── Vacancy view (to share with people asking for a bed) ──────────────────────
+
+
+@dataclass
+class VacancyGroup:
+    room_type: object
+    now: list = field(default_factory=list)  # vacant beds
+    soon: list = field(default_factory=list)  # (bed, free from) — on notice, no one booked after
+    advance: Decimal | None = None  # the lowest usual advance of these rooms
+
+    @property
+    def features(self) -> str:
+        rooms = {b.room for b in self.now} | {b.room for b, _ in self.soon}
+        bits = []
+        if rooms and all(r.attached_bath for r in rooms):
+            bits.append("attached bathroom")
+        if rooms and any(r.balcony for r in rooms):
+            bits.append("balcony in some rooms" if not all(r.balcony for r in rooms) else "balcony")
+        return ", ".join(bits)
+
+
+def vacancies(day: date | None = None, soon_days: int = 30) -> list[VacancyGroup]:
+    """Vacant beds by room type, and beds coming free within `soon_days` (on notice, nobody booked after)."""
+    day = day or today()
+    beds = Bed.objects.in_use().select_related("room", "room__room_type", "room__floor")
+    views = bed_views(beds, day)
+    on_notice = [v for v in views if v.state == "notice" and v.tenancy.last_day
+                 and v.tenancy.last_day <= day + timedelta(days=soon_days)]
+    soon_ids = {v.bed.pk for v in on_notice}
+    booked = set(BedSpell.objects.live().filter(bed__in=[v.bed for v in on_notice], start__gt=day)
+                 .values_list("bed_id", flat=True))
+    groups: dict[int, VacancyGroup] = {}
+    for v in views:
+        rt = v.bed.room.room_type
+        if v.state == "vacant":
+            groups.setdefault(rt.pk, VacancyGroup(rt)).now.append(v.bed)
+        elif v.bed.pk in soon_ids and v.bed.pk not in booked:
+            groups.setdefault(rt.pk, VacancyGroup(rt)).soon.append((v.bed, v.tenancy.last_day))
+    for g in groups.values():
+        g.soon.sort(key=lambda x: x[1])
+        deposits = [b.room.deposit for b in g.now] + [b.room.deposit for b, _ in g.soon]
+        g.advance = min((d for d in deposits if d), default=None)
+    return sorted(groups.values(), key=lambda g: (-len(g.now), g.room_type.name))
+
+
+def vacancy_text(groups: list[VacancyGroup], name: str, item=None) -> str:
+    """The message to paste or send to someone looking for a bed (no names, no rents: rent is agreed per person)."""
+    def rooms(beds):
+        nums = sorted({b.room.number for b in beds}, key=lambda n: (len(n), n))
+        return f"room{'s' if len(nums) > 1 else ''} {', '.join(nums)}"
+
+    lines = [f"Beds available at {name} ({today():%d %b %Y}):", ""]
+    if not groups:
+        lines.append("All beds are taken right now. Ask us to keep you in mind for the next one.")
+    for g in groups:
+        head = g.room_type.name + (f" ({g.features})" if g.features else "")
+        lines.append(f"*{head}*")
+        if g.now:
+            lines.append(f"• {len(g.now)} bed{'s' if len(g.now) > 1 else ''} now — {rooms(g.now)}")
+        for d, beds in _by_date(g.soon):
+            when = "today" if d <= today() else f"from {d:%d %b}"
+            lines.append(f"• {len(beds)} bed{'s' if len(beds) > 1 else ''} free {when} — {rooms(beds)}")
+        if g.advance:
+            lines.append(f"• Advance: ₹{g.advance:,.0f} (refundable)")
+        lines.append("")
+    for label, value in (("Address", getattr(item, "address", "")), ("Map", getattr(item, "map_link", "")),
+                         ("Call / WhatsApp", getattr(item, "phones", ""))):
+        if value:
+            lines.append(f"{label}: {' '.join(str(value).split())}")
+    return "\n".join(lines).strip()
+
+
+def _by_date(soon):
+    out: dict = {}
+    for bed, d in soon:
+        out.setdefault(d, []).append(bed)
+    return sorted(out.items())

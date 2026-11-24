@@ -390,6 +390,7 @@ class PgMessage(models.Model):
         RECEIPT = "receipt", "Payment received (with the receipt link)"
         NOTICE = "notice", "Notice noted"
         MOVE_OUT = "move_out", "Opens after Move out"
+        FIXED = "fixed", "Complaint fixed (button on the complaint)"
 
     name = models.CharField(max_length=60, help_text="Button label")
     use = models.CharField("Used for", max_length=10, choices=Use.choices, blank=True,
@@ -403,3 +404,59 @@ class PgMessage(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class Complaint(models.Model):
+    """A resident's (or staff's) complaint about a room: water, Wi-Fi, cleaning… (§8.9). Raised → being fixed → fixed.
+    It can put the bed or room under maintenance until it is fixed (only if it was in use: that is put back then)."""
+
+    class Category(models.TextChoices):
+        WATER = "water", "Water / plumbing"
+        ELECTRICAL = "electrical", "Electrical / lights / fan"
+        AC = "ac", "AC / geyser"
+        WIFI = "wifi", "Wi-Fi"
+        CLEANING = "cleaning", "Cleaning / housekeeping"
+        FOOD = "food", "Food"
+        FURNITURE = "furniture", "Furniture / bed / cupboard"
+        PESTS = "pests", "Pests"
+        SECURITY = "security", "Security / noise"
+        OTHER = "other", "Other"
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        WORKING = "working", "Being fixed"
+        FIXED = "fixed", "Fixed"
+
+    class Hold(models.TextChoices):
+        NONE = "", "No"
+        BED = "bed", "Bed under maintenance"
+        ROOM = "room", "Room under maintenance"
+
+    room = models.ForeignKey(Room, on_delete=models.PROTECT, related_name="complaints")
+    bed = models.ForeignKey(Bed, null=True, blank=True, on_delete=models.PROTECT, related_name="complaints")
+    tenancy = models.ForeignKey(Tenancy, null=True, blank=True, on_delete=models.SET_NULL, related_name="complaints",
+                                help_text="Who raised it, if a resident")
+    category = models.CharField(max_length=12, choices=Category.choices)
+    details = models.TextField(blank=True)
+    raised_on = models.DateField()
+    status = models.CharField(max_length=8, choices=Status.choices, default=Status.OPEN)
+    hold = models.CharField("Put under maintenance", max_length=4, choices=Hold.choices, blank=True, default="")
+    fixed_on = models.DateField(null=True, blank=True)
+    fixed_by = models.CharField("Fixed by", max_length=100, blank=True, help_text="e.g. the plumber, or staff name")
+    fix_note = models.CharField(max_length=200, blank=True)
+    created_by = models.CharField(max_length=150, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-raised_on", "-pk"]
+
+    def __str__(self):
+        return f"{self.get_category_display()} — room {self.room.number}"
+
+    @property
+    def is_open(self) -> bool:
+        return self.status != self.Status.FIXED
+
+    @property
+    def place(self) -> str:
+        return f"Bed {self.bed}" if self.bed_id else f"Room {self.room.number}"

@@ -1,0 +1,41 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}Complaints{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Complaints</h1><p class="muted">{% if n_open %}{{ n_open }} open{% else %}Nothing open — all fixed.{% endif %}</p></div>
+  {% if 'work' in caps %}<a class="btn btn-primary" href="{% url 'pg_complaint_new' %}">+ Complaint</a>{% endif %}
+</div>
+<form class="filters" method="get">
+  <div class="chips" role="group" aria-label="Show">
+    <a class="chip{% if show == 'open' %} is-on{% endif %}" href="?show=open{% if category %}&category={{ category }}{% endif %}">Open</a>
+    <a class="chip{% if show == 'fixed' %} is-on{% endif %}" href="?show=fixed{% if category %}&category={{ category }}{% endif %}">Fixed</a>
+    <a class="chip{% if show == 'all' %} is-on{% endif %}" href="?show=all{% if category %}&category={{ category }}{% endif %}">All</a>
+  </div>
+  <input type="hidden" name="show" value="{{ show }}">
+  <select name="category" aria-label="About" onchange="this.form.submit()"><option value="">Any kind</option>{% for v, l in categories %}<option value="{{ v }}" {% if v == category %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+</form>
+<section class="card">
+  {% for c in page %}
+  <div class="complaint stay-line{% if c.is_open and c.age >= 3 %} is-warn{% endif %}">
+    <span class="room-badge">{% if c.bed %}{{ c.bed }}{% else %}{{ c.room.number }}{% endif %}</span>
+    <div class="stay-line-main">
+      <b>{{ c.get_category_display }} <span class="tag c-{{ c.status }}">{{ c.get_status_display }}</span>{% if c.hold and c.is_open %} <span class="tag">{{ c.get_hold_display|lower }}</span>{% endif %}</b>
+      {% if c.details %}<span class="complaint-details">{{ c.details }}</span>{% endif %}
+      <small>{{ c.place }}{% if c.tenancy %} · {{ c.tenancy.resident.name }}{% endif %} · raised {{ c.raised_on|date:"d M" }}{% if c.is_open %} ({% if c.age == 0 %}today{% else %}{{ c.age }} day{{ c.age|pluralize }} ago{% endif %}){% else %} · fixed {{ c.fixed_on|date:"d M" }}{% if c.fixed_by %} by {{ c.fixed_by }}{% endif %}{% if c.fix_note %} — {{ c.fix_note }}{% endif %}{% endif %}</small>
+    </div>
+    {% if 'work' in caps %}<div class="inline-form complaint-actions">
+      {% if c.status == 'open' %}<form method="post" action="{% url 'pg_complaint_action' c.pk 'start' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn btn-ghost btn-sm">Being fixed</button></form>{% endif %}
+      {% if c.is_open %}<details class="complaint-fix"><summary class="btn btn-primary btn-sm">Fixed</summary>
+        <form method="post" action="{% url 'pg_complaint_action' c.pk 'fix' %}" class="inline-form">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <input name="fixed_by" placeholder="Fixed by (e.g. plumber)" aria-label="Fixed by" maxlength="100"><input name="note" placeholder="Note (optional)" aria-label="Note" maxlength="200"><button class="btn btn-primary btn-sm">Save</button></form>
+      </details>
+      {% else %}
+        {% if fixed_msg and c.tenancy and c.tenancy.resident.phone %}<form method="post" action="{% url 'pg_complaint_action' c.pk 'message' %}" target="whatsapp">{% csrf_token %}<button class="btn btn-outline btn-sm">Tell resident</button></form>{% endif %}
+        <form method="post" action="{% url 'pg_complaint_action' c.pk 'reopen' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn btn-ghost btn-sm">Reopen</button></form>
+      {% endif %}
+    </div>{% endif %}
+  </div>
+  {% empty %}<p class="muted">{% if show == 'open' %}No open complaints.{% else %}No complaints here.{% endif %}</p>{% endfor %}
+</section>
+{% if page.has_other_pages %}<nav class="pager">{% if page.has_previous %}<a class="btn btn-ghost btn-sm" href="?show={{ show }}&category={{ category }}&page={{ page.previous_page_number }}">Previous</a>{% endif %}<span class="muted">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a class="btn btn-ghost btn-sm" href="?show={{ show }}&category={{ category }}&page={{ page.next_page_number }}">Next</a>{% endif %}</nav>{% endif %}
+{% endblock %}

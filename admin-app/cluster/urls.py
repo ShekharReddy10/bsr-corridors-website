@@ -8,6 +8,9 @@ from . import views
 urlpatterns = [
     path("properties/", views.home, name="cluster_home"),
     path("properties/users/", users.users, name="users"),
+    path("properties/overview/", views.overview, name="cluster_overview"),
+    path("properties/search/", views.search, name="cluster_search"),
+    path("properties/activity/", views.activity, name="cluster_activity"),
     path("properties/new/", views.item_new, name="item_new"),
     path("properties/drive/callback/", views.drive_callback, name="drive_callback"),
     path("properties/<slug:code>/", views.item_edit, name="item_edit"),

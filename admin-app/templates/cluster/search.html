@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Find a person{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Find a person</h1><p class="muted">A guest or resident in any property, by phone number (at least 4 digits) or name.</p></div>
+  <a class="btn btn-ghost" href="{% url 'cluster_home' %}">Back</a>
+</div>
+<form class="filters" method="get">
+  <input type="search" name="q" value="{{ q }}" placeholder="Phone or name" aria-label="Phone or name" autofocus>
+  <button class="btn btn-primary">Find</button>
+</form>
+{% if too_short %}<p class="muted">Type at least 4 digits of the phone number, or 3 letters of the name.</p>{% endif %}
+{% for p in problems %}<div class="msg msg-error">Couldn’t search {{ p }} right now.</div>{% endfor %}
+{% if q and not too_short %}
+<section class="card">
+  <div class="card-head"><h2>{{ results|length }} found</h2></div>
+  {% for r in results %}
+  <div class="stay-line" style="--c-accent: {{ r.item.colors.0 }}"><span class="room-badge person-badge">{{ r.who|first }}</span>
+    <div class="stay-line-main"><b><a href="{{ r.url }}">{{ r.name }}</a></b><small>{{ r.who }} at {{ r.item.name }} · {{ r.phone|default:"no phone" }} · {{ r.status }}</small></div>
+    <a class="btn btn-ghost btn-sm" href="{{ r.url }}">Open</a></div>
+  {% empty %}<p class="muted">No one found with “{{ q }}”.</p>{% endfor %}
+</section>
+{% endif %}
+{% endblock %}

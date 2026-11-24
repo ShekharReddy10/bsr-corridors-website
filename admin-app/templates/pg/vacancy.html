@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% load bsr %}
+{% block title %}Vacancies{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Vacancies</h1><p class="muted">{{ now }} bed{{ now|pluralize }} free now{% if soon %} · {{ soon }} coming free in the next 30 days{% endif %}. To share with people asking for a bed.</p></div>
+  <a class="btn btn-ghost" href="{% url 'pg_home' %}">Back</a>
+</div>
+<div class="vacancy-grid">
+  {% for g in groups %}
+  <section class="card vacancy-card" style="--i: {{ forloop.counter0 }}">
+    <div class="card-head"><h2>{{ g.room_type.name }}</h2><span class="count">{{ g.now|length }} now</span></div>
+    {% if g.features %}<p class="muted small">{{ g.features|capfirst }}</p>{% endif %}
+    {% if g.now %}<div class="chips">{% for b in g.now %}{% if 'work' in caps %}<a class="chip" href="{% url 'pg_move_in' b.pk %}" title="Move someone in">{{ b }}{% if b.room.is_ac %} · AC{% endif %}</a>{% else %}<span class="chip">{{ b }}</span>{% endif %}{% endfor %}</div>{% endif %}
+    {% if g.soon %}<p class="small"><b>Coming free:</b> {% for b, d in g.soon %}{{ b }} {% if d <= today %}today{% else %}from {{ d|date:"d M" }}{% endif %}{% if not forloop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+    {% if g.advance %}<p class="muted small">Usual advance from {{ g.advance|inr }}</p>{% endif %}
+  </section>
+  {% empty %}<section class="card empty"><h2>No vacancies</h2><p class="muted">Every bed is taken, and no one is leaving in the next 30 days.</p></section>{% endfor %}
+</div>
+<section class="card">
+  <div class="card-head"><h2>Message to share</h2></div>
+  <p class="muted small">No names and no rents — rent is agreed with each person.</p>
+  <textarea class="share-text" rows="14" readonly id="vacancy-text">{{ text }}</textarea>
+  <div class="form-actions"><a class="btn btn-primary" href="{{ share }}" target="_blank" rel="noopener">Share on WhatsApp</a><button type="button" class="btn btn-outline" data-copy="#vacancy-text">Copy</button></div>
+</section>
+{% endblock %}

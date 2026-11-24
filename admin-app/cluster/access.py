@@ -79,3 +79,4 @@ def needed(request, url_name: str, kwargs: dict) -> set:
         return {"export", "ids"}
     get_caps, post_caps = RULES.get(url_name, ({"view"}, {"work"}))
     return post_caps if post else get_caps
+RULES["pg_complaint_new"] = ({"work"}, {"work"})  # complaints list / actions: anyone may look, "work" to change

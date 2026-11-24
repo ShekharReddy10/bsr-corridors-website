@@ -509,6 +509,16 @@
     calc();
   }
 
+  // Copy a text box (e.g. the vacancy message) to the clipboard.
+  document.querySelectorAll("[data-copy]").forEach((btn) => btn.addEventListener("click", async () => {
+    const box = document.querySelector(btn.dataset.copy);
+    if (!box) return;
+    try { await navigator.clipboard.writeText(box.value); } catch (e) { box.select(); document.execCommand("copy"); }
+    const was = btn.textContent;
+    btn.textContent = "Copied";
+    setTimeout(() => { btn.textContent = was; }, 1500);
+  }));
+
   // PG move-out: changing the date works the rent out again for that day.
   const reloadDay = document.querySelector("[data-reload-day]");
   if (reloadDay) reloadDay.addEventListener("change", () => {

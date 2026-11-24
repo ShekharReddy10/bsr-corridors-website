@@ -132,3 +132,34 @@ class Membership(models.Model):
 
     def __str__(self):
         return f"{self.user} @ {self.item}: {self.get_role_display()}"
+
+
+class Activity(models.Model):
+    """The group's own log (§11): properties added or changed, logins, access and permissions. Each property's
+    day-to-day log (stays, rent, rooms…) stays in that property (Settings & log)."""
+
+    at = models.DateTimeField(auto_now_add=True, db_index=True)
+    by = models.CharField("Done by", max_length=60, blank=True)
+    action = models.CharField(max_length=30)
+    item = models.ForeignKey(Item, null=True, blank=True, on_delete=models.SET_NULL, related_name="activity")
+    summary = models.TextField()
+
+    class Meta:
+        db_table = "cluster_activity"
+        ordering = ["-at", "-pk"]
+
+    def __str__(self):
+        return f"{self.at:%d-%m-%Y %H:%M} {self.action}: {self.summary}"
+
+    ACTIONS = {
+        "property": "Properties", "access": "Logins & access", "drive": "Google Drive", "database": "Database",
+        "money_password": "Money password",
+    }
+
+    def get_action_label(self) -> str:
+        return self.ACTIONS.get(self.action, self.action)
+
+    @classmethod
+    def record(cls, action: str, summary: str, item: "Item | None" = None) -> "Activity":
+        from core.middleware import current_user_name
+        return cls.objects.create(action=action, summary=summary, item=item, by=current_user_name())
