@@ -162,8 +162,8 @@ def backup_json() -> bytes:
     Django's one-way hashes), so staff can sign in after a restore.
     """
     from cluster import current
-    from cluster.models import Item, Membership
+    from cluster.models import Activity, Item, Membership, Partner
     # Logins and the cluster's own tables live with BSR Corridors' data: they go in its backup only.
-    shared = [get_user_model(), Item, Membership] if current.is_default() else []
+    shared = [get_user_model(), Item, Membership, Partner, Activity] if current.is_default() else []
     objects = [obj for model in [*shared, *BACKUP_MODELS, *item_extra_models()] for obj in model.objects.order_by("pk")]
     return serializers.serialize("json", objects, indent=1).encode()

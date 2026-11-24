@@ -37,8 +37,43 @@ def host_names() -> list[str]:
 
 
 def partner_names() -> list[str]:
-    """Who shares the profit at settlement (edited on the Settings page; not the same as the hosts)."""
-    return _names(PARTNERS_KEY, DEFAULT_PARTNERS)
+    """Who shares the profit at settlement (not the same as the hosts)."""
+    return [p.name for p in partner_shares()]
+
+
+@dataclass
+class PartnerShare:
+    name: str
+    pct: Decimal  # percent of the profit
+    phone: str = ""
+    pay_to: str = ""
+
+    def of(self, amount) -> Decimal:
+        return (Decimal(amount) * self.pct / 100).quantize(Decimal("1"))
+
+
+def partner_shares() -> list[PartnerShare]:
+    """The property's partners and their shares (set on the property's page). Before any are set there: the names
+    from the old Settings list, sharing equally."""
+    from cluster import current
+    item = current.get()
+    rows = list(item.partners.all()) if item is not None and item.pk else []
+    if rows:
+        given = [p.share for p in rows if p.share is not None]
+        if len(given) == len(rows):
+            return [PartnerShare(p.name, p.share, p.phone, p.pay_to) for p in rows]
+        return [PartnerShare(p.name, Decimal(100) / len(rows), p.phone, p.pay_to) for p in rows]
+    names = _names(PARTNERS_KEY, DEFAULT_PARTNERS if item is None or item.is_default else "")
+    return [PartnerShare(n, Decimal(100) / len(names)) for n in names]  # empty list: no partners
+
+
+def share_text(shares: list[PartnerShare]) -> str:
+    """For a settlement's note: "Shared equally – A, B" or "Shared – A 60%, B 40%"."""
+    if not shares:
+        return ""
+    if len({round(s.pct, 2) for s in shares}) == 1:
+        return "Shared equally – " + ", ".join(s.name for s in shares)
+    return "Shared – " + ", ".join(f"{s.name} {s.pct.normalize():f}%" for s in shares)
 
 
 def _names(key: str, default: str) -> list[str]:

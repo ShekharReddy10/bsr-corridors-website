@@ -141,8 +141,11 @@ def item_new(request):
     from .forms import ItemForm
     from .models import Membership
     from . import provision
+    from .forms import partner_formset
     form = ItemForm(request.POST or None, initial={"theme": "teal", "kind": Item.Kind.PG})
-    if request.method == "POST" and form.is_valid():
+    partners = partner_formset(request.POST or None, instance=Item())
+    ctx = {"form": form, "obj": None, "themes": theme_list(), "partners": partners}
+    if request.method == "POST" and form.is_valid() and partners.is_valid():
         item = form.save(commit=False)
         item.schema = provision.schema_name(item.code)
         item.save()
@@ -155,22 +158,49 @@ def item_new(request):
             finally:
                 item.delete()
             messages.error(request, f"Couldn’t create the tables for {item.name}: {exc}. Nothing was saved.")
-            return render(request, "cluster/item_form.html", {"form": form, "obj": None, "themes": theme_list()})
+            return render(request, "cluster/item_form.html", ctx)
         _set_money_password(item, form.cleaned_data["money_password"])
-        Activity.record("property", f"{item.name} added ({item.get_kind_display()}, code {item.code})", item)
+        partners.instance = item
+        partners.save()
+        Activity.record("property", f"{item.name} added ({item.get_kind_display()}, code {item.code})"
+                                    + (f"; partners: {_partners_text(item)}" if item.partners.exists() else ""), item)
         manager = item.managed_by
         if manager and not manager.is_superuser:
             Membership.objects.get_or_create(user=manager, item=item, defaults={"role": Membership.Role.MANAGER})
         messages.success(request, f"{item.name} is ready. Next: connect its Google Drive, then add its rooms.")
         return redirect("item_edit", code=item.code)
-    return render(request, "cluster/item_form.html", {"form": form, "obj": None, "themes": theme_list()})
+    return render(request, "cluster/item_form.html", ctx)
+
+
+def _partners_text(item) -> str:
+    rows = list(item.partners.all())
+    if not rows:
+        return "none"
+    if all(p.share is not None for p in rows):
+        return ", ".join(f"{p.name} {p.share.normalize():f}%" for p in rows)
+    return ", ".join(p.name for p in rows) + " (equal shares)"
+
+
+def _old_partner_names(item) -> list[str]:
+    """Partners from the old Settings list (before they were set on the property's page), to start the form with."""
+    from core.models import AppSetting
+    from core.services import DEFAULT_PARTNERS, PARTNERS_KEY
+    try:
+        with current.using(item):
+            raw = AppSetting.get(PARTNERS_KEY, DEFAULT_PARTNERS if item.is_default else "")
+    except Exception:
+        return []
+    return [n.strip() for n in raw.split(",") if n.strip()]
 
 
 @admin_only
 def item_edit(request, code):
     from .forms import ItemForm
+    from .forms import partner_formset
     item = get_object_or_404(Item, code=code)
     form = ItemForm(request.POST or None, instance=item)
+    start = [] if item.partners.exists() else [{"name": n} for n in _old_partner_names(item)]
+    partners = partner_formset(request.POST or None, instance=item, initial=start, extra=max(2, len(start) + 1))
     if request.method == "POST":
         action = request.POST.get("action", "save")
         if action == "archive":
@@ -203,10 +233,14 @@ def item_edit(request, code):
                 messages.success(request, f"{item.name} moved to its own database — {sum(copied.values())} records "
                                           f"copied and checked. The old copy is kept as a fallback.")
             return redirect("item_edit", code=code)
-        if form.is_valid():
+        if form.is_valid() and partners.is_valid():
             changed = [str(form.fields[n].label or n).lower() for n in form.changed_data
                        if n not in ("money_password", "money_confirm")]
             form.save()
+            before = _partners_text(item)
+            partners.save()
+            if (after := _partners_text(item)) != before:
+                Activity.record("property", f"{item.name}: partners {before} → {after}", item)
             if changed:
                 Activity.record("property", f"{item.name}: changed {', '.join(changed)}", item)
             if form.cleaned_data.get("money_password"):
@@ -218,7 +252,7 @@ def item_edit(request, code):
             return redirect("item_edit", code=code)
     return render(request, "cluster/item_form.html", {
         "form": form, "obj": item, "web_drive_ready": bool(settings.GOOGLE_WEB_CLIENT_ID), "themes": theme_list(),
-        "usage": schema_usage().get(item.code),
+        "usage": schema_usage().get(item.code), "partners": partners,
     })
 
 

@@ -163,3 +163,25 @@ class Activity(models.Model):
     def record(cls, action: str, summary: str, item: "Item | None" = None) -> "Activity":
         from core.middleware import current_user_name
         return cls.objects.create(action=action, summary=summary, item=item, by=current_user_name())
+
+
+class Partner(models.Model):
+    """Who shares a property's profit, set while configuring the property. Shares are percentages adding up to 100;
+    left empty for everyone, the profit is shared equally."""
+
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name="partners")
+    name = models.CharField(max_length=60)
+    phone = models.CharField(max_length=20, blank=True)
+    share = models.DecimalField("Share %", max_digits=5, decimal_places=2, null=True, blank=True,
+                                help_text="Empty for everyone: equal shares")
+    pay_to = models.CharField("Pay their share to", max_length=120, blank=True,
+                              help_text="UPI ID or bank account, for your reference")
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = "cluster_partners"
+        ordering = ["sort_order", "pk"]
+        constraints = [models.UniqueConstraint(fields=["item", "name"], name="cluster_partner_once")]
+
+    def __str__(self):
+        return f"{self.name} ({self.item})"

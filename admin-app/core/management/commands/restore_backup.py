@@ -50,7 +50,7 @@ class Command(BaseCommand):
 
     def _restore(self, path, target=None):
         from cluster import current
-        from cluster.models import Item, Membership
+        from cluster.models import Activity, Item, Membership, Partner
         User = get_user_model()
         users = dict(User.objects.values_list("username", "pk"))
         settings_ = dict(AppSetting.objects.values_list("key", "pk"))
@@ -60,7 +60,7 @@ class Command(BaseCommand):
         with transaction.atomic(), transaction.atomic(using=alias):
             for obj in serializers.deserialize("json", read(path)):
                 o = obj.object
-                if isinstance(o, (User, Item, Membership)) and target is not None and not target.is_default:
+                if isinstance(o, (User, Item, Membership, Partner, Activity)) and target is not None and not target.is_default:
                     continue  # logins and cluster tables are restored from BSR Corridors' backup only
                 if isinstance(o, User) and o.username in users:
                     user_map[o.pk] = o.pk = users[o.username]
@@ -74,6 +74,11 @@ class Command(BaseCommand):
                     o.user_id = user_map.get(o.user_id, o.user_id)
                     o.item_id = item_map.get(o.item_id, o.item_id)
                     Membership.objects.filter(user_id=o.user_id, item_id=o.item_id).exclude(pk=o.pk).delete()
+                elif isinstance(o, Partner):
+                    o.item_id = item_map.get(o.item_id, o.item_id)
+                    Partner.objects.filter(item_id=o.item_id, name=o.name).exclude(pk=o.pk).delete()
+                elif isinstance(o, Activity):
+                    o.item_id = item_map.get(o.item_id, o.item_id)
                 elif isinstance(o, AppSetting) and o.key in settings_:
                     o.pk = settings_[o.key]
                 obj.save(using=alias if o._meta.app_label in ("core", "pg") else "default")

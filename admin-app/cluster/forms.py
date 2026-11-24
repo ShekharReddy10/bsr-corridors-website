@@ -91,3 +91,35 @@ class ItemForm(forms.ModelForm):
                   ("Payments & links", PAYMENTS), ("Business details (all optional)", BUSINESS),
                   ("Google Drive", DRIVE), ("PG / co-living move-out", MOVE_OUT)]
         return [(title, [self[n] for n in names if n in self.fields and n != "theme"]) for title, names in groups]
+
+
+class _PartnerFormSet(forms.BaseInlineFormSet):
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        rows = [f.cleaned_data for f in self.forms if f.cleaned_data and not f.cleaned_data.get("DELETE")
+                and f.cleaned_data.get("name")]
+        names = [r["name"].strip().lower() for r in rows]
+        if len(set(names)) != len(names):
+            raise forms.ValidationError("Each partner only once.")
+        shares = [r.get("share") for r in rows]
+        given = [s for s in shares if s is not None]
+        if given and len(given) != len(shares):
+            raise forms.ValidationError("Give every partner a share, or leave all shares empty (equal shares).")
+        if given and sum(given) != 100:
+            raise forms.ValidationError(f"The shares add up to {sum(given):g}% — they must add up to 100%.")
+        if any(s is not None and s <= 0 for s in shares):
+            raise forms.ValidationError("Each share must be more than 0%.")
+
+
+def partner_formset(*args, extra: int = 2, **kwargs):
+    from django.forms import inlineformset_factory
+    from .models import Partner
+    FormSet = inlineformset_factory(
+        Item, Partner, formset=_PartnerFormSet, fields=["name", "phone", "share", "pay_to"], extra=extra, can_delete=True,
+        widgets={"name": forms.TextInput(attrs={"placeholder": "Name"}),
+                 "phone": forms.TextInput(attrs={"placeholder": "Phone (optional)", "inputmode": "tel"}),
+                 "share": forms.NumberInput(attrs={"placeholder": "%", "step": "0.01", "min": "0", "max": "100"}),
+                 "pay_to": forms.TextInput(attrs={"placeholder": "UPI ID / bank (optional)"})})
+    return FormSet(*args, prefix="partners", **kwargs)

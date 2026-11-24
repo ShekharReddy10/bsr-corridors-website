@@ -166,7 +166,8 @@ Extra switches per user per property [Suggested]: **Money access**, **Can see fu
 | Google Drive | **Connect Google Drive** button: sign in to the property's Google account. Folder name. |
 | WhatsApp | Number shown to guests; hotel info used in messages (Wi-Fi, rules, location, contact, review link) |
 | Short link base | Defaults to the one website |
-| Hosts and partners | Names, as today's Settings page |
+| Hosts | Names, as today's Settings page |
+| **Partners** | Set while adding or editing the property: name, phone, share % (adding up to 100, or all empty for equal shares), where to pay their share. Used to split the profit when a month is settled, for hotels and PGs alike. [Asked] |
 | **Money password** | Set here [Asked]; admin can reset it later |
 | Deposit refund rules | Refund within N days of move-out; standard deductions with amounts (e.g. cleaning) [Decided: D10] |
 

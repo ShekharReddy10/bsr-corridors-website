@@ -399,6 +399,18 @@ class PgTests(TransactionTestCase):
         self.assertEqual(m.received, Decimal("300"))  # day one paid
         self.assertEqual(m.pending, Decimal(300 * (days - 1)))  # the other days so far not paid
         self.assertEqual(m.collected, Decimal("300"))
+        # Profit shared by the partners set on the property's page.
+        from cluster.models import Partner
+        from core.models import Settlement
+        Partner.objects.create(item=self.item, name="Asha", share=Decimal("75"))
+        Partner.objects.create(item=self.item, name="Bina", share=Decimal("25"))
+        page = self.client.get("/p/pgthree/pg/revenue/")
+        self.assertContains(page, "Asha <b>₹225</b> (75%) · Bina <b>₹75</b> (25%)")
+        self.client.post("/p/pgthree/pg/revenue/settle/", {"month": today().replace(day=1).isoformat(),
+                                                            "amount": "300", "notes": "Shared – Asha 75%, Bina 25%"})
+        s = Settlement.objects.get()
+        self.assertEqual((s.amount, s.received_total), (Decimal("300"), Decimal("300")))
+        self.assertContains(self.client.get("/p/pgthree/pg/revenue/"), "₹0 left")
         self.assertRedirects(self.client.get("/p/pgthree/whatsapp/"), "/p/pgthree/pg/messages/",
                              fetch_redirect_response=False)
 

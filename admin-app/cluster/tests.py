@@ -157,10 +157,23 @@ class ClusterTests(TransactionTestCase):
 
     # ── Phase 2 ──
 
-    def add_item(self, **extra):
+    @staticmethod
+    def partner_rows(*rows, initial=0):
+        """The partners part of the property form: rows of (name, phone, share)."""
+        data = {"partners-TOTAL_FORMS": str(len(rows)), "partners-INITIAL_FORMS": str(initial),
+                "partners-MIN_NUM_FORMS": "0", "partners-MAX_NUM_FORMS": "1000"}
+        for i, row in enumerate(rows):
+            pk, name, phone, share = row if len(row) == 4 else (None, *row)
+            data.update({f"partners-{i}-name": name, f"partners-{i}-phone": phone, f"partners-{i}-share": share,
+                         f"partners-{i}-pay_to": ""})
+            if pk:
+                data[f"partners-{i}-id"] = pk
+        return data
+
+    def add_item(self, partners=(("Meena", "", "60"), ("Ravi", "+91 90000 33333", "40")), **extra):
         data = {"name": "New Ladies PG", "code": "newpg", "kind": "pg", "email": "pg@example.com",
                 "managed_by": self.manager.pk, "theme": "plum", "sort_order": 0, "refund_days": 7,
-                "money_password": "pg-money-1", "money_confirm": "pg-money-1", **extra}
+                "money_password": "pg-money-1", "money_confirm": "pg-money-1", **self.partner_rows(*partners), **extra}
         return self.client.post("/properties/new/", data)
 
     def test_add_cluster_item_creates_its_tables(self):
@@ -168,6 +181,10 @@ class ClusterTests(TransactionTestCase):
         self.client.force_login(self.admin)
         r = self.add_item(email="")  # email required
         self.assertContains(r, "This field is required")
+        r = self.add_item(partners=(("Meena", "", "60"), ("Ravi", "", "30")))
+        self.assertContains(r, "The shares add up to 90%")
+        r = self.add_item(partners=(("Meena", "", "60"), ("Ravi", "", "")))
+        self.assertContains(r, "Give every partner a share")
         self.assertFalse(Item.objects.filter(code="newpg").exists())
         r = self.add_item()
         self.assertRedirects(r, "/properties/newpg/", fetch_redirect_response=False)
@@ -179,12 +196,26 @@ class ClusterTests(TransactionTestCase):
             self.assertTrue(MessageTemplate.objects.exists())  # default WhatsApp messages
             self.assertTrue(AppSetting.get("revenue_password_hash"))  # money password set
         self.assertEqual(Membership.objects.get(user=self.manager, item=item).role, R.MANAGER)
-        # The type and code can't change afterwards; the money password can be reset.
+        self.assertEqual([(p.name, p.phone, p.share) for p in item.partners.all()],
+                         [("Meena", "", Decimal("60")), ("Ravi", "+91 90000 33333", Decimal("40"))])
+        with current.using(item):
+            from core.services import partner_shares, share_text
+            shares = partner_shares()
+            self.assertEqual([s.of(1000) for s in shares], [Decimal("600"), Decimal("400")])
+            self.assertEqual(share_text(shares), "Shared – Meena 60%, Ravi 40%")
+        meena, ravi = item.partners.all()
+        # The type and code can't change afterwards; the money password can be reset. Partners: Ravi leaves.
         self.client.post("/properties/newpg/", {"name": "Renamed PG", "code": "other", "kind": "hotel",
                                                    "email": "pg@example.com", "managed_by": self.manager.pk,
                                                    "theme": "plum", "sort_order": 1, "refund_days": 10,
                                                    "upi_id": "newpg@ybl", "money_password": "new-money-2",
-                                                   "money_confirm": "new-money-2"})
+                                                   "money_confirm": "new-money-2",
+                                                   **self.partner_rows((meena.pk, "Meena", "", ""),
+                                                                       (ravi.pk, "Ravi", "", ""), initial=2),
+                                                   "partners-1-DELETE": "on"})
+        self.assertEqual([(p.name, p.share) for p in item.partners.all()], [("Meena", None)])
+        from .models import Activity
+        self.assertTrue(Activity.objects.filter(summary__contains="partners Meena 60%, Ravi 40% → Meena").exists())
         item.refresh_from_db()
         self.assertEqual((item.name, item.code, item.kind, item.upi_id), ("Renamed PG", "newpg", "pg", "newpg@ybl"))
         from django.contrib.auth.hashers import check_password

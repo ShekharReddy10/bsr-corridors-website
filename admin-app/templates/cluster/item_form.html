@@ -26,6 +26,25 @@
       </div>
     {% endif %}
   {% endfor %}
+  <h2>Partners</h2>
+  <p class="muted small">Who shares this property’s profit when a month is settled on its money page. Give each a share (adding up to 100%), or leave all shares empty to share equally.</p>
+  {{ partners.management_form }}
+  {% for e in partners.non_form_errors %}<div class="msg msg-error">{{ e }}</div>{% endfor %}
+  <div class="partner-rows">
+    <div class="partner-row partner-head" aria-hidden="true"><span>Name</span><span>Phone</span><span>Share %</span><span>Pay their share to</span><span></span></div>
+    {% for f in partners %}
+    <div class="partner-row">
+      {% for h in f.hidden_fields %}{{ h }}{% endfor %}
+      <label><span class="sr-only">Name</span>{{ f.name }}</label>
+      <label><span class="sr-only">Phone</span>{{ f.phone }}</label>
+      <label><span class="sr-only">Share %</span>{{ f.share }}</label>
+      <label><span class="sr-only">Pay their share to</span>{{ f.pay_to }}</label>
+      {% if f.instance.pk %}<label class="partner-remove">{{ f.DELETE }} Remove</label>{% else %}<span></span>{% endif %}
+      {% for field in f %}{% for e in field.errors %}<small class="field-error">{{ field.label }}: {{ e }}</small>{% endfor %}{% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  <p class="muted small">Need more rows? Save, and two empty rows are added again.</p>
   <div class="form-actions"><button class="btn btn-primary">{% if obj %}Save{% else %}Create {{ form.kind.value|default:"property" }}{% endif %}</button></div>
 </form>
 

@@ -985,10 +985,17 @@ class HostSettlementWhatsAppTests(TestCase):
                          (["Shekhar", "Mounika", "Satish"], ["Shekhar", "Satish"]))
         self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
         page = self.client.get(f"/revenue/{T - timedelta(days=1):%Y-%m}/").content.decode()  # month of check-out
-        self.assertIn("shared by Shekhar & Satish = <b>₹1,500 each</b>", page)
+        self.assertIn("Shekhar <b>₹1,500</b> (50%) · Satish <b>₹1,500</b> (50%)", page)
         self.assertIn("Shared equally – Shekhar, Satish", page)
-        self.client.post("/settings/", {"action": "partners", "partners": "Shekhar, Satish, Mounika"})
-        self.assertEqual(services.partner_names(), ["Shekhar", "Satish", "Mounika"])
+        # Set on the property's page (main admin): shares other than equal.
+        from cluster.models import Item, Partner
+        item = Item.objects.get(is_default=True)
+        Partner.objects.create(item=item, name="Shekhar", share=Decimal("70"))
+        Partner.objects.create(item=item, name="Satish", share=Decimal("30"), pay_to="satish@ybl")
+        page = self.client.get(f"/revenue/{T - timedelta(days=1):%Y-%m}/").content.decode()
+        self.assertIn("Shekhar <b>₹2,100</b> (70%) · Satish <b>₹900</b> (30%) → satish@ybl", page)
+        self.assertIn("Shared – Shekhar 70%, Satish 30%", page)
+        self.assertContains(self.client.get("/settings/"), "satish@ybl")
         self.assertEqual(services.host_names(), ["Shekhar", "Mounika", "Satish"])  # hosts unchanged
 
     def test_settle_needs_revenue_password(self):

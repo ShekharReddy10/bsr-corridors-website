@@ -694,10 +694,55 @@ def revenue(request):
     while x >= first_due.replace(day=1) and len(months) < 36:
         months.append(x)
         x = (x - timedelta(days=1)).replace(day=1)
+    from core.models import Settlement
+    from core.services import partner_shares, share_text
+    profit = mo.received - expenses
+    settled = list(Settlement.objects.filter(month=first))
+    left = max(profit - sum((s.amount for s in settled), Decimal(0)), Decimal(0))
+    shares = partner_shares()
     return render(request, "pg/revenue.html", {
-        "m": mo, "expenses": expenses, "profit": mo.received - expenses, "months": months,
-        "held_deposits": money.deposits_held(), "owing": money.owing(),
+        "m": mo, "expenses": expenses, "profit": profit, "months": months,
+        "held_deposits": money.deposits_held(), "owing": money.owing(), "settled": settled, "left": left,
+        "settle": {"amount": round(left), "note": share_text(shares), "split": [(s, s.of(round(left))) for s in shares]},
     })
+
+
+@require_POST
+def settle(request):
+    """Share out (part of) one month's profit, as on the hotel's money page."""
+    from core.forms import SettlementForm
+    from core.models import AuditLog, Expense
+    from core.views.revenue import _unlocked
+    from . import money
+    if not _unlocked(request):
+        return redirect("pg_revenue")
+    form = SettlementForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Enter the amount settled (₹0 or more) for a month that has started.")
+        return redirect("pg_revenue")
+    first = form.cleaned_data["month"]
+    mo = money.month(first)
+    expenses = Expense.objects.filter(date__gte=mo.start, date__lt=mo.end).aggregate(s=Sum("amount"))["s"] or Decimal(0)
+    s = form.save(commit=False)
+    s.received_total, s.expenses_total = mo.received, expenses
+    s.save()
+    AuditLog.record("settlement", f"Settled ₹{s.amount:,.0f} for {first:%B %Y} (received ₹{mo.received:,.0f} − "
+                                  f"expenses ₹{expenses:,.0f}){': ' + s.notes if s.notes else ''}")
+    messages.success(request, f"Settled ₹{s.amount:,.0f} for {first:%B %Y}.")
+    return redirect(reverse("pg_revenue") + f"?month={first:%Y-%m}")
+
+
+@require_POST
+def settlement_delete(request, pk):
+    from core.models import AuditLog, Settlement
+    from core.views.revenue import _unlocked
+    if not _unlocked(request):
+        return redirect("pg_revenue")
+    s = get_object_or_404(Settlement, pk=pk)
+    AuditLog.record("settlement", f"Deleted settlement for {s.month:%B %Y} (made {s.at:%d-%m-%Y}): ₹{s.amount:,.0f}")
+    s.delete()
+    messages.success(request, "Settlement deleted.")
+    return redirect(reverse("pg_revenue") + f"?month={s.month:%Y-%m}")
 
 
 # ── Complaints (§8.9) ─────────────────────────────────────────────────────────

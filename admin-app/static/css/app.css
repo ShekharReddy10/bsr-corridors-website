@@ -717,3 +717,17 @@ details.waive > summary { cursor: pointer; color: var(--ink-soft); }
 .log-line:last-child { border-bottom: 0; }
 .log-line time { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
 @media (max-width: 640px) { .log-line { grid-template-columns: 1fr; gap: 2px; } }
+
+/* Partners on the property's page */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.partner-rows { display: grid; gap: 8px; margin: 8px 0; }
+.partner-row { display: grid; grid-template-columns: 1.3fr 1fr 90px 1.4fr 90px; gap: 8px; align-items: center; }
+.partner-row input[type="text"], .partner-row input[type="number"] { width: 100%; }
+.partner-head { font-size: .78rem; color: var(--ink-soft); font-weight: 600; }
+.partner-remove { font-size: .85rem; color: var(--ink-soft); display: flex; gap: 6px; align-items: center; }
+.field-error { grid-column: 1 / -1; color: var(--red); }
+.share-lines { margin: 6px 0 10px; }
+@media (max-width: 720px) {
+  .partner-head { display: none; }
+  .partner-row { grid-template-columns: 1fr 1fr; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+}

@@ -29,7 +29,7 @@ from cluster.current import local, name as hotel_name
 from .. import gdrive, revenue
 from ..forms import SettlementForm
 from ..models import AppSetting, AuditLog, Expense, Settlement
-from ..services import partner_names, today
+from ..services import partner_shares, share_text, today
 from .auth import _client_ip
 
 HASH_KEY = "revenue_password_hash"
@@ -135,7 +135,7 @@ def revenue_page(request, year=None, month_no=None):
     months = r.months()
     b = r.ledger[month]
     left = max(b.left, revenue.ZERO)
-    partners = partner_names()
+    shares = partner_shares()
     rooms = revenue.rooms_for_month(r, month)
     rooms_due = sum((x["due_total"] for x in rooms), revenue.ZERO)
     return render(request, "core/revenue.html", {
@@ -150,8 +150,8 @@ def revenue_page(request, year=None, month_no=None):
         "rooms_due": rooms_due,
         "expected": b.received + rooms_due,
         "rent_due": revenue.rent_not_added(r.t),
-        "settle": {"amount": round(left), "share": left / len(partners) if partners else left},
-        "partners": partners,
+        "settle": {"amount": round(left), "note": share_text(shares),
+                   "split": [(s, s.of(round(left))) for s in shares]},
         "month_links": _month_links(r, month),
         "monthly": revenue.monthly_chart(r),
         "weekly": revenue.weekly_chart(r),

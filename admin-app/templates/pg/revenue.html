@@ -14,6 +14,18 @@
 <section class="card money-hero">
   <p class="money-label">Profit this month (received − expenses)</p>
   <p class="money-big">{{ profit|inr }}</p>
+  <form method="post" action="{% url 'pg_settle' %}" class="settle-form" data-confirm="Record this settlement for {{ m.start|date:'F Y' }}?">{% csrf_token %}
+    <h3>Settle {{ m.start|date:"F Y" }} <span class="muted small">— {{ left|inr }} left</span></h3>
+    <input type="hidden" name="month" value="{{ m.start|date:'Y-m-d' }}">
+    <div class="form-grid">
+      <div class="field"><label for="st-amount">Amount settled ₹</label><input id="st-amount" type="number" name="amount" inputmode="decimal" step="1" min="0" value="{{ settle.amount }}" required></div>
+      <div class="field"><label for="st-notes">Notes</label><input id="st-notes" type="text" name="notes" value="{{ settle.note }}"></div>
+    </div>
+    {% include "core/_share_split.html" %}
+    <button class="btn btn-primary btn-sm">Settle</button>
+  </form>
+  {% for x in settled %}<div class="stay-line settled-line"><span><b>{{ x.amount|inr }}</b> settled {{ x.at|date:"d-m-Y" }}{% if x.notes %} · <small class="muted">{{ x.notes }}</small>{% endif %}</span>
+    {% if 'delete' in caps %}<form method="post" action="{% url 'pg_settlement_delete' x.pk %}" class="inline-form" data-confirm="Delete this settlement?">{% csrf_token %}<button class="btn btn-ghost btn-sm">Delete</button></form>{% endif %}</div>{% endfor %}
   <p class="muted small">Cash in this month: rent {{ m.collected|inr }} · advances {{ m.deposits_in|inr }} · refunds paid {{ m.refunds_out|inr }}{% if m.waived %} · rent waived {{ m.waived|inr }} (not counted){% endif %}. Advances held now: {{ held_deposits|inr }} (not income).</p>
 </section>
 <section class="card">

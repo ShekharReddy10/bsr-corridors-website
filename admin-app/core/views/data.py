@@ -14,7 +14,7 @@ from .. import invoice, gdrive, services
 from ..exports import build_workbook
 from ..forms import DateRangeForm
 from ..models import AppSetting, AuditLog, BackupRun, Guest, Stay
-from ..services import HOSTS_KEY, PARTNERS_KEY, host_names, partner_names, today
+from ..services import HOSTS_KEY, host_names, partner_shares, today
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -89,7 +89,7 @@ def backup_hook(request):
 
 def settings_page(request):
     years = request.POST.get("years", "3")
-    name_lists = {"hosts": (HOSTS_KEY, "Hosts"), "partners": (PARTNERS_KEY, "Profit shared by")}
+    name_lists = {"hosts": (HOSTS_KEY, "Hosts")}  # partners: set on the property's page (main admin)
     if request.method == "POST" and request.POST.get("action") in name_lists:
         action = request.POST["action"]
         key, label = name_lists[action]
@@ -119,6 +119,6 @@ def settings_page(request):
         "encryption_set": bool(settings.FIELD_ENCRYPTION_KEY),
         "backup_hook_set": bool(settings.BACKUP_TOKEN),
         "hosts": ", ".join(host_names()),
-        "partners": ", ".join(partner_names()),
+        "partners": partner_shares(),
         "logs": AuditLog.objects.select_related("stay")[:100],
     })
