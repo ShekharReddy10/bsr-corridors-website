@@ -16,7 +16,7 @@ from cluster import current, provision
 from cluster.models import Item, Membership
 from core.services import today
 
-from . import defaults, money, services
+from . import defaults, messages, money, services
 from .models import Bed, BedSpell, Floor, PgMessage, Resident, Room, RoomType, Tenancy
 
 T = Tenancy.Status
@@ -197,6 +197,32 @@ class PgTests(TransactionTestCase):
         self.assertEqual(t.unpaid_rent, Decimal("-1200"))  # 3 days used of the 2100 paid
         self.assertEqual(t.refund, Decimal("11200"))
         self.assertEqual(money.balance(t), 0)
+
+    def test_waive_rent_at_move_out(self):
+        t = self.tenancy(move_in=today() - timedelta(days=14), cycle="weekly", rent=Decimal("2100"))
+        money.record(t, Decimal("1000"), mode="cash")
+        with self.assertRaises(ValidationError):
+            services.move_out(t, today(), waive=Decimal("500"))  # needs a reason
+        with self.assertRaises(ValidationError):
+            services.move_out(t, today(), waive=Decimal("5000"), waive_reason="Too much")  # only 3200 owed
+        t.refresh_from_db()
+        self.assertEqual(t.status, T.STAYING)  # nothing changed
+        services.move_out(t, today(), waive=Decimal("1200"), waive_reason="Water problem")
+        t.refresh_from_db()
+        self.assertEqual((t.rent_waived, t.waive_reason), (Decimal("1200"), "Water problem"))
+        self.assertEqual(t.unpaid_rent, Decimal("2000"))  # 4200 − 1000 paid − 1200 waived
+        self.assertEqual(t.refund, Decimal("8000"))
+        self.assertEqual(money.balance(t), 0)
+        self.assertEqual(sum(ln.waived for ln in money.lines(t)), Decimal("1200"))
+        # The waiver is neither rent received nor pending, and isn't cash in.
+        first = today().replace(day=1)
+        months = [money.month(first)] + ([money.month((first - timedelta(days=1)).replace(day=1))]
+                                         if t.move_in < first else [])
+        self.assertEqual(sum(m.received for m in months), Decimal("3000"))  # 1000 cash + 2000 from the advance
+        self.assertEqual(sum(m.pending for m in months), 0)
+        self.assertEqual(sum(m.collected for m in months), Decimal("1000"))
+        self.assertEqual(months[0].waived, Decimal("1200"))
+        self.assertIn("Rent waived: ₹1,200", messages.settlement_text(t))
 
     def test_dues_payments_and_rent_changes(self):
         t = self.tenancy(move_in=today() - timedelta(days=8), cycle="weekly", rent=Decimal("2000"))

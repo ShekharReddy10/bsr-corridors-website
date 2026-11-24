@@ -11,6 +11,11 @@
     <div class="field"><label for="mo-day">Moving out on</label><input id="mo-day" type="date" name="day" value="{{ day }}" required data-reload-day><small class="help">The bed is free from this day; rent is charged up to it.</small></div>
     <div class="field"><span class="label">{% if owed >= 0 %}Rent still due{% else %}Rent paid ahead{% endif %}</span><p class="settle-owed"><b>{{ owed|inr|cut:"-" }}</b></p><input type="hidden" value="{{ owed }}" data-settle-amount><small class="help">Worked out from the rent periods and payments up to that day.</small></div>
   </div>
+  {% if owed > 0 %}<details class="waive"{% if waive %} open{% endif %}><summary>Waive some of the rent</summary>
+  <div class="form-grid">
+    <div class="field"><label for="mo-waive">Rent to waive (₹)</label><input id="mo-waive" name="waive" value="{{ waive }}" inputmode="decimal" placeholder="0" data-settle-add data-max="{{ owed }}"><small class="help">Up to {{ owed|inr }}. It isn't counted as rent received.</small></div>
+    <div class="field"><label for="mo-waive-reason">Why</label><input id="mo-waive-reason" name="waive_reason" value="{{ waive_reason }}" maxlength="200" placeholder="e.g. Water problem in the last week"></div>
+  </div></details>{% endif %}
   <h2>Deductions</h2>
   <p class="muted small">The standard ones from the property’s settings are filled in — change or clear them. Each needs a reason.</p>
   <div class="deduction-rows">

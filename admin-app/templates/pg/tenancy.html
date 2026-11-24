@@ -72,14 +72,14 @@
 
   <div class="grid-2 rent-lists">
     <div><h3>Rent periods</h3>
-      {% for ln in lines %}<div class="stay-line"><div class="stay-line-main"><b>{{ ln.due.start|date:"d M" }} → {{ ln.due.end|date:"d M Y" }}{% if ln.due.part %} <span class="tag">part</span>{% endif %}</b><small>{{ ln.due.amount|inr }} · {% if ln.state == 'paid' %}paid{% elif ln.state == 'part' %}{{ ln.left|inr }} left{% else %}not paid{% endif %}</small></div><span class="dot s-{% if ln.state == 'paid' %}vacant{% elif ln.state == 'part' %}notice{% else %}removed{% endif %}"></span></div>
+      {% for ln in lines %}<div class="stay-line"><div class="stay-line-main"><b>{{ ln.due.start|date:"d M" }} → {{ ln.due.end|date:"d M Y" }}{% if ln.due.part %} <span class="tag">part</span>{% endif %}</b><small>{{ ln.due.amount|inr }} · {% if ln.state == 'paid' %}paid{% elif ln.state == 'waived' %}waived{% elif ln.state == 'part' %}{{ ln.left|inr }} left{% else %}not paid{% endif %}</small></div><span class="dot s-{% if ln.state == 'paid' or ln.state == 'waived' %}vacant{% elif ln.state == 'part' %}notice{% else %}removed{% endif %}"></span></div>
       {% empty %}<p class="muted">No rent due yet.</p>{% endfor %}
       {% if next %}<p class="muted small">Next: {{ next.amount|inr }} on {{ next.start|date:"d M Y" }}.</p>{% endif %}
     </div>
     <div><h3>Payments</h3>
       {% for p in payments %}<div class="stay-line"><div class="stay-line-main"><b>{{ p.amount|inr }} · {{ p.get_kind_display }}</b><small>{{ p.paid_on|date:"d M Y" }} · {{ p.get_mode_display }}{% if p.reference %} · {{ p.reference }}{% endif %}{% if p.recorded_by %} · {{ p.recorded_by }}{% endif %}</small></div>
-        {% if p.mode != 'advance' %}<a class="btn btn-ghost btn-sm" href="{% url 'pg_receipt' p.pk %}" target="_blank" rel="noopener">Receipt</a>{% endif %}
-        {% if 'delete' in caps and 'pay' in caps and p.mode != 'advance' %}<form method="post" action="{% url 'pg_rent_action' t.pk 'pay-delete' %}" data-confirm="Delete this payment of {{ p.amount|inr }}?">{% csrf_token %}<input type="hidden" name="payment" value="{{ p.pk }}"><button class="btn btn-ghost btn-sm">Delete</button></form>{% endif %}</div>
+        {% if not p.from_settlement %}<a class="btn btn-ghost btn-sm" href="{% url 'pg_receipt' p.pk %}" target="_blank" rel="noopener">Receipt</a>{% endif %}
+        {% if 'delete' in caps and 'pay' in caps and not p.from_settlement %}<form method="post" action="{% url 'pg_rent_action' t.pk 'pay-delete' %}" data-confirm="Delete this payment of {{ p.amount|inr }}?">{% csrf_token %}<input type="hidden" name="payment" value="{{ p.pk }}"><button class="btn btn-ghost btn-sm">Delete</button></form>{% endif %}</div>
       {% empty %}<p class="muted">No payments yet.</p>{% endfor %}
     </div>
   </div>
@@ -91,6 +91,7 @@
   <h2>Deposit settlement</h2>
   <dl class="dl">
     <dt>Advance received</dt><dd>{{ t.deposit_received|inr }}</dd>
+    {% if t.rent_waived %}<dt>Rent waived</dt><dd>{{ t.rent_waived|inr }}{% if t.waive_reason %} · {{ t.waive_reason }}{% endif %}</dd>{% endif %}
     {% if t.unpaid_rent >= 0 %}<dt>Rent due</dt><dd>− {{ t.unpaid_rent|inr }}</dd>{% else %}<dt>Rent paid ahead</dt><dd>+ {{ t.unpaid_rent|inr|cut:"-" }}</dd>{% endif %}
     {% for d in t.deductions %}<dt>{{ d.reason }}</dt><dd>− {{ d.amount|inr }}</dd>{% endfor %}
     <dt><b>{% if t.refund < 0 %}Still owed by resident{% else %}Refund{% endif %}</b></dt><dd><b>{% if t.refund < 0 %}{{ t.refund|inr|cut:"-" }}{% else %}{{ t.refund|inr }}{% endif %}</b>{% if t.refund_due_by and not t.refund_paid_on %} · due by {{ t.refund_due_by|date:"d M Y" }}{% endif %}{% if t.refund_paid_on %} · paid {{ t.refund_paid_on|date:"d M Y" }} ({{ t.refund_mode }}){% endif %}</dd>

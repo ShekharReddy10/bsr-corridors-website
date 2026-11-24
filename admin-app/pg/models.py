@@ -234,7 +234,9 @@ class Tenancy(models.Model):
     created_by = models.CharField(max_length=150, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     # Move-out settlement (§8.6): deposit − unpaid rent − deductions = refund
-    unpaid_rent = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    unpaid_rent = models.DecimalField(max_digits=10, decimal_places=2, default=0)  # after any waiver
+    rent_waived = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    waive_reason = models.CharField(max_length=200, blank=True)
     deductions = models.JSONField(default=list, blank=True)  # [{"reason": "Cleaning", "amount": "500"}]
     refund = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     refund_due_by = models.DateField(null=True, blank=True)
@@ -329,6 +331,9 @@ class RentPayment(models.Model):
         BANK = "bank", "Bank transfer"
         OTHER = "other", "Other"
         ADVANCE = "advance", "From the advance (move-out)"  # not money coming in: settled against the advance
+        WAIVED = "waived", "Waived (move-out)"  # rent let off at move-out: clears what is owed, never income
+
+    SETTLEMENT_MODES = (Mode.ADVANCE, Mode.WAIVED)  # made by the move-out, not money coming in
 
     tenancy = models.ForeignKey(Tenancy, on_delete=models.PROTECT, related_name="payments")
     kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.RENT)
@@ -345,6 +350,10 @@ class RentPayment(models.Model):
 
     def __str__(self):
         return f"{self.paid_on:%d-%m-%Y} ₹{self.amount:,.0f} {self.get_kind_display()}"
+
+    @property
+    def from_settlement(self) -> bool:
+        return self.mode in self.SETTLEMENT_MODES
 
 
 class RentRequest(models.Model):

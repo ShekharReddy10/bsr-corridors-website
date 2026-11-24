@@ -253,9 +253,11 @@ def settle(tenancy: Tenancy, *, unpaid_rent: Decimal, deductions: list[dict]) ->
     return tenancy.deposit_received - unpaid_rent - total
 
 
-def move_out(tenancy: Tenancy, day: date, *, deductions=(), by: str = "", refund_days: int | None = None) -> Tenancy:
-    """The resident leaves on `day` (the bed is free from that day). Rent is charged up to that day; whatever is still
-    owed is taken from the advance, rent paid ahead goes back with it, and the rest is the refund (§8.6)."""
+def move_out(tenancy: Tenancy, day: date, *, deductions=(), by: str = "", refund_days: int | None = None,
+             waive: Decimal = Decimal("0"), waive_reason: str = "") -> Tenancy:
+    """The resident leaves on `day` (the bed is free from that day). Rent is charged up to that day; `waive` of what
+    is still owed can be let off (with a reason), the rest is taken from the advance, rent paid ahead goes back with
+    it, and what remains is the refund (§8.6)."""
     from . import money
     from .models import RentPayment
     if tenancy.status not in (T.STAYING, T.NOTICE):
@@ -264,6 +266,11 @@ def move_out(tenancy: Tenancy, day: date, *, deductions=(), by: str = "", refund
         raise ValidationError("The move-out date can't be before the move-in date.")
     deductions = [{"reason": d["reason"].strip(), "amount": str(Decimal(str(d["amount"])))}
                   for d in deductions if d.get("reason", "").strip() and Decimal(str(d.get("amount") or 0)) > 0]
+    waive, waive_reason = Decimal(str(waive or 0)), (waive_reason or "").strip()[:200]
+    if waive < 0:
+        raise ValidationError("The rent waived can't be negative.")
+    if waive > 0 and not waive_reason:
+        raise ValidationError("Give a reason for waiving the rent.")
     item = current.get()
     if refund_days is None:
         refund_days = getattr(item, "refund_days", 7) or 0
@@ -279,6 +286,13 @@ def move_out(tenancy: Tenancy, day: date, *, deductions=(), by: str = "", refund
         tenancy.save(update_fields=["status", "move_out", "last_day"])
         money.sync(tenancy, max(day, today()))  # rent up to the move-out day (the last period by the day)
         owed = money.balance(tenancy)
+        if waive > max(owed, Decimal("0")):
+            raise ValidationError(f"Only ₹{max(owed, Decimal('0')):,.0f} of rent is owed — you can't waive more.")
+        if waive > 0:
+            RentPayment.objects.create(tenancy=tenancy, kind=RentPayment.Kind.RENT, amount=waive, paid_on=day,
+                                       mode=RentPayment.Mode.WAIVED, recorded_by=by, note=waive_reason)
+            owed -= waive
+        tenancy.rent_waived, tenancy.waive_reason = waive, waive_reason if waive > 0 else ""
         tenancy.unpaid_rent, tenancy.deductions = owed, deductions
         tenancy.refund = settle(tenancy, unpaid_rent=owed, deductions=deductions)
         # Settle the rent against the advance, so the rent account ends at zero (or at what is still owed).
@@ -292,6 +306,7 @@ def move_out(tenancy: Tenancy, day: date, *, deductions=(), by: str = "", refund
         tenancy.settled_by = by
         tenancy.save()
         _log("pg_move_out", f"{tenancy.resident.name} moved out of bed {tenancy.bed} on {day:%d-%m-%Y}; "
+                            + (f"rent of ₹{waive:,.0f} waived ({waive_reason}); " if waive > 0 else "")
                             + (f"deposit to refund ₹{tenancy.refund:,.0f}" if tenancy.refund > 0 else
                                f"still owes ₹{-tenancy.refund:,.0f}" if tenancy.refund < 0 else "nothing to refund"))
     return tenancy

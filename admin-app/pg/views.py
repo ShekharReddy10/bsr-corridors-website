@@ -226,7 +226,7 @@ def tenancy(request, pk):
         "owed": owed, "lines": list(reversed(money.lines(t)))[:12], "payments": t.payments.all()[:30],
         "verify": t.requests.filter(status="claimed"), "open_link": t.requests.filter(status="open").first(),
         "msgs": PgMessage.objects.all(), "upi_ready": money.upi_ready(), "since": money.unpaid_since(t),
-        "kinds": RentPayment.Kind.choices, "modes": [m for m in RentPayment.Mode.choices if m[0] != "advance"],
+        "kinds": RentPayment.Kind.choices, "modes": [m for m in RentPayment.Mode.choices if m[0] not in RentPayment.SETTLEMENT_MODES],
         "today": today(), "due_text": due_rule_text(t),
         "t": t, "r": t.resident, "spells": t.spells.select_related("bed__room").order_by("start"), "next": nxt,
         "notice_form": NoticeForm(prefix="n"), "shift_form": ShiftForm(beds=_vacant_beds(t.bed), prefix="s"),
@@ -303,7 +303,9 @@ def move_out(request, pk):
             ded = [{"reason": r["reason"], "amount": _amount(r["amount"])} for r in rows]
             if any(d["amount"] > 0 and not d["reason"].strip() for d in ded):
                 raise ValidationError("Give a reason for each deduction.")
-            services.move_out(t, day, deductions=ded, by=_who(request))
+            waive = _amount(request.POST.get("waive", "") or "0")
+            services.move_out(t, day, deductions=ded, by=_who(request), waive=waive,
+                              waive_reason=request.POST.get("waive_reason", ""))
         except ValidationError as exc:
             errors = exc.messages
         else:
@@ -321,6 +323,7 @@ def move_out(request, pk):
     return render(request, "pg/move_out.html", {
         "t": t, "rows": rows + [{"reason": "", "amount": ""}] * 2, "errors": errors, "day": day.isoformat(),
         "owed": money.owed_if_leaving(t, day), "refund_days": getattr(item, "refund_days", 7),
+        "waive": request.POST.get("waive", ""), "waive_reason": request.POST.get("waive_reason", ""),
     })
 
 
@@ -528,7 +531,7 @@ def rent_action(request, pk, action):
             amount = _parse_amount(request.POST.get("amount"))
             kind = request.POST.get("kind", RentPayment.Kind.RENT)
             mode = request.POST.get("mode", RentPayment.Mode.CASH)
-            if kind not in RentPayment.Kind.values or mode not in RentPayment.Mode.values or mode == RentPayment.Mode.ADVANCE:
+            if kind not in RentPayment.Kind.values or mode not in RentPayment.Mode.values or mode in RentPayment.SETTLEMENT_MODES:
                 raise ValidationError("Pick what it is for and how it was paid.")
             p = money.record(t, amount, kind=kind, mode=mode, paid_on=parse_date(request.POST.get("paid_on", "")) or today(),
                              reference=request.POST.get("reference", ""), note=request.POST.get("note", ""),
@@ -538,7 +541,7 @@ def rent_action(request, pk, action):
                 return open_chat(request, t.resident.phone, pgm.build(t, msg, _base(request), payment=p))
         elif action == "pay-delete":
             p = get_object_or_404(RentPayment, pk=request.POST.get("payment"), tenancy=t)
-            if p.mode == RentPayment.Mode.ADVANCE:
+            if p.from_settlement:
                 raise ValidationError("This was settled at move-out and can't be deleted.")
             money.delete(p)
             messages.success(request, "Payment deleted.")

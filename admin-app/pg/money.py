@@ -121,23 +121,31 @@ def owed_if_leaving(t: Tenancy, stop: date) -> Decimal:
 class DueLine:
     due: RentDue
     paid: Decimal  # how much of it the payments cover (oldest dues first)
+    waived: Decimal = ZERO  # let off at move-out (covers what payments didn't, after them)
 
     @property
     def left(self) -> Decimal:
-        return self.due.amount - self.paid
+        return self.due.amount - self.paid - self.waived
 
     @property
     def state(self) -> str:
-        return "paid" if self.left <= 0 else ("part" if self.paid > 0 else "unpaid")
+        if self.left <= 0:
+            return "waived" if self.waived and not self.paid else "paid"
+        return "part" if self.paid > 0 or self.waived > 0 else "unpaid"
 
 
 def lines(t: Tenancy) -> list[DueLine]:
-    pool = rent_paid(t)
+    """Each rent period with what pays it: real payments (and the advance) oldest first, then any waiver."""
+    waived = t.payments.filter(kind=RentPayment.Kind.RENT, mode=RentPayment.Mode.WAIVED).aggregate(
+        s=Sum("amount"))["s"] or ZERO
+    pool = rent_paid(t) - waived
     out = []
     for d in t.dues.order_by("start"):
         covered = min(pool, d.amount) if pool > 0 else ZERO
         pool -= covered
-        out.append(DueLine(d, covered))
+        let_off = min(waived, d.amount - covered) if waived > 0 else ZERO
+        waived -= let_off
+        out.append(DueLine(d, covered, let_off))
     return out
 
 
@@ -336,6 +344,7 @@ class Month:
     collected: Decimal = ZERO  # rent payments made in the month (cash in)
     deposits_in: Decimal = ZERO
     refunds_out: Decimal = ZERO
+    waived: Decimal = ZERO  # rent let off at move-out this month
     rows: list = field(default_factory=list)  # (tenancy, received, held, pending)
 
     @property
@@ -359,10 +368,11 @@ def month(first: date, day: date | None = None) -> Month:
             real_end = min(d.end, stop) if stop and stop < d.end else d.end  # the days actually charged
             per_day = d.amount / Decimal(max((real_end - d.start).days, 1))
             frac = ln.paid / d.amount if d.amount else Decimal(1)
+            off = ln.waived / d.amount if d.amount else ZERO  # waived: neither received nor pending
             past = max(0, (min(real_end, upto) - max(d.start, first)).days)
             future = max(0, (min(real_end, end) - max(d.start, upto, first)).days)
             r += per_day * past * frac
-            pnd += per_day * past * (1 - frac)
+            pnd += per_day * past * max(1 - frac - off, ZERO)
             h += per_day * future * frac
         r, h, pnd = _money(r), _money(h), _money(pnd)
         if r or h or pnd:
@@ -371,7 +381,10 @@ def month(first: date, day: date | None = None) -> Month:
         m.held += h
         m.pending += pnd
     pays = RentPayment.objects.filter(paid_on__gte=first, paid_on__lt=end)
-    m.collected = pays.filter(kind=RentPayment.Kind.RENT).aggregate(s=Sum("amount"))["s"] or ZERO
+    m.collected = (pays.filter(kind=RentPayment.Kind.RENT).exclude(mode__in=RentPayment.SETTLEMENT_MODES)
+                   .aggregate(s=Sum("amount"))["s"] or ZERO)
+    m.waived = (pays.filter(kind=RentPayment.Kind.RENT, mode=RentPayment.Mode.WAIVED)
+                .aggregate(s=Sum("amount"))["s"] or ZERO)
     m.deposits_in = pays.filter(kind=RentPayment.Kind.DEPOSIT).aggregate(s=Sum("amount"))["s"] or ZERO
     m.refunds_out = (Tenancy.objects.filter(refund_paid_on__gte=first, refund_paid_on__lt=end)
                      .aggregate(s=Sum("refund"))["s"] or ZERO)

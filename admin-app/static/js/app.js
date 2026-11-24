@@ -499,6 +499,7 @@
     const calc = () => {
       let left = num(settle.dataset.deposit);
       settle.querySelectorAll("[data-settle-amount]").forEach((i) => { left -= num(i.value); });
+      settle.querySelectorAll("[data-settle-add]").forEach((i) => { left += Math.min(num(i.value), num(i.dataset.max)); });
       const fmt = (n) => "₹" + Math.round(Math.abs(n)).toLocaleString("en-IN");
       out.textContent = fmt(left);
       const label = settle.querySelector("[data-settle-label]");

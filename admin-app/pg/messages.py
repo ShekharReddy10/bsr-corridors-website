@@ -46,6 +46,8 @@ def due_rule_text(t: Tenancy) -> str:
 
 def settlement_text(t: Tenancy) -> str:
     rows = [f"Advance received: {inr(t.deposit_received)}"]
+    if t.rent_waived > 0:
+        rows.append(f"Rent waived: {inr(t.rent_waived)}")
     if t.unpaid_rent > 0:
         rows.append(f"Rent due: {inr(t.unpaid_rent)}")
     elif t.unpaid_rent < 0:

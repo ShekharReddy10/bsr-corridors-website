@@ -14,7 +14,7 @@
 <section class="card money-hero">
   <p class="money-label">Profit this month (received − expenses)</p>
   <p class="money-big">{{ profit|inr }}</p>
-  <p class="muted small">Cash in this month: rent {{ m.collected|inr }} · advances {{ m.deposits_in|inr }} · refunds paid {{ m.refunds_out|inr }}. Advances held now: {{ held_deposits|inr }} (not income).</p>
+  <p class="muted small">Cash in this month: rent {{ m.collected|inr }} · advances {{ m.deposits_in|inr }} · refunds paid {{ m.refunds_out|inr }}{% if m.waived %} · rent waived {{ m.waived|inr }} (not counted){% endif %}. Advances held now: {{ held_deposits|inr }} (not income).</p>
 </section>
 <section class="card">
   <h2>By resident</h2>
