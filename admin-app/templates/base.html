@@ -1,4 +1,4 @@
-{% load static %}<!doctype html>
+{% load static bsr %}<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -89,11 +89,12 @@
       {% else %}
       <a class="topbar-brand" href="{% url 'cluster_home' %}"><img src="{% static 'img/icon.png' %}" alt="" width="28" height="28"> {{ CLUSTER_NAME }}</a>
       {% endif %}
+      {% if item and 'money' in caps and url != 'money_unlock' %}{% money_shown as shown %}<div class="money-toggle">{% if shown %}<form method="post" action="{% url 'money_lock' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn btn-ghost btn-sm" title="Hide the amounts again">🔓 Hide amounts</button></form>{% else %}<a class="btn btn-outline btn-sm" href="{% url 'money_unlock' %}?next={{ request.get_full_path|urlencode }}" title="Money password and your authenticator code">🔒 Show amounts</a>{% endif %}</div>{% endif %}
       {% block actions %}{% endblock %}
     </header>
     {% if messages %}
       <div class="messages" role="status">
-        {% for m in messages %}<div class="msg msg-{{ m.tags }}">{{ m }}</div>{% endfor %}
+        {% for m in messages %}<div class="msg msg-{{ m.tags }}">{{ m|hide_money }}</div>{% endfor %}
       </div>
     {% endif %}
     <div class="page-enter">{% block content %}{% endblock %}</div>

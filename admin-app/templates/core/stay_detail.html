@@ -31,7 +31,7 @@
   {% endif %}
   {% if stay.is_active and stay.check_out %}<a class="btn btn-outline" href="{% url 'stay_extend' stay.pk %}">Extend stay</a>{% endif %}
   {% if stay.is_active and stay.kind == 'monthly' %}
-    <form method="post" action="{% url 'stay_action' stay.pk 'add-rent' %}" data-confirm="Add a month’s rent ({{ stay.monthly_rent|floatformat:0 }}) to the total?">{% csrf_token %}<button class="btn btn-outline">Add month’s rent</button></form>
+    <form method="post" action="{% url 'stay_action' stay.pk 'add-rent' %}" data-confirm="Add a month’s rent ({{ stay.monthly_rent|inr }}) to the total?">{% csrf_token %}<button class="btn btn-outline">Add month’s rent</button></form>
   {% endif %}
   {% if swap_with %}
   <details class="swap-room">
@@ -100,7 +100,7 @@
     <h2>Payment</h2>
     {% if just_paid and g.phone %}{% for t in wa_templates %}{% if "{amount}" in t.body and "{payment_link}" not in t.body %}
     <div class="alert">Payment recorded.
-      <a class="btn btn-sm btn-primary" href="{% url 'stay_whatsapp' stay.pk %}?t={{ t.pk }}&amp;amount={{ just_paid }}" target="whatsapp">Send “{{ t.name }}” ({{ just_paid|inr }})</a></div>
+      <a class="btn btn-sm btn-primary" href="{% url 'stay_whatsapp' stay.pk %}?t={{ t.pk }}&amp;amount={{ just_paid|amt }}" target="whatsapp">Send “{{ t.name }}” ({{ just_paid|inr }})</a></div>
     {% endif %}{% endfor %}{% endif %}
     <dl class="dl">
       <dt>Total</dt><dd>{{ stay.total|inr }} <small class="muted">{% if stay.check_out %}for {{ stay.nights }} night{{ stay.nights|pluralize }}{% else %}rent added so far{% endif %}</small></dd>
@@ -115,7 +115,7 @@
       <span><b>Guest says they paid {{ r.amount|inr }} by UPI</b>{% if r.reference %} · ref <b>{{ r.reference }}</b>{% endif %} · {{ r.claimed_at|date:"d-m-Y h:i A" }}. Please check your UPI / bank app.</span>
       <span class="inline-form">
         <form method="post" action="{% url 'stay_action' stay.pk 'payment' %}" class="inline-form"{% if g.phone %} data-pay-wa{% endif %}>{% csrf_token %}
-          <input type="hidden" name="amount" value="{{ r.amount|floatformat:0 }}"><input type="hidden" name="mode" value="upi">
+          <input type="hidden" name="amount" value="{{ r.amount|amt }}"><input type="hidden" name="mode" value="upi">
           <input type="hidden" name="note" value="UPI payment link{% if r.reference %} · ref {{ r.reference }}{% endif %}"><input type="hidden" name="pay_request" value="{{ r.pk }}">
           <input type="hidden" name="date" value="{{ today|date:'Y-m-d' }}">
           <button class="btn btn-primary btn-sm">Received — record {{ r.amount|inr }}</button></form>
@@ -127,7 +127,7 @@
     {% if not stay.is_void %}
     <form method="post" action="{% url 'stay_action' stay.pk 'payment' %}" class="pay-form"{% if g.phone %} data-pay-wa{% endif %}>{% csrf_token %}
       <input name="amount" type="number" min="1" step="1" inputmode="decimal" placeholder="Amount ₹" required aria-label="Payment amount"
-             {% if stay.balance > 0 %}value="{{ stay.balance|floatformat:0 }}"{% endif %}>
+             {% if stay.balance > 0 %}value="{{ stay.balance|amt }}"{% endif %}>
       <select name="mode" aria-label="Payment mode">{% for v, l in payment_form.fields.mode.choices %}<option value="{{ v }}" {% if v == stay.payment_mode %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
       <select name="collected_by" aria-label="Collected by"><option value="">Collected by —</option>{% for h in hosts %}<option value="{{ h }}"{% if h == collector %} selected{% endif %}>{{ h }}</option>{% endfor %}</select>
       <input name="date" type="date" value="{{ today|date:'Y-m-d' }}" max="{{ today|date:'Y-m-d' }}" aria-label="Payment date">
@@ -136,7 +136,7 @@
     {% if g.phone %}{% if pay_ready %}
     <form method="post" action="{% url 'stay_pay_link' stay.pk %}" target="whatsapp" class="pay-link-form">{% csrf_token %}
       <input name="amount" type="number" min="1" step="1" inputmode="decimal" required aria-label="Amount for the payment link"
-             value="{% if stay.balance > 0 %}{{ stay.balance|floatformat:0 }}{% endif %}" placeholder="Amount ₹">
+             value="{% if stay.balance > 0 %}{{ stay.balance|amt }}{% endif %}" placeholder="Amount ₹">
       <button class="btn btn-outline btn-sm">Send UPI payment link</button>
     </form>
     {% else %}<p class="muted small">UPI payment links: add <b>UPI_ID</b> in Render → Environment to turn them on.</p>{% endif %}{% endif %}
@@ -192,12 +192,12 @@
   <div class="wa-buttons">
     {% for t in wa_templates %}{% if "{payment_link}" in t.body %}{% if pay_ready and not stay.is_void %}
     <form method="post" action="{% url 'stay_pay_link' stay.pk %}" target="whatsapp" class="wa-amount">{% csrf_token %}
-      <input name="amount" type="number" min="1" step="1" inputmode="decimal" placeholder="₹" aria-label="Amount to pay" required value="{% if stay.balance > 0 %}{{ stay.balance|floatformat:0 }}{% endif %}">
+      <input name="amount" type="number" min="1" step="1" inputmode="decimal" placeholder="₹" aria-label="Amount to pay" required value="{% if stay.balance > 0 %}{{ stay.balance|amt }}{% endif %}">
       <button class="btn btn-outline btn-sm">{{ t.name }}</button></form>{% endif %}
     {% elif "{ext_amount}" in t.body %}{% if extended %}<a class="btn btn-outline btn-sm" href="{% url 'stay_whatsapp' stay.pk %}?t={{ t.pk }}" target="whatsapp">{{ t.name }}</a>{% endif %}
     {% elif "{amount}" in t.body %}
     <form method="get" action="{% url 'stay_whatsapp' stay.pk %}" target="whatsapp" class="wa-amount"><input type="hidden" name="t" value="{{ t.pk }}">
-      <input name="amount" type="number" min="1" step="1" inputmode="decimal" placeholder="₹" aria-label="Amount received" required value="{% if last_payment %}{{ last_payment.amount|floatformat:0 }}{% endif %}">
+      <input name="amount" type="number" min="1" step="1" inputmode="decimal" placeholder="₹" aria-label="Amount received" required value="{% if last_payment %}{{ last_payment.amount|amt }}{% endif %}">
       <button class="btn btn-outline btn-sm">{{ t.name }}</button></form>
     {% else %}<a class="btn btn-outline btn-sm" href="{% url 'stay_whatsapp' stay.pk %}?t={{ t.pk }}" target="whatsapp"{% if invoice_pending and t.pk in invoice_msgs %} data-busy="Generating the invoice…"{% endif %}>{{ t.name }}</a>{% endif %}{% endfor %}
     <a class="btn btn-ghost btn-sm" href="{% url 'stay_whatsapp' stay.pk %}" target="whatsapp">Open chat</a>
@@ -216,7 +216,7 @@
 <section class="card">
   <h2>History</h2>
   <ul class="log">
-    {% for l in logs %}<li><time>{{ l.at|date:"d-m-Y H:i" }}</time> {{ l.summary }}</li>{% empty %}<li class="muted">No history.</li>{% endfor %}
+    {% for l in logs %}<li><time>{{ l.at|date:"d-m-Y H:i" }}</time> {{ l.summary|hide_money }}</li>{% empty %}<li class="muted">No history.</li>{% endfor %}
   </ul>
 </section>
 
@@ -227,11 +227,11 @@
     <label>{% if stay.check_out %}Leaving early on{% else %}Leaving on{% endif %} <input type="date" name="new_check_out" value="{{ today|date:'Y-m-d' }}"></label>
     <button class="btn btn-outline btn-sm">{% if stay.check_out %}Shorten stay{% else %}Set leaving date{% endif %}</button>
   </form>
-  <form method="post" action="{% url 'stay_action' stay.pk 'cancel' %}" class="inline-form" data-confirm="Cancel this stay? The room becomes free.{% if stay.amount_paid %} The ₹{{ stay.amount_paid|floatformat:0 }} paid is treated as refunded and leaves revenue.{% endif %}">{% csrf_token %}<button class="btn btn-outline btn-sm">Cancel stay</button></form>
+  <form method="post" action="{% url 'stay_action' stay.pk 'cancel' %}" class="inline-form" data-confirm="Cancel this stay? The room becomes free.{% if stay.amount_paid %} The {{ stay.amount_paid|inr }} paid is treated as refunded and leaves revenue.{% endif %}">{% csrf_token %}<button class="btn btn-outline btn-sm">Cancel stay</button></form>
   {% elif stay.is_void %}
   <form method="post" action="{% url 'stay_action' stay.pk 'undo-cancel' %}" class="inline-form">{% csrf_token %}<button class="btn btn-outline btn-sm">Restore stay</button></form>
   {% endif %}
-  <form method="post" action="{% url 'stay_action' stay.pk 'delete' %}" class="inline-form" data-confirm="Delete this stay permanently? This cannot be undone.{% if stay.amount_paid %} The ₹{{ stay.amount_paid|floatformat:0 }} paid will disappear from revenue.{% endif %}">{% csrf_token %}<button class="btn btn-danger btn-sm">Delete stay</button></form>
+  <form method="post" action="{% url 'stay_action' stay.pk 'delete' %}" class="inline-form" data-confirm="Delete this stay permanently? This cannot be undone.{% if stay.amount_paid %} The {{ stay.amount_paid|inr }} paid will disappear from revenue.{% endif %}">{% csrf_token %}<button class="btn btn-danger btn-sm">Delete stay</button></form>
 </details>
 {% endwith %}
 {% endblock %}

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Money access{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Money access — {{ HOTEL_NAME }}</h1>
+  <p class="muted">Who can see {{ HOTEL_NAME }}’s amounts (revenue, bills, payments, rent, expenses). Each of them opens them with the money password and their own authenticator code.</p></div></div>
+{% if not controlled %}
+<div class="msg msg-warning">{{ HOTEL_NAME }} has no owner with an authenticator yet, so the main admin sets this up the first time. Tick the owner(s) below{% if is_admin and not admin_member %}, or make yourself the owner{% endif %}. Once an owner has set up their authenticator, only owners can change this page — the main admin can’t.</div>
+{% endif %}
+<form method="post" class="card">{% csrf_token %}
+  <div class="table-wrap"><table class="table table-cards">
+    <thead><tr><th>Person</th><th>Role</th><th>Owner</th><th>Money access</th><th>Authenticator</th>{% if is_admin %}<th></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for r in rows %}{% with m=r.m a=r.auth %}
+      <tr>
+        <td data-label="Person"><b>{{ m.user.get_full_name|default:m.user.username }}</b> <small class="muted">{{ m.user.username }}</small></td>
+        <td data-label="Role">{{ m.get_role_display }}</td>
+        <td data-label="Owner"><input type="checkbox" name="owner-{{ m.pk }}" value="1" {% if m.role == 'owner' %}checked{% endif %} {% if not manage %}disabled{% endif %} aria-label="{{ m.user.username }} is an owner"></td>
+        <td data-label="Money access"><input type="checkbox" name="money-{{ m.pk }}" value="1" {% if m.money_access %}checked{% endif %} {% if not manage %}disabled{% endif %} aria-label="{{ m.user.username }} can see money"></td>
+        <td data-label="Authenticator">{% if a.ready %}<span class="ok">✓</span> set up {{ a.confirmed_at|date:"d M Y" }}{% elif a.reset_at %}<span class="warn">Reset</span> {{ a.reset_at|date:"d M" }}{% elif m.money_access %}<span class="muted">Not yet — at their first unlock</span>{% else %}—{% endif %}</td>
+        {% if is_admin %}<td data-label="">{% if a.ready %}<button class="btn btn-ghost btn-sm" form="reset-{{ a.pk }}">Reset authenticator</button>{% endif %}</td>{% endif %}
+      </tr>
+    {% endwith %}{% empty %}<tr><td colspan="6" class="muted">Nobody has access to {{ HOTEL_NAME }} yet — the main admin adds logins under Users &amp; access.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% if manage %}
+    {% if controlled %}<div class="field"><label for="ma-code">Your current authenticator code (to confirm)</label><input id="ma-code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required style="max-width: 160px"></div>{% endif %}
+    <div class="form-actions"><button class="btn btn-primary">Save money access</button></div>
+  {% else %}<p class="muted small">Only {{ HOTEL_NAME }}’s owners can change this.</p>{% endif %}
+</form>
+{% if manage and not controlled and is_admin and not admin_member %}
+<form method="post" class="card inline-form">{% csrf_token %}<input type="hidden" name="action" value="add-me">
+  <span>Are you an owner of {{ HOTEL_NAME }}?</span><button class="btn btn-outline btn-sm">Make me an owner with money access</button></form>
+{% endif %}
+{% for r in rows %}{% if r.auth.ready and is_admin %}
+<form method="post" id="reset-{{ r.auth.pk }}" hidden data-confirm="Reset {{ r.m.user.get_full_name|default:r.m.user.username }}’s authenticator? They set it up again at their next unlock. This is written in the property’s log.">{% csrf_token %}<input type="hidden" name="action" value="reset-auth"><input type="hidden" name="auth" value="{{ r.auth.pk }}"></form>
+{% endif %}{% endfor %}
+<p class="muted small">Owners always have money access. Changing anything here is written in {{ HOTEL_NAME }}’s log and the group’s activity log.</p>
+{% endblock %}

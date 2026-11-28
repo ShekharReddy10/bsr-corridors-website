@@ -209,3 +209,28 @@ class ArchiveStore(models.Model):
 
     def __str__(self):
         return "Archive database"
+
+
+class MoneyAuth(models.Model):
+    """A person's authenticator (Google Authenticator, Microsoft Authenticator…) for one property's money. Seeing any
+    amount there needs the property's money password and a code from this — the main admin included."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="money_auths")
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name="money_auths")
+    secret = EncryptedTextField(blank=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    last_step = models.BigIntegerField(default=0)  # a code can't be used twice
+    reset_by = models.CharField(max_length=60, blank=True)
+    reset_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "cluster_money_auth"
+        constraints = [models.UniqueConstraint(fields=["user", "item"], name="cluster_money_auth_once")]
+
+    def __str__(self):
+        return f"{self.user} @ {self.item}"
+
+    @property
+    def ready(self) -> bool:
+        return bool(self.secret and self.confirmed_at)

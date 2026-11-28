@@ -48,7 +48,7 @@
   {% if 'pay' in caps %}
   <details class="collect" {% if owed > 0 %}open{% endif %}><summary class="btn btn-primary btn-sm">Collect payment</summary>
     <form method="post" action="{% url 'pg_rent_action' t.pk 'pay' %}" class="form-grid collect-form" target="_self">{% csrf_token %}
-      <div class="field"><label for="c-amount">Amount (₹)</label><input id="c-amount" name="amount" inputmode="decimal" required value="{% if owed > 0 %}{{ owed|floatformat:0 }}{% endif %}"></div>
+      <div class="field"><label for="c-amount">Amount (₹)</label><input id="c-amount" name="amount" inputmode="decimal" required value="{% if owed > 0 %}{{ owed|amt }}{% endif %}"></div>
       <div class="field"><label for="c-kind">For</label><select id="c-kind" name="kind">{% for k, l in kinds %}<option value="{{ k }}">{{ l }}</option>{% endfor %}</select></div>
       <div class="field"><label for="c-mode">Paid by</label><select id="c-mode" name="mode">{% for k, l in modes %}<option value="{{ k }}"{% if k == 'upi' %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
       <div class="field"><label for="c-date">On</label><input id="c-date" type="date" name="paid_on" value="{{ today|date:'Y-m-d' }}" max="{{ today|date:'Y-m-d' }}"></div>
@@ -64,7 +64,7 @@
   <div class="wa-buttons">
     {% for m in msgs %}<form method="post" action="{% url 'pg_rent_action' t.pk 'message' %}" target="whatsapp">{% csrf_token %}<input type="hidden" name="message" value="{{ m.pk }}"><button class="btn btn-outline btn-sm">{{ m.name }}</button></form>{% endfor %}
     {% if upi_ready and 'pay' in caps %}<form method="post" action="{% url 'pg_rent_action' t.pk 'message' %}" target="whatsapp" class="inline-form">{% csrf_token %}{% for m in msgs %}{% if m.use == 'pay_link' %}<input type="hidden" name="message" value="{{ m.pk }}">{% endif %}{% endfor %}
-      <input name="amount" inputmode="decimal" style="width: 100px" aria-label="Link amount" value="{% if owed > 0 %}{{ owed|floatformat:0 }}{% endif %}" placeholder="₹"><button class="btn btn-outline btn-sm">Send UPI link</button></form>{% endif %}
+      <input name="amount" inputmode="decimal" style="width: 100px" aria-label="Link amount" value="{% if owed > 0 %}{{ owed|amt }}{% endif %}" placeholder="₹"><button class="btn btn-outline btn-sm">Send UPI link</button></form>{% endif %}
   </div>
   {% if not upi_ready %}<p class="muted small">UPI payment links: add this property’s UPI ID on its page (Properties → Edit).</p>{% endif %}
   {% if open_link %}<p class="muted small">UPI link for {{ open_link.amount|inr }} sent {{ open_link.created_at|date:"d M" }} — waiting for payment.</p>{% endif %}

@@ -5,6 +5,7 @@ from django.shortcuts import get_object_or_404
 
 from .. import invoice
 from ..models import AuditLog, Stay
+from .revenue import revenue_unlocked
 
 
 def _pdf_response(stay: Stay, download: bool) -> HttpResponse:
@@ -16,6 +17,7 @@ def _pdf_response(stay: Stay, download: bool) -> HttpResponse:
     return response
 
 
+@revenue_unlocked
 def stay_invoice(request, pk):
     stay = get_object_or_404(Stay.objects.select_related("guest", "room", "room__room_type"), pk=pk)
     if not invoice.has_invoice(stay):  # only once generated, and only stays that have one

@@ -781,3 +781,11 @@ details.waive > summary { cursor: pointer; color: var(--ink-soft); }
 .viewer-stage iframe { width: min(1000px, 96vw); height: 82vh; border: 0; border-radius: 8px; background: #fff; }
 .viewer-stage video { max-width: 96vw; max-height: 82vh; border-radius: 8px; background: #000; }
 .viewer-file { text-align: center; color: #fff; display: grid; gap: 12px; justify-items: center; }
+
+/* Money: authenticator set-up and the amounts on/off button */
+.setup-steps { display: grid; gap: 10px; padding-left: 20px; }
+.totp-qr { margin: 8px 0; }
+.totp-qr img { background: #fff; padding: 6px; border-radius: 10px; border: 1px solid var(--line); }
+.totp-key { font-size: .95rem; letter-spacing: .05em; user-select: all; }
+.money-toggle { margin-left: auto; }
+.money-toggle .btn { white-space: nowrap; }

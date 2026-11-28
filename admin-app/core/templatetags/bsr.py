@@ -5,9 +5,17 @@ from django import template
 register = template.Library()
 
 
+def _hidden() -> bool:
+    from cluster import money
+    return not money.visible()
+
+
 @register.filter
 def inr(value):
-    """1234567.5 → '₹12,34,568' (Indian digit grouping, no paise)."""
+    """1234567.5 → '₹12,34,568' (Indian digit grouping, no paise). Money locked: '₹ ••••'."""
+    if _hidden() and value not in (None, ""):
+        from cluster.money import HIDDEN
+        return HIDDEN
     try:
         n = int(Decimal(value).quantize(Decimal("1")))
     except (InvalidOperation, TypeError, ValueError):
@@ -42,6 +50,9 @@ def invoice_no(stay):
 @register.filter
 def inr_short(value):
     """Chart axes: 150000 → '₹1.5L', 45000 → '₹45K', 2.5 crore → '₹2.5Cr'."""
+    if _hidden():
+        from cluster.money import HIDDEN
+        return HIDDEN
     try:
         n = float(value)
     except (TypeError, ValueError):
@@ -55,3 +66,36 @@ def inr_short(value):
 @register.inclusion_tag("partials/field.html")
 def field(bound_field, css=""):
     return {"f": bound_field, "css": css}
+
+
+@register.filter
+def amt(value):
+    """A plain whole number for a form field or a page script (e.g. 4500); "" while money is locked."""
+    if _hidden():
+        return ""
+    try:
+        return str(int(Decimal(value).quantize(Decimal("1"))))
+    except (InvalidOperation, TypeError, ValueError):
+        return ""
+
+
+MONEY_TEXT = None
+
+
+@register.filter
+def hide_money(text):
+    """Logs and messages: '₹4,500 received' → '₹ •••• received' while money is locked."""
+    global MONEY_TEXT
+    if not _hidden() or not text:
+        return text
+    import re
+    from cluster.money import HIDDEN
+    if MONEY_TEXT is None:
+        MONEY_TEXT = re.compile(r"(?:₹|Rs\.?)\s?-?[\d,]+(?:\.\d+)?")
+    return MONEY_TEXT.sub(HIDDEN, str(text))
+
+
+@register.simple_tag
+def money_shown():
+    """In templates: {% money_shown as shown %} — True when amounts are shown."""
+    return not _hidden()

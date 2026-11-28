@@ -15,10 +15,12 @@ from ..exports import build_workbook
 from ..forms import DateRangeForm
 from ..models import AppSetting, AuditLog, BackupRun, Guest, Stay
 from ..services import HOSTS_KEY, host_names, partner_shares, today
+from .revenue import revenue_unlocked
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
+@revenue_unlocked
 def export(request):
     t = today()
     form = DateRangeForm(request.POST or None, initial={"start": t.replace(day=1), "end": t})

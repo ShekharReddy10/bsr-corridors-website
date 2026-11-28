@@ -128,15 +128,6 @@ def theme(request, code):
 # ── Add / edit cluster items (admin) ──
 
 
-def _set_money_password(item, password: str) -> None:
-    from django.contrib.auth.hashers import make_password
-    from core.models import AppSetting, AuditLog
-    from core.views.revenue import HASH_KEY
-    with current.using(item):
-        AppSetting.put(HASH_KEY, make_password(password))
-        AuditLog.record("revenue_password", "Money password set by the main admin")
-
-
 @admin_only
 def item_new(request):
     from .forms import ItemForm
@@ -160,7 +151,6 @@ def item_new(request):
                 item.delete()
             messages.error(request, f"Couldn’t create the tables for {item.name}: {exc}. Nothing was saved.")
             return render(request, "cluster/item_form.html", ctx)
-        _set_money_password(item, form.cleaned_data["money_password"])
         partners.instance = item
         partners.save()
         Activity.record("property", f"{item.name} added ({item.get_kind_display()}, code {item.code})"
@@ -235,8 +225,7 @@ def item_edit(request, code):
                                           f"copied and checked. The old copy is kept as a fallback.")
             return redirect("item_edit", code=code)
         if form.is_valid() and partners.is_valid():
-            changed = [str(form.fields[n].label or n).lower() for n in form.changed_data
-                       if n not in ("money_password", "money_confirm")]
+            changed = [str(form.fields[n].label or n).lower() for n in form.changed_data]
             form.save()
             if "drive_folder" in form.changed_data or "name" in form.changed_data:
                 _make_folder(request, item)  # the Drive folder follows the new name
@@ -246,12 +235,7 @@ def item_edit(request, code):
                 Activity.record("property", f"{item.name}: partners {before} → {after}", item)
             if changed:
                 Activity.record("property", f"{item.name}: changed {', '.join(changed)}", item)
-            if form.cleaned_data.get("money_password"):
-                _set_money_password(item, form.cleaned_data["money_password"])
-                Activity.record("money_password", f"{item.name}: money password reset", item)
-                messages.success(request, f"{item.name}: saved, and the money password is changed.")
-            else:
-                messages.success(request, f"{item.name}: saved.")
+            messages.success(request, f"{item.name}: saved.")
             return redirect("item_edit", code=code)
     return render(request, "cluster/item_form.html", {
         "form": form, "obj": item, "web_drive_ready": bool(settings.GOOGLE_WEB_CLIENT_ID), "themes": theme_list(),
@@ -641,4 +625,10 @@ def archive_person(request, rid):
                 f[k] = f"{d:%d-%m-%Y}"
         c["place"] = rooms.get(f.get("room") or f.get("bed"), "—")
         c["paid"] = sum(float(x.get("amount") or 0) for x in c["payments"])
-    return render(request, "cluster/archive_person.html", {"p": p, "cluster_name": settings.CLUSTER_NAME})
+    # Amounts only for someone who has opened that property's money (the main admin included).
+    from . import money
+    token = money.set_visible(p["property"] is not None and money.unlocked(request, p["property"]))
+    try:
+        return render(request, "cluster/archive_person.html", {"p": p, "cluster_name": settings.CLUSTER_NAME})
+    finally:
+        money.reset_visible(token)

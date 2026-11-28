@@ -7,20 +7,16 @@ forgotten password can be reset from Render's settings (the free plan has no she
 
 import hmac
 import os
-import time
 from datetime import date
 from functools import wraps
 from urllib.parse import quote
 
-from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.hashers import check_password, make_password
-from django.core.cache import cache
 from django.db.models import Sum
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from cluster import current as cluster_current
@@ -44,26 +40,27 @@ def _env_password() -> str:
     return os.environ.get("REVENUE_PASSWORD", "") if item is None or item.is_default else ""
 
 
-def _session_key() -> str:
-    """Unlocking one cluster item's money pages doesn't unlock another's."""
-    item = cluster_current.get()
-    return SESSION_KEY if item is None or item.is_default else f"{SESSION_KEY}:{item.code}"
-
-
 def _has_password() -> bool:
-    return bool(_env_password() or AppSetting.get(HASH_KEY))
+    return bool(AppSetting.get(HASH_KEY) or _env_password())
 
 
 def _password_ok(password: str) -> bool:
-    env = _env_password()
-    if env:
-        return hmac.compare_digest(password.encode(), env.encode())
+    """The owner's own money password wins; REVENUE_PASSWORD in Render only counts until the owner has set one."""
     stored = AppSetting.get(HASH_KEY)
-    return bool(stored) and check_password(password, stored)
+    if stored:
+        return check_password(password, stored)
+    env = _env_password()
+    return bool(env) and hmac.compare_digest(password.encode(), env.encode())
 
 
 def _unlocked(request) -> bool:
-    return request.session.get(_session_key(), 0) > time.time()
+    """Money access for this property, opened with the money password and the person's authenticator code."""
+    from cluster import money
+    return money.unlocked(request)
+
+
+def _unlock_url(request) -> str:
+    return local("/money/unlock/") + f"?next={quote(request.get_full_path())}"
 
 
 def _fail_key(request) -> str:
@@ -76,48 +73,14 @@ def revenue_unlocked(view):
     @wraps(view)
     def wrapper(request, *args, **kwargs):
         if not _unlocked(request):
-            return redirect(local("/revenue/") + f"?next={quote(request.get_full_path())}")
+            return redirect(_unlock_url(request))
         return view(request, *args, **kwargs)
     return wrapper
 
 
-def _after_unlock(request):
-    nxt = request.GET.get("next", "")
-    if url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
-        return redirect(nxt)
-    return redirect("revenue")
-
-
 def revenue_page(request, year=None, month_no=None):
-    has_password = _has_password()
-    if request.method == "POST":
-        password = request.POST.get("password", "")
-        if not has_password:
-            if len(password) < MIN_LENGTH:
-                messages.error(request, f"Use at least {MIN_LENGTH} characters.")
-            elif password != request.POST.get("confirm", ""):
-                messages.error(request, "The two passwords don’t match.")
-            else:
-                AppSetting.put(HASH_KEY, make_password(password))
-                AuditLog.record("revenue_password", "Revenue password set")
-                request.session[_session_key()] = time.time() + UNLOCK_SECONDS
-                messages.success(request, "Revenue password set.")
-                return _after_unlock(request)
-            return redirect(request.get_full_path())
-        key = _fail_key(request)
-        if cache.get(key, 0) >= settings.LOGIN_MAX_ATTEMPTS:
-            messages.error(request, f"Too many wrong passwords. Try again in {settings.LOGIN_LOCKOUT_SECONDS // 60} minutes.")
-        elif _password_ok(password):
-            cache.delete(key)
-            request.session[_session_key()] = time.time() + UNLOCK_SECONDS
-            return _after_unlock(request)
-        else:
-            cache.set(key, cache.get(key, 0) + 1, settings.LOGIN_LOCKOUT_SECONDS)
-            messages.error(request, "Wrong password.")
-        return redirect(request.get_full_path())
-
     if not _unlocked(request):
-        return render(request, "core/revenue_lock.html", {"has_password": has_password, "min_length": MIN_LENGTH})
+        return redirect(_unlock_url(request))
     item = cluster_current.get()
     if item is not None and item.kind != "hotel":
         return redirect("pg_revenue")  # a PG / co-living's money page (rent instead of stays)
@@ -188,13 +151,21 @@ def _month_url(month) -> str:
 
 @require_POST
 def revenue_lock(request):
-    request.session.pop(_session_key(), None)
+    from cluster import money
+    money.lock(request, request.item)
     return redirect("dashboard")
 
 
 @require_POST
 def revenue_change_password(request):
+    """Only the property's owners change its money password (the main admin can't)."""
+    from cluster import money
+    from cluster.models import Membership
     if not _unlocked(request):
+        return redirect("revenue")
+    m = money.membership(request.user, request.item)
+    if m is None or m.role != Membership.Role.OWNER:
+        messages.error(request, "Only an owner of this property can change its money password.")
         return redirect("revenue")
     new = request.POST.get("new_password", "")
     if not _password_ok(request.POST.get("current_password", "")):

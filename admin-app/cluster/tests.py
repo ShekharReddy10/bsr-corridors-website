@@ -106,8 +106,9 @@ class ClusterTests(TransactionTestCase):
 
     def test_roles(self):
         self.login(R.DESK, self.pg)
-        self.assertEqual(self.client.get("/p/pgone/revenue/").status_code, 403)
-        self.assertEqual(self.client.get("/p/pgone/expenses/").status_code, 403)
+        r = self.client.get("/p/pgone/revenue/", follow=True)  # no money access: told so, and who to ask
+        self.assertContains(r, "You don’t have money access here")
+        self.assertEqual(self.client.get("/p/pgone/expenses/").status_code, 403)  # not for front desk at all
         self.assertEqual(self.client.post("/p/pgone/settings/", {"action": "hosts", "hosts": "A"}).status_code, 403)
         page = self.client.get("/p/pgone/")
         self.assertNotContains(page, "/p/pgone/revenue/")  # not in the menu either
@@ -146,14 +147,14 @@ class ClusterTests(TransactionTestCase):
         self.pg.refresh_from_db()
         self.assertEqual(self.pg.theme, "rose")
 
-    def test_money_password_is_per_item(self):
+    def test_money_is_per_item(self):
+        from .testing import open_money
         self.client.force_login(self.admin)
-        self.client.post("/revenue/", {"password": "hotel-money", "confirm": "hotel-money"})  # set + unlock
-        self.assertNotContains(self.client.get("/revenue/"), "Protected by a separate password")
-        # The PG has its own money password: not set yet, and BSR Corridors' unlock doesn't open it.
-        r = self.client.get("/p/pgone/revenue/")
-        self.assertContains(r, "Protected by a separate password")
-        self.assertContains(r, 'name="confirm"')
+        open_money(self.client, self.bsr)
+        self.assertContains(self.client.get("/revenue/"), "Previous months")
+        # The other property: no money access there (the main admin included), and BSR Corridors' unlock doesn't open it.
+        r = self.client.get("/p/pgone/revenue/", follow=True)
+        self.assertContains(r, "You don’t have money access here")
 
     # ── Phase 2 ──
 
@@ -194,7 +195,7 @@ class ClusterTests(TransactionTestCase):
             self.assertEqual(Room.objects.count(), 0)  # its own, empty tables
             from core.models import AppSetting, MessageTemplate
             self.assertTrue(MessageTemplate.objects.exists())  # default WhatsApp messages
-            self.assertTrue(AppSetting.get("revenue_password_hash"))  # money password set
+            self.assertFalse(AppSetting.get("revenue_password_hash"))  # no money password: its owner sets it
         self.assertEqual(Membership.objects.get(user=self.manager, item=item).role, R.MANAGER)
         self.assertEqual([(p.name, p.phone, p.share) for p in item.partners.all()],
                          [("Meena", "", Decimal("60")), ("Ravi", "+91 90000 33333", Decimal("40"))])
@@ -204,7 +205,7 @@ class ClusterTests(TransactionTestCase):
             self.assertEqual([s.of(1000) for s in shares], [Decimal("600"), Decimal("400")])
             self.assertEqual(share_text(shares), "Shared – Meena 60%, Ravi 40%")
         meena, ravi = item.partners.all()
-        # The type and code can't change afterwards; the money password can be reset. Partners: Ravi leaves.
+        # The type and code can't change afterwards; the admin can't set the money password. Partners: Ravi leaves.
         self.client.post("/properties/newpg/", {"name": "Renamed PG", "code": "other", "kind": "hotel",
                                                    "email": "pg@example.com", "managed_by": self.manager.pk,
                                                    "theme": "plum", "sort_order": 1, "refund_days": 10,
@@ -218,10 +219,9 @@ class ClusterTests(TransactionTestCase):
         self.assertTrue(Activity.objects.filter(summary__contains="partners Meena 60%, Ravi 40% → Meena").exists())
         item.refresh_from_db()
         self.assertEqual((item.name, item.code, item.kind, item.upi_id), ("Renamed PG", "newpg", "pg", "newpg@ybl"))
-        from django.contrib.auth.hashers import check_password
         with current.using(item):
             from core.models import AppSetting
-            self.assertTrue(check_password("new-money-2", AppSetting.get("revenue_password_hash")))
+            self.assertFalse(AppSetting.get("revenue_password_hash"))  # the posted password was ignored
             self.assertEqual(current.upi(), ("newpg@ybl", "Renamed PG"))  # its own UPI
         self.assertEqual(current.upi()[0], "")  # BSR Corridors: still from Render (none in tests)
 
@@ -372,7 +372,12 @@ class ArchiveTests(TransactionTestCase):
         rid = archive.find_people("", "9000077777")[0]["id"]
         page = self.client.get(f"/properties/archive/{rid}/")
         self.assertContains(page, "Old Guest")
-        self.assertContains(page, "paid ₹3000")
+        self.assertContains(page, "paid ₹ ••••")  # amounts: only after opening that property's money
+        self.assertNotContains(page, "3,000")
+        from .testing import open_money
+        open_money(self.client, self.bsr)
+        page = self.client.get(f"/properties/archive/{rid}/")
+        self.assertContains(page, "paid ₹3,000")
         self.assertContains(page, ">101<")  # the room number, from the main database
         self.assertEqual(archive.plan(self.bsr, before).total, 0)  # moving again: nothing left
 

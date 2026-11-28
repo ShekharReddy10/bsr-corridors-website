@@ -5,15 +5,15 @@
   <div><h1>Move out — {{ t.resident.name }}</h1><p class="muted">Bed {{ t.bed }} · advance received {{ t.deposit_received|inr }}</p></div>
   <a class="btn btn-ghost" href="{% url 'pg_tenancy' t.pk %}">Back</a>
 </div>
-<form method="post" class="card" data-extend-wa data-busy-text="Moving out…" data-settle data-deposit="{{ t.deposit_received }}" data-confirm="Move {{ t.resident.name }} out? The bed becomes vacant.">{% csrf_token %}
+<form method="post" class="card" data-extend-wa data-busy-text="Moving out…" data-settle data-deposit="{{ t.deposit_received|amt }}" data-confirm="Move {{ t.resident.name }} out? The bed becomes vacant.">{% csrf_token %}
   {% for e in errors %}<div class="msg msg-error">{{ e }}</div>{% endfor %}
   <div class="form-grid">
     <div class="field"><label for="mo-day">Moving out on</label><input id="mo-day" type="date" name="day" value="{{ day }}" required data-reload-day><small class="help">The bed is free from this day; rent is charged up to it.</small></div>
-    <div class="field"><span class="label">{% if owed >= 0 %}Rent still due{% else %}Rent paid ahead{% endif %}</span><p class="settle-owed"><b>{{ owed|inr|cut:"-" }}</b></p><input type="hidden" value="{{ owed }}" data-settle-amount><small class="help">Worked out from the rent periods and payments up to that day.</small></div>
+    <div class="field"><span class="label">{% if owed >= 0 %}Rent still due{% else %}Rent paid ahead{% endif %}</span><p class="settle-owed"><b>{{ owed|inr|cut:"-" }}</b></p><input type="hidden" value="{{ owed|amt }}" data-settle-amount><small class="help">Worked out from the rent periods and payments up to that day.</small></div>
   </div>
   {% if owed > 0 %}<details class="waive"{% if waive %} open{% endif %}><summary>Waive some of the rent</summary>
   <div class="form-grid">
-    <div class="field"><label for="mo-waive">Rent to waive (₹)</label><input id="mo-waive" name="waive" value="{{ waive }}" inputmode="decimal" placeholder="0" data-settle-add data-max="{{ owed }}"><small class="help">Up to {{ owed|inr }}. It isn't counted as rent received.</small></div>
+    <div class="field"><label for="mo-waive">Rent to waive (₹)</label><input id="mo-waive" name="waive" value="{{ waive }}" inputmode="decimal" placeholder="0" data-settle-add data-max="{{ owed|amt }}"><small class="help">Up to {{ owed|inr }}. It isn't counted as rent received.</small></div>
     <div class="field"><label for="mo-waive-reason">Why</label><input id="mo-waive-reason" name="waive_reason" value="{{ waive_reason }}" maxlength="200" placeholder="e.g. Water problem in the last week"></div>
   </div></details>{% endif %}
   <h2>Deductions</h2>

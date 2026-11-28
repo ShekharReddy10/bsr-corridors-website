@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% load bsr %}
 {% block title %}{{ p.fields.name }} · archive{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -11,8 +11,8 @@
   {% for c in p.children %}{% with f=c.fields %}
   <div class="stay-line"><span class="room-badge">{{ c.place }}</span>
     <div class="stay-line-main">
-      {% if p.model == 'core.guest' %}<b>{{ f.check_in }} → {{ f.check_out|default:"open" }}</b><small>{{ f.status }} · total ₹{{ f.total_amount|default:"0"|floatformat:"0" }} · paid ₹{{ c.paid|floatformat:"0" }}{% if f.source %} · {{ f.source }}{% endif %}</small>
-      {% else %}<b>{{ f.move_in }} → {{ f.move_out|default:"—" }}</b><small>{{ f.status }} · rent ₹{{ f.rent|floatformat:"0" }} {{ f.cycle|lower }} · advance ₹{{ f.deposit_received|floatformat:"0" }} · refund ₹{{ f.refund|floatformat:"0" }}{% if f.refund_paid_on %} paid {{ f.refund_paid_on }}{% endif %} · rent paid ₹{{ c.paid|floatformat:"0" }}</small>{% endif %}
+      {% if p.model == 'core.guest' %}<b>{{ f.check_in }} → {{ f.check_out|default:"open" }}</b><small>{{ f.status }} · total {{ f.total_amount|default:"0"|inr }} · paid {{ c.paid|inr }}{% if f.source %} · {{ f.source }}{% endif %}</small>
+      {% else %}<b>{{ f.move_in }} → {{ f.move_out|default:"—" }}</b><small>{{ f.status }} · rent {{ f.rent|inr }} {{ f.cycle|lower }} · advance {{ f.deposit_received|inr }} · refund {{ f.refund|inr }}{% if f.refund_paid_on %} paid {{ f.refund_paid_on }}{% endif %} · rent paid {{ c.paid|inr }}</small>{% endif %}
     </div></div>
   {% endwith %}{% empty %}<p class="muted">Only their details are in the archive (their records are still in the main database).</p>{% endfor %}
 </section>

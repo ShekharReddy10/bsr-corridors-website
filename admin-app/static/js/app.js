@@ -330,6 +330,7 @@
       summary();
     }));
     const summary = () => {
+      if (ext.dataset.total === "") { $("#extend-summary").textContent = "Amounts are hidden — unlock money to see the new total."; return; }
       const total = parseFloat(ext.dataset.total) + (parseFloat(ext.elements["amount"].value) || 0);
       const paid = parseFloat(ext.dataset.paid) + (parseFloat(ext.elements["paid_now"].value) || 0);
       $("#extend-summary").innerHTML = `New total <b>${inr(total)}</b> · Paid <b>${inr(paid)}</b> · Balance <b>${inr(total - paid)}</b>`;

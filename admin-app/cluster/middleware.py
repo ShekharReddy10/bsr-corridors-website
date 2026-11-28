@@ -11,7 +11,7 @@ from django.http import Http404
 from django.shortcuts import redirect, render
 from django.urls import set_script_prefix
 
-from . import access, current
+from . import access, current, money
 from .models import Item, Membership
 
 CLUSTER_PATHS = ("/properties/", "/login/", "/logout/", "/healthz/", "/backup/run/", "/static/")
@@ -40,7 +40,8 @@ def default_item() -> Item | None:
 
 
 def membership(user, item) -> Membership | None:
-    if not user.is_authenticated or user.is_superuser:
+    """The person's role at the item (the main admin too: his money access comes from it)."""
+    if not user.is_authenticated:
         return None
     return Membership.objects.filter(user=user, item=item).first()
 
@@ -71,11 +72,14 @@ class ClusterMiddleware:
         if item is not None and item.archived:
             request.caps = request.caps & {"view"}  # archived: read-only, even for the main admin
         token = current.set_item(item)
+        request._money_token = None
         if code is not None:
             set_script_prefix(item.prefix)
         try:
             return self.get_response(request)
         finally:
+            if request._money_token is not None:
+                money.reset_visible(request._money_token)
             current.reset(token)
             if code is not None:
                 set_script_prefix("/")
@@ -83,6 +87,10 @@ class ClusterMiddleware:
     def process_view(self, request, view_func, view_args, view_kwargs):
         match = request.resolver_match
         name = match.url_name if match else ""
+        # Amounts on screen: hidden for signed-in people until they unlock this property's money (guest pages —
+        # payment link, invoice, receipt — always show theirs).
+        if request.user.is_authenticated and name not in NO_CHECK and not request.path_info.startswith(GUEST_PATHS):
+            request._money_token = money.set_visible(money.unlocked(request))
         if request.item is not None and name:
             if request.item.kind != Item.Kind.HOTEL and name in HOTEL_ONLY:
                 return redirect("pg_messages" if name == "whatsapp" or name.startswith("wa_") else "pg_home")
@@ -95,6 +103,9 @@ class ClusterMiddleware:
                 return redirect("cluster_home")  # someone without BSR Corridors: their own cluster home
             return render(request, "cluster/no_access.html", {"item": request.item}, status=403)
         need = access.needed(request, match.url_name if match else "", view_kwargs)
+        if "money" in need and "money" not in request.caps and request.method == "GET":
+            from urllib.parse import quote
+            return redirect(current.local("/money/unlock/") + f"?next={quote(request.get_full_path())}")  # explains who to ask
         if not need <= request.caps:
             return render(request, "cluster/no_access.html", {"item": request.item, "page": True}, status=403)
         return None

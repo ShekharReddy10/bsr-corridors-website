@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% load bsr %}
 {% block title %}Settings{% endblock %}
 {% block content %}
 <div class="page-head"><h1>Settings &amp; log</h1></div>
@@ -26,6 +26,11 @@
   </div>
 </form>{% endif %}
 <section class="card">
+  <h2>Money access</h2>
+  <p class="muted small">Amounts are shown only to the people the owner chooses, after the money password and their own authenticator code.</p>
+  <a class="btn btn-outline btn-sm" href="{% url 'money_access' %}">Who can see the money</a>
+</section>
+<section class="card">
   <h2>Partners</h2>
   <p class="muted small">Who shares the profit when a month is settled. {% if user.is_superuser and item %}Change them on the <a href="{% url 'item_edit' item.code %}">property’s page</a>.{% else %}The main admin sets them on the property’s page.{% endif %}</p>
   {% for p in partners %}<div class="stay-line"><div class="stay-line-main"><b>{{ p.name }}</b><small>{{ p.pct|floatformat:"-2" }}%{% if p.phone %} · {{ p.phone }}{% endif %}{% if p.pay_to %} · pay to {{ p.pay_to }}{% endif %}</small></div></div>
@@ -41,6 +46,6 @@
   </div>
 </form>{% endif %}
 <section class="card"><h2>Activity log</h2>
-  <ul class="log">{% for l in logs %}<li><time>{{ l.at|date:"d-m-Y H:i" }}</time> {% if l.by %}<b>{{ l.by }}:</b> {% endif %}{% if l.stay %}<a href="{% url 'stay_detail' l.stay_id %}">{{ l.summary }}</a>{% else %}{{ l.summary }}{% endif %}</li>{% empty %}<li class="muted">Nothing yet.</li>{% endfor %}</ul>
+  <ul class="log">{% for l in logs %}<li><time>{{ l.at|date:"d-m-Y H:i" }}</time> {% if l.by %}<b>{{ l.by }}:</b> {% endif %}{% if l.stay %}<a href="{% url 'stay_detail' l.stay_id %}">{{ l.summary|hide_money }}</a>{% else %}{{ l.summary|hide_money }}{% endif %}</li>{% empty %}<li class="muted">Nothing yet.</li>{% endfor %}</ul>
 </section>
 {% endblock %}

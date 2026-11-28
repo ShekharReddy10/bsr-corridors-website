@@ -23,6 +23,7 @@ from .messages import due_rule_text
 from .forms import (BedForm, FloorForm, NoticeForm, RefundForm, ResidentForm, RoomForm, RoomTypeForm, ShiftForm,
                     TenancyForm)
 from .models import Bed, BedSpell, Floor, Resident, Room, RoomType, Tenancy
+from core.views.revenue import revenue_unlocked
 
 T = Tenancy.Status
 
@@ -295,6 +296,7 @@ def _amount(raw: str) -> Decimal:
     return value
 
 
+@revenue_unlocked
 def move_out(request, pk):
     from . import money
     t = get_object_or_404(Tenancy.objects.select_related("resident", "bed__room"), pk=pk)
@@ -566,6 +568,7 @@ def rent_action(request, pk, action):
     return back
 
 
+@revenue_unlocked
 def receipt(request, pk):
     from . import receipt as rc
     from . import money
@@ -669,7 +672,7 @@ def revenue(request):
     from . import money
     if not _unlocked(request):
         from cluster.current import local
-        return redirect(local("/revenue/") + "?next=" + request.path)
+        return redirect(local("/money/unlock/") + "?next=" + request.path)
     this = today().replace(day=1)
     try:
         y, m = (int(x) for x in request.GET.get("month", "").split("-"))

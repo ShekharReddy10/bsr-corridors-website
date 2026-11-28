@@ -18,18 +18,18 @@
           {% for i, m in u.access %}
             <tr>
               <td data-label="Property"><span class="swatch" style="--sw: {{ i.colors.0 }}; display: inline-block"></span> {{ i.name }} <small class="muted">{{ i.get_kind_display }}</small></td>
-              <td data-label="Role"><select name="role-{{ i.pk }}" aria-label="Role at {{ i.name }}">
+              <td data-label="Role">{% if i.pk in controlled and m.role == 'owner' %}<b>Owner</b> <small class="muted">(set by the owners)</small>{% else %}<select name="role-{{ i.pk }}" aria-label="Role at {{ i.name }}">
                 <option value="">No access</option>
-                {% for value, label in roles %}<option value="{{ value }}" {% if m and m.role == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
-              </select></td>
-              <td data-label="Money"><input type="checkbox" name="money-{{ i.pk }}" value="1" {% if m.money_access %}checked{% endif %} aria-label="Money access at {{ i.name }}"></td>
+                {% for value, label in roles %}{% if value != 'owner' or i.pk not in controlled %}<option value="{{ value }}" {% if m and m.role == value %}selected{% endif %}>{{ label }}</option>{% endif %}{% endfor %}
+              </select>{% endif %}</td>
+              <td data-label="Money">{% if m.money_access %}<span class="ok">✓</span>{% else %}<span class="muted">—</span>{% endif %}</td>
               <td data-label="Full IDs"><input type="checkbox" name="ids-{{ i.pk }}" value="1" {% if m.see_full_ids %}checked{% endif %} aria-label="Can see full ID numbers at {{ i.name }}"></td>
               <td data-label="Delete"><input type="checkbox" name="delete-{{ i.pk }}" value="1" {% if m.can_delete %}checked{% endif %} aria-label="Can delete at {{ i.name }}"></td>
             </tr>
           {% endfor %}
           </tbody>
         </table></div>
-        <p class="muted small">Owner / partner can do everything in that property. Manager: daily work, rooms, expenses. Front desk: bookings, check-in/out, payments, messages. Accountant: money, expenses, exports. View only: looks, changes nothing. The switches add money pages, full ID numbers or deleting to any role.</p>
+        <p class="muted small">Owner / partner: everything in that property. Manager: daily work, rooms. Front desk: bookings, check-in/out, payments, messages. Accountant: payments, exports. View only: looks, changes nothing. The switches add full ID numbers or deleting. <b>Money</b> (seeing any amount) is given only by the property’s owner on its Money access page — once a property’s owner has set up their authenticator, its owners are changed there too.</p>
         <button class="btn btn-primary btn-sm">Save access</button>
       </form>
       <form method="post" class="inline-form">{% csrf_token %}<input type="hidden" name="action" value="reset"><input type="hidden" name="user" value="{{ u.pk }}">

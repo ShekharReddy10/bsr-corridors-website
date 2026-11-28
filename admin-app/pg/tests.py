@@ -275,7 +275,9 @@ class PgTests(TransactionTestCase):
         self.assertContains(page, "On the 5th of every month")
         self.assertContains(page, "Payment received")  # the property's messages, as buttons
         self.assertNotContains(page, "1111 2222 3333")  # full ID never on the page
-        # Move out with the standard deduction filled in.
+        # Move out (it settles the advance: money opened) with the standard deduction filled in.
+        from cluster.testing import open_money
+        open_money(self.client, self.item)
         mo = self.client.get(f"/p/pgthree/pg/tenancy/{t.pk}/move-out/")
         self.assertContains(mo, 'value="Cleaning"')
         self.client.post(f"/p/pgthree/pg/tenancy/{t.pk}/move-out/", {"day": today().isoformat(),
@@ -343,6 +345,9 @@ class PgTests(TransactionTestCase):
         self.assertTrue(r["Location"].startswith("https://web.whatsapp.com/send?phone=919000011111"))
         self.assertIn("received", __import__("urllib.parse").parse.unquote(r["Location"]))
         p = t.payments.get(kind="rent")
+        from cluster.testing import open_money
+        self.assertEqual(self.client.get(f"/p/pgthree/pg/payment/{p.pk}/receipt/").status_code, 302)  # money closed
+        open_money(self.client, self.item)
         pdf = self.client.get(f"/p/pgthree/pg/payment/{p.pk}/receipt/")
         self.assertEqual(pdf["Content-Type"], "application/pdf")
         self.assertTrue(pdf.content.startswith(b"%PDF"))
@@ -389,8 +394,10 @@ class PgTests(TransactionTestCase):
         self.client.force_login(self.admin)
         r = self.client.get("/p/pgthree/pg/revenue/")
         self.assertEqual(r.status_code, 302)
-        self.assertIn("/p/pgthree/revenue/", r["Location"])
-        self.client.post("/p/pgthree/revenue/", {"password": "money-pass-1", "confirm": "money-pass-1"})
+        self.assertIn("/p/pgthree/money/unlock/", r["Location"])
+        self.assertContains(self.client.get(r["Location"]), "You don’t have money access here")  # the admin too
+        from cluster.testing import open_money
+        open_money(self.client, self.item)
         self.assertRedirects(self.client.get("/p/pgthree/revenue/"), "/p/pgthree/pg/revenue/", fetch_redirect_response=False)
         page = self.client.get("/p/pgthree/pg/revenue/")
         self.assertContains(page, "Ria")
@@ -494,6 +501,8 @@ class PgTests(TransactionTestCase):
     def test_waive_on_the_move_out_page(self):
         t = self.tenancy(move_in=today() - timedelta(days=14), cycle="weekly", rent=Decimal("2100"))
         self.client.force_login(self.admin)
+        from cluster.testing import open_money
+        open_money(self.client, self.item)
         page = self.client.get(f"/p/pgthree/pg/tenancy/{t.pk}/move-out/")
         self.assertContains(page, "Waive some of the rent")
         r = self.client.post(f"/p/pgthree/pg/tenancy/{t.pk}/move-out/", {"day": today().isoformat(), "waive": "200"})
@@ -690,4 +699,18 @@ class PgTests(TransactionTestCase):
         self.assertContains(page, 'src="/properties/pgthree/photo/logo/?v=drive-file-1"')  # new upload: new address
         self.assertContains(page, 'data-logo="/properties/pgthree/photo/logo/?v=drive-file-1"')  # the loader's logo
         self.assertEqual(branding.business_lines(None), [])
+
+    def test_rent_and_advance_hidden_without_money(self):
+        t = self.tenancy(move_in=today() - timedelta(days=3), rent=Decimal("7319"))
+        money.record(t, Decimal("2683"), mode="cash")
+        desk = get_user_model().objects.create_user("desk", password="x" * 12)
+        Membership.objects.create(user=desk, item=self.item, role=R.DESK)
+        self.client.force_login(desk)
+        for url in (f"/p/pgthree/pg/tenancy/{t.pk}/", "/p/pgthree/pg/", f"/p/pgthree/pg/room/{self.room.pk}/",
+                    f"/p/pgthree/pg/residents/{self.ria.pk}/"):
+            page = self.client.get(url).content.decode()
+            for leak in ("7,319", "7319", "2,683", "2683", "10,000"):
+                self.assertNotIn(leak, page, url)
+        self.assertIn("₹ ••••", self.client.get(f"/p/pgthree/pg/tenancy/{t.pk}/").content.decode())
+        self.assertEqual(self.client.get(f"/p/pgthree/pg/tenancy/{t.pk}/move-out/").status_code, 302)  # money only
 

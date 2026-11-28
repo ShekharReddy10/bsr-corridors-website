@@ -9,6 +9,27 @@ from .services import host_names, today
 DATE = forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")
 
 
+
+class HiddenAmount(forms.TextInput):
+    """A money field while money is locked: shows nothing (the saved amount isn't sent to the page)."""
+
+    def format_value(self, value):
+        return ""
+
+
+def hide_amounts(form, names) -> None:
+    """Money locked and the record already exists: these fields show ₹ ••••, can't be changed, and keep their saved
+    amount (a new booking's price can still be typed in)."""
+    from cluster import money
+    if money.visible() or not getattr(form.instance, "pk", None):
+        return
+    for name in names:
+        field = form.fields.get(name)
+        if field is None:
+            continue
+        field.disabled, field.required, field.help_text = True, False, ""
+        field.widget = HiddenAmount(attrs={"placeholder": "₹ •••• — unlock money to see or change"})
+
 class GuestForm(forms.ModelForm):
     """Guest details. On edit, a blank ID number keeps the stored one."""
 
@@ -127,6 +148,7 @@ class StayForm(forms.ModelForm):
         # Only room and dates are essential; empty amounts count as ₹0, stay type defaults to Daily.
         for name in ("kind", "total_amount", "amount_paid", "monthly_rent", "deposit_amount", "num_guests", "source"):
             self.fields[name].required = False
+        hide_amounts(self, ("total_amount", "amount_paid", "monthly_rent", "deposit_amount"))
 
     def _zero(self, name):
         return self.cleaned_data.get(name) or Decimal(0)
@@ -349,6 +371,10 @@ class MaintenanceLogForm(forms.ModelForm):
         fields = ["kind", "date", "what", "cost", "next_due", "notes"]
         widgets = {"date": DATE, "next_due": DATE, "notes": forms.Textarea(attrs={"rows": 2}),
                    "cost": forms.NumberInput(attrs={"inputmode": "decimal", "min": "0", "step": "1"})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        hide_amounts(self, ("cost",))
 
 
 class RecurringExpenseForm(forms.ModelForm):

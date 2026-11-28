@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Money{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Money — {{ HOTEL_NAME }}</h1><p class="muted">Amounts are hidden until you open them with this property’s money password and your own authenticator code.</p></div></div>
+<section class="card lock-card">
+{% if no_access %}
+  <h2>You don’t have money access here</h2>
+  <p class="muted">Amounts at {{ HOTEL_NAME }} are only for the people its owner chooses. Ask the owner to give you money access on the property’s <b>Money access</b> page.</p>
+  {% if may_manage %}<p><a class="btn btn-primary" href="{% url 'money_access' %}">Set up money access</a></p>{% endif %}
+{% elif setting_up %}
+  {% if reset %}<div class="msg msg-warning">Your authenticator for {{ HOTEL_NAME }} was reset by {{ reset.reset_by|default:"the main admin" }} on {{ reset.reset_at|date:"d M Y, h:i A" }}. Set it up again below.</div>{% endif %}
+  <h2>Set up your authenticator (once)</h2>
+  <ol class="setup-steps">
+    <li>On your phone, open <b>Google Authenticator</b> or <b>Microsoft Authenticator</b> (free, from the app store).</li>
+    <li>Tap <b>+</b> → <b>Scan a QR code</b>, and scan this:
+      <div class="totp-qr"><img src="{{ qr }}" alt="QR code for your authenticator app" width="200" height="200"></div>
+      <small class="muted">Can’t scan? Choose “Enter a setup key” and type: <code class="totp-key">{{ secret }}</code></small></li>
+    <li>It shows <b>{{ HOTEL_NAME }}</b> with a 6-digit code that changes every 30 seconds. Type the current code below.</li>
+  </ol>
+  <form method="post" class="form-grid lock-form">{% csrf_token %}<input type="hidden" name="next" value="{{ next }}">
+    {% if has_password %}
+      <div class="field"><label for="m-pw">Money password of {{ HOTEL_NAME }}</label><input id="m-pw" type="password" name="password" required autocomplete="current-password"></div>
+    {% elif may_set_password %}
+      <div class="field"><label for="m-pw">Choose the money password <small class="muted">(at least {{ min_length }} characters)</small></label><input id="m-pw" type="password" name="password" required minlength="{{ min_length }}" autocomplete="new-password"></div>
+      <div class="field"><label for="m-pw2">Repeat it</label><input id="m-pw2" type="password" name="confirm" required minlength="{{ min_length }}" autocomplete="new-password"></div>
+    {% else %}
+      <p class="muted span-2">{{ HOTEL_NAME }} has no money password yet — its owner sets it first.</p>
+    {% endif %}
+    <div class="field"><label for="m-code">6-digit code from the app</label><input id="m-code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,7}" maxlength="7" required></div>
+    <div class="span-2"><button class="btn btn-primary">Set up and open</button></div>
+  </form>
+  <p class="muted small">The app is yours alone: nobody else — not even the main admin — can open {{ HOTEL_NAME }}’s amounts with it. Each property you have money access to appears in the app separately.</p>
+{% else %}
+  <h2>Open the amounts</h2>
+  <form method="post" class="form-grid lock-form">{% csrf_token %}<input type="hidden" name="next" value="{{ next }}">
+    <div class="field"><label for="m-pw">Money password</label><input id="m-pw" type="password" name="password" required autofocus autocomplete="current-password"></div>
+    <div class="field"><label for="m-code">Code from your authenticator app <small class="muted">({{ HOTEL_NAME }})</small></label><input id="m-code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,7}" maxlength="7" required></div>
+    <div class="span-2"><button class="btn btn-primary">Open</button></div>
+  </form>
+  <p class="muted small">Stays open for {{ minutes }} minutes, for {{ HOTEL_NAME }} only. Lost your phone? Ask the main admin to reset your authenticator, then set it up again.</p>
+{% endif %}
+</section>
+{% endblock %}

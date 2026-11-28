@@ -26,6 +26,8 @@
       </div>
     {% endif %}
   {% endfor %}
+  {% if obj %}<h2>Money</h2>
+  <p class="muted small">Who sees {{ obj.name }}’s amounts is decided by its owner, with the owner’s own money password and authenticator — the main admin can’t open them. <a href="{{ obj.prefix }}money/access/">Money access for {{ obj.name }}</a></p>{% endif %}
   <h2>Partners</h2>
   <p class="muted small">Who shares this property’s profit when a month is settled on its money page. Give each a share (adding up to 100%), or leave all shares empty to share equally.</p>
   {{ partners.management_form }}

@@ -7,7 +7,6 @@ from django.contrib.auth import get_user_model
 
 from .models import THEMES, Item
 
-MONEY_MIN = 6
 
 BASIC = ["name", "code", "kind", "address", "map_link", "email", "phones", "whatsapp_phone", "for_whom",
          "check_in_time", "check_out_time", "managed_by", "theme", "sort_order", "notes"]
@@ -18,10 +17,7 @@ DRIVE = ["drive_folder"]
 
 
 class ItemForm(forms.ModelForm):
-    money_password = forms.CharField(label="Money password", required=False, widget=forms.PasswordInput(render_value=False),
-                                     help_text=f"For this property's revenue and profit pages (at least {MONEY_MIN} characters)")
-    money_confirm = forms.CharField(label="Repeat money password", required=False,
-                                    widget=forms.PasswordInput(render_value=False))
+    # No money password here: the property's owner sets it (and their authenticator) at their first unlock.
 
     class Meta:
         model = Item
@@ -38,14 +34,10 @@ class ItemForm(forms.ModelForm):
         self.fields["managed_by"].queryset = get_user_model().objects.filter(is_active=True).order_by("username")
         self.fields["managed_by"].label_from_instance = lambda u: u.get_full_name() or u.username
         self.fields["theme"].choices = [(k, v[0]) for k, v in THEMES.items()]
-        if self.creating:
-            self.fields["money_password"].required = self.fields["money_confirm"].required = True
-        else:
+        if not self.creating:
             # The type decides the tables and the code the addresses: fixed once created.
             for name in ("code", "kind"):
                 self.fields[name].disabled = True
-            self.fields["money_password"].label = "New money password"
-            self.fields["money_password"].help_text = "Only to reset it (e.g. forgotten) — leave empty to keep it"
             if self.instance.is_default:
                 self.fields["email"].required = False
 
@@ -75,20 +67,9 @@ class ItemForm(forms.ModelForm):
             raise forms.ValidationError("A UPI ID looks like name@bank, e.g. bsrpg@ybl.")
         return u
 
-    def clean(self):
-        data = super().clean()
-        pw, confirm = data.get("money_password", ""), data.get("money_confirm", "")
-        if pw or self.creating:
-            if len(pw) < MONEY_MIN:
-                self.add_error("money_password", f"Use at least {MONEY_MIN} characters.")
-            elif pw != confirm:
-                self.add_error("money_confirm", "The two passwords don’t match.")
-        return data
-
     def sections(self):
         """Field groups for the page."""
-        groups = [("Basic details", BASIC), ("Money password", ["money_password", "money_confirm"]),
-                  ("Payments & links", PAYMENTS), ("Business details (all optional)", BUSINESS),
+        groups = [("Basic details", BASIC), ("Payments & links", PAYMENTS), ("Business details (all optional)", BUSINESS),
                   ("Google Drive", DRIVE), ("PG / co-living move-out", MOVE_OUT)]
         return [(title, [self[n] for n in names if n in self.fields and n != "theme"]) for title, names in groups]
 

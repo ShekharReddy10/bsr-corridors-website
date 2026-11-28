@@ -8,7 +8,7 @@
 </div>
 
 {% if not plan %}
-<form method="post" class="card extend-form" novalidate data-extend-wa data-total="{{ stay.total|floatformat:0 }}" data-paid="{{ stay.amount_paid|floatformat:0 }}">{% csrf_token %}
+<form method="post" class="card extend-form" novalidate data-extend-wa data-total="{{ stay.total|amt }}" data-paid="{{ stay.amount_paid|amt }}">{% csrf_token %}
   <h2>New check-out</h2>
   <div class="quick">
     {% for n, d in quick %}

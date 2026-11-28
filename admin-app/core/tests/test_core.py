@@ -9,6 +9,7 @@ from django.core.cache import cache
 from django.db import IntegrityError, connection, transaction
 from django.test import TestCase, override_settings
 
+from cluster.testing import open_money
 from core import services
 from core.exports import backup_json, build_workbook
 from core.models import AppSetting, AuditLog, Expense, Guest, MessageTemplate, Room, RoomType, Settlement, Stay, StayGuest, StayIdPhoto, IdPhoto
@@ -290,6 +291,7 @@ class ViewTests(TestCase):
         return data
 
     def test_pages_render(self):
+        open_money(self.client)
         s = stay(make_guest(), self.rooms["101"], 0, 2)
         for url in ["/", "/calendar/", "/calendar/?days=31", f"/calendar/room/{self.rooms['101'].pk}/", "/stays/",
                     "/stays/new/", f"/stays/{s.pk}/", f"/stays/{s.pk}/edit/", f"/stays/{s.pk}/extend/", "/rooms/",
@@ -501,6 +503,7 @@ class ViewTests(TestCase):
                 "o-TOTAL_FORMS": "0", "o-INITIAL_FORMS": "0"}
 
     def test_monthly_open_ended(self):
+        open_money(self.client)  # amounts are shown only once money is opened
         r = self._quick("Long Stay", self.rooms["201"], -10, **{"s-kind": "monthly", "s-monthly_rent": "12000",
                                                                "s-deposit_amount": "5000", "s-total_amount": "12000"})
         m = Stay.objects.get()
@@ -561,6 +564,7 @@ class ViewTests(TestCase):
         self.assertFalse(Room.objects.filter(pk=self.rooms["103"].pk).exists())
 
     def test_export_download(self):
+        open_money(self.client)  # amounts are shown only once money is opened
         stay(make_guest(), self.rooms["101"], 0, 1)
         r = self.client.post("/export/", {"start": T.isoformat(), "end": T.isoformat(), "action": "download"})
         self.assertEqual(r["Content-Type"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -677,7 +681,7 @@ class RevenueTests(TestCase):
         self.client.force_login(staff("rev-admin", password="test-pass-123456"))
 
     def _unlock(self):
-        self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
+        open_money(self.client)
 
     def test_revenue_split_by_night_and_money(self):
         from core import revenue
@@ -702,17 +706,40 @@ class RevenueTests(TestCase):
         self.assertEqual(r.by_type["Luxury AC"].total, Decimal(9000))
         self.assertEqual([s.pk for s in r.unpaid], [a.pk])
 
-    def test_password_set_unlock_and_lockout(self):
-        self.assertContains(self.client.get("/revenue/"), "Set a revenue password")
-        self._unlock()
+    def test_unlock_needs_money_password_and_own_authenticator(self):
+        from cluster import money
+        from cluster.models import Item, Membership, MoneyAuth
+        from cluster.testing import code_now
+        bsr = Item.objects.get(is_default=True)
+        user = Membership.objects.get(item=bsr).user
+        self.assertRedirects(self.client.get("/revenue/"), "/money/unlock/?next=/revenue/", fetch_redirect_response=False)
+        # First time: set up the authenticator (QR / key), choose the money password (an owner), confirm with a code.
+        page = self.client.get("/money/unlock/?next=/revenue/")
+        self.assertContains(page, "Set up your authenticator")
+        self.assertContains(page, "Choose the money password")
+        auth = MoneyAuth.objects.get(user=user, item=bsr)
+        self.assertFalse(auth.ready)
+        self.client.post("/money/unlock/", {"password": "secret1", "confirm": "secret1", "code": "000000"})
+        self.assertFalse(money.controlled(bsr))  # wrong code: nothing set up
+        r = self.client.post("/money/unlock/?next=/revenue/", {"password": "secret1", "confirm": "secret1",
+                                                               "code": code_now(user, bsr)})
+        self.assertRedirects(r, "/revenue/", fetch_redirect_response=False)
         self.assertContains(self.client.get("/revenue/"), "Previous months")
         self.assertNotIn("secret1", AppSetting.get("revenue_password_hash"))
-        self.client.post("/revenue/lock/")
-        self.assertContains(self.client.get("/revenue/"), "Enter the revenue password")
+        self.assertTrue(money.controlled(bsr))  # this owner now decides who sees the money
+        # Hidden again: password + a fresh code (the same code can't be used twice).
+        self.client.post("/money/lock/")
+        self.assertContains(self.client.get("/money/unlock/"), "Open the amounts")
+        self.client.post("/money/unlock/", {"password": "secret1", "code": code_now(user, bsr)})
+        self.assertRedirects(self.client.get("/revenue/"), "/money/unlock/?next=/revenue/", fetch_redirect_response=False)
+        auth.refresh_from_db()
+        auth.last_step -= 1  # (as if the next 30 seconds had passed)
+        auth.save()
         for _ in range(5):
-            self.client.post("/revenue/", {"password": "wrong"})
-        self.client.post("/revenue/", {"password": "secret1"})
-        self.assertContains(self.client.get("/revenue/"), "Enter the revenue password")  # locked out
+            self.client.post("/money/unlock/", {"password": "wrong", "code": "123456"})
+        self.client.post("/money/unlock/", {"password": "secret1", "code": code_now(user, bsr)})
+        self.assertRedirects(self.client.get("/revenue/"), "/money/unlock/?next=/revenue/",
+                             fetch_redirect_response=False)  # locked out after 5 wrong tries
 
     def test_received_counted_night_by_night(self):
         from core import revenue
@@ -860,18 +887,24 @@ class ExpenseTests(TestCase):
         _, _, self.rooms = make_rooms()
         self.client.force_login(staff("exp-admin", password="test-pass-123456"))
 
-    def test_expenses_need_revenue_password_then_come_back(self):
+    def test_expenses_need_the_money_unlock_then_come_back(self):
+        from cluster.models import Item, Membership
+        from cluster.testing import code_now
         r = self.client.get("/expenses/new/")
-        self.assertRedirects(r, "/revenue/?next=/expenses/new/", fetch_redirect_response=False)
-        r = self.client.post("/revenue/?next=/expenses/new/", {"password": "secret1", "confirm": "secret1"})
+        self.assertRedirects(r, "/money/unlock/?next=/expenses/new/", fetch_redirect_response=False)
+        bsr = Item.objects.get(is_default=True)
+        user = Membership.objects.get(item=bsr).user
+        self.client.get("/money/unlock/")  # makes the authenticator key
+        r = self.client.post("/money/unlock/?next=/expenses/new/",
+                             {"password": "secret1", "confirm": "secret1", "code": code_now(user, bsr)})
         self.assertRedirects(r, "/expenses/new/", fetch_redirect_response=False)
-        r = self.client.post("/revenue/?next=https://evil.example/", {"password": "secret1"})
+        r = self.client.get("/money/unlock/?next=https://evil.example/")  # already open: never sent elsewhere
         self.assertRedirects(r, "/revenue/", fetch_redirect_response=False)
 
     def test_add_list_edit_delete_and_profit(self):
         from core import revenue
         from core.models import Expense
-        self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
+        open_money(self.client)
         r = self.client.post("/expenses/new/", {
             "date": T.isoformat(), "category": "repairs", "reason": "AC repair", "amount": "2500",
             "payment_mode": "upi", "paid_to": "Cool Air Services", "reference": "INV-42", "room": self.rooms["101"].pk})
@@ -940,7 +973,7 @@ class HostSettlementWhatsAppTests(TestCase):
         self.assertEqual(r.ledger[month].expenses, Decimal(200))
         self.assertEqual(r.left_to_settle, Decimal(2500))  # this month is still running
 
-        self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
+        open_money(self.client)
         page = self.client.get("/revenue/").content.decode()  # this month, with past months listed below
         self.assertIn(f'name="month" value="{month:%Y-%m-%d}"', page)
         self.assertIn(f'/revenue/{last_month:%Y-%m}/', page)
@@ -983,7 +1016,7 @@ class HostSettlementWhatsAppTests(TestCase):
         stay(make_guest(), self.rooms["101"], -3, 2, status=Stay.Status.CHECKED_OUT, amount_paid=Decimal(3000))
         self.assertEqual((services.host_names(), services.partner_names()),
                          (["Shekhar", "Mounika", "Satish"], ["Shekhar", "Satish"]))
-        self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
+        open_money(self.client)
         page = self.client.get(f"/revenue/{T - timedelta(days=1):%Y-%m}/").content.decode()  # month of check-out
         self.assertIn("Shekhar <b>₹1,500</b> (50%) · Satish <b>₹1,500</b> (50%)", page)
         self.assertIn("Shared equally – Shekhar, Satish", page)
@@ -1105,6 +1138,7 @@ class HostSettlementWhatsAppTests(TestCase):
         self.assertEqual(text.count("- BSR Corridors"), 1)
 
     def test_payment_done_message_with_amount(self):
+        open_money(self.client)  # amounts are shown only once money is opened
         from urllib.parse import parse_qs, urlparse
         done = MessageTemplate.objects.get(name="Payment done")
         s = stay(make_guest(phone="98765 43210"), self.rooms["302"] if "302" in self.rooms else self.rooms["101"], 0, 2)
@@ -1130,6 +1164,7 @@ class InvoiceTests(TestCase):
         self.client.force_login(staff("inv-admin", password="test-pass-123456"))
 
     def test_invoice_number_pdf_and_guest_link(self):
+        open_money(self.client)  # amounts are shown only once money is opened
         from urllib.parse import parse_qs, urlparse
         from core import invoice
         s = Stay(guest=make_guest(phone="98765 43210"), room=self.rooms["101"], check_in=date(2026, 11, 15),
@@ -1535,6 +1570,7 @@ class TypoCheckTests(TestCase):
         self.assertTrue(any(f.key.startswith(f"s{extra_zero.pk}-") for f in checks.stay_flags(T)))
 
     def test_warning_right_after_saving(self):
+        open_money(self.client)  # amounts are shown only once money is opened
         r = self.client.post("/stays/new/", {
             "g-phone": "+91 90000 00009", "g-name": "Typo", "g-nationality": "Indian", "g-id_type": "aadhaar",
             "s-room": self.rooms["101"].pk, "s-check_in": T.isoformat(), "s-check_out": (T + timedelta(days=2)).isoformat(),
@@ -1562,7 +1598,7 @@ class TypoCheckTests(TestCase):
         for i in range(5):
             Expense.objects.create(date=T - timedelta(days=60 + i), category="laundry", reason="Laundry", amount=Decimal(800))
         Expense.objects.create(date=T, category="laundry", reason="Laundry", amount=Decimal(80000))
-        self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
+        open_money(self.client)
         self.assertNotContains(self.client.get("/expenses/"), "Please double-check")
 
 
@@ -1611,7 +1647,7 @@ class RecurringExpenseTests(TestCase):
     def setUp(self):
         cache.clear()
         self.client.force_login(staff("rec-admin", password="test-pass-123456"))
-        self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
+        open_money(self.client)
 
     def test_added_once_a_month_on_its_day(self):
         from core.models import RecurringExpense
@@ -1798,7 +1834,7 @@ class PhotoTests(TestCase):
 
     def test_receipt_on_expense(self):
         from unittest import mock
-        self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
+        open_money(self.client)
         with mock.patch("core.gdrive.upload_file", return_value="drive-r1"):
             self.client.post("/expenses/new/", {"date": T.isoformat(), "category": "repairs", "reason": "AC repair",
                                                 "amount": "2500", "payment_mode": "upi", "receipt": self._jpeg()})
@@ -1817,7 +1853,7 @@ class MonthlyReportTests(TestCase):
         cache.clear()
         _, _, self.rooms = make_rooms()
         self.client.force_login(staff("rep-admin", password="test-pass-123456"))
-        self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
+        open_money(self.client)
 
     def test_share_summary_and_save_report(self):
         from unittest import mock
@@ -1933,6 +1969,7 @@ class PaymentLinkTests(TestCase):
 
     @override_settings(UPI_ID="bsr@upi", UPI_NAME="BSR Corridors")
     def test_payment_link_pay_claim_verify(self):
+        open_money(self.client)  # amounts are shown only once money is opened
         from urllib.parse import urlparse
         from core.models import PaymentRequest
         s = stay(make_guest(phone="98765 43210"), self.rooms["101"], -1, 2, status=Stay.Status.CHECKED_IN)
@@ -1965,8 +2002,12 @@ class PaymentLinkTests(TestCase):
         # Staff: shown to verify; recording it marks the link paid.
         self.client.force_login(get_user_model().objects.get(username="pay-admin"))
         self.assertContains(self.client.get("/"), "UPI payments to verify")
-        self.assertContains(self.client.get(f"/stays/{s.pk}/"), "Guest says they paid ₹2,500")
-        self.client.post(f"/stays/{s.pk}/payment/", {"amount": "2500", "mode": "upi", "pay_request": req.pk,
+        # Signed in again: money closed, so the amount is hidden — confirming still records the link's own amount.
+        page = self.client.get(f"/stays/{s.pk}/").content.decode()
+        self.assertIn("Guest says they paid ₹ ••••", page)
+        self.assertNotIn("2,500", page)
+        self.assertNotIn('value="2500"', page)
+        self.client.post(f"/stays/{s.pk}/payment/", {"amount": "", "mode": "upi", "pay_request": req.pk,
                                                      "note": "UPI payment link"})
         req.refresh_from_db()
         s.refresh_from_db()
@@ -2113,3 +2154,115 @@ class FreeRoomLaterTests(TestCase):
         self.assertNotContains(self.client.get(f"/stays/{a.pk}/"), "for tonight</button>")
         r = self.client.post(f"/stays/{a.pk}/release-room/", follow=True)
         self.assertContains(r, "already free")
+
+
+class MoneyPrivacyTests(TestCase):
+    """Amounts are the property owner's: only people with money access, after the money password and their own
+    authenticator code — the main admin included (decided with the user, 2026-11-28)."""
+
+    def setUp(self):
+        cache.clear()
+        _, _, self.rooms = make_rooms()
+        from cluster.models import Item, Membership
+        self.bsr = Item.objects.get(is_default=True)
+        self.admin = get_user_model().objects.create_superuser("boss", password="boss-password-1")
+        self.desk = get_user_model().objects.create_user("desk", password="desk-password-1")
+        Membership.objects.create(user=self.desk, item=self.bsr, role=Membership.Role.DESK)
+        self.s = stay(make_guest(), self.rooms["101"], 0, 2, amount_paid=Decimal(1357))
+        self.s.total_amount = Decimal(5678)
+        self.s.save()
+
+    def test_amounts_hidden_until_money_is_opened(self):
+        self.client.force_login(self.desk)
+        page = self.client.get(f"/stays/{self.s.pk}/").content.decode()
+        self.assertIn("₹ ••••", page)
+        import re
+        for leak in ("5,678", "5678", "1,357", "1357"):
+            self.assertNotIn(leak, page, re.findall(r".{80}" + leak + r".{40}", page))
+        self.assertNotIn("Show amounts", page)  # no money access: no button
+        # Editing the stay: the price isn't sent to the page and can't be changed — and is kept when saving.
+        form = self.client.get(f"/stays/{self.s.pk}/edit/").content.decode()
+        self.assertNotIn("5678", form)
+        self.assertIn("unlock money to see or change", form)
+        for url in ("/", "/calendar/", "/settings/"):
+            self.assertNotIn("5,678", self.client.get(url).content.decode())
+        # Money pages: told who decides.
+        self.assertContains(self.client.get("/revenue/", follow=True), "You don’t have money access here")
+
+    def test_admin_sees_no_money_until_named_owner_then_owner_decides(self):
+        from cluster import money
+        from cluster.models import Activity, Membership, MoneyAuth
+        from cluster.testing import code_now
+        self.client.force_login(self.admin)
+        page = self.client.get(f"/stays/{self.s.pk}/").content.decode()
+        self.assertNotIn("5,678", page)  # the main admin too
+        self.assertContains(self.client.get("/revenue/", follow=True), "You don’t have money access here")
+        # No owner with an authenticator yet: the admin names the first owner — here himself.
+        page = self.client.get("/money/access/")
+        self.assertContains(page, "the main admin sets this up the first time")
+        self.client.post("/money/access/", {"action": "add-me"})
+        self.client.get("/money/unlock/")
+        self.client.post("/money/unlock/", {"password": "owner-pass-1", "confirm": "owner-pass-1",
+                                            "code": code_now(self.admin, self.bsr)})
+        self.assertIn("5,678", self.client.get(f"/stays/{self.s.pk}/").content.decode())
+        self.assertTrue(money.controlled(self.bsr))
+        # The owner gives the front desk money access, confirming with a fresh code.
+        desk_m = Membership.objects.get(user=self.desk, item=self.bsr)
+        auth = MoneyAuth.objects.get(user=self.admin, item=self.bsr)
+        auth.last_step -= 1
+        auth.save()
+        r = self.client.post("/money/access/", {f"money-{desk_m.pk}": "1", f"owner-{Membership.objects.get(user=self.admin, item=self.bsr).pk}": "1",
+                                                "code": "000000"})
+        desk_m.refresh_from_db()
+        self.assertFalse(desk_m.money_access)  # wrong code: nothing changed
+        self.client.post("/money/access/", {f"money-{desk_m.pk}": "1",
+                                            f"owner-{Membership.objects.get(user=self.admin, item=self.bsr).pk}": "1",
+                                            "code": code_now(self.admin, self.bsr)})
+        desk_m.refresh_from_db()
+        self.assertTrue(desk_m.money_access)
+        self.assertTrue(Activity.objects.filter(summary__contains="money access").exists())
+        # The front desk still needs the money password and their own authenticator.
+        self.client.force_login(self.desk)
+        self.assertNotIn("5,678", self.client.get(f"/stays/{self.s.pk}/").content.decode())
+        self.assertContains(self.client.get(f"/stays/{self.s.pk}/"), "Show amounts")
+        self.client.get("/money/unlock/")
+        self.client.post("/money/unlock/", {"password": "owner-pass-1", "code": code_now(self.desk, self.bsr)})
+        self.assertIn("5,678", self.client.get(f"/stays/{self.s.pk}/").content.decode())
+        # Not an owner: can't change money access, nor the money password.
+        self.client.post("/money/access/", {f"money-{desk_m.pk}": "1", "code": code_now(self.desk, self.bsr)})
+        self.assertContains(self.client.get("/money/access/"), "Only")
+
+    def test_another_admin_cant_take_over_once_an_owner_controls(self):
+        from cluster import money
+        from cluster.models import Membership
+        from cluster.testing import open_money
+        owner = get_user_model().objects.create_user("owner", password="owner-password-1")
+        self.client.force_login(owner)
+        open_money(self.client, self.bsr)  # an owner with money access and an authenticator
+        self.assertTrue(money.controlled(self.bsr))
+        self.client.force_login(self.admin)
+        self.client.post("/money/access/", {"action": "add-me"})
+        self.assertFalse(Membership.objects.filter(user=self.admin, item=self.bsr).exists())
+        # Users & access can't give money, nor touch the owner.
+        self.client.post("/properties/users/", {"action": "access", "user": owner.pk, f"role-{self.bsr.pk}": "desk"})
+        self.assertEqual(Membership.objects.get(user=owner, item=self.bsr).role, Membership.Role.OWNER)
+        self.client.post("/properties/users/", {"action": "access", "user": self.desk.pk,
+                                                f"role-{self.bsr.pk}": "owner", f"money-{self.bsr.pk}": "1"})
+        m = Membership.objects.get(user=self.desk, item=self.bsr)
+        self.assertEqual((m.role, m.money_access), (Membership.Role.DESK, False))
+        self.assertNotIn("5,678", self.client.get(f"/stays/{self.s.pk}/").content.decode())
+
+    def test_admin_can_reset_an_authenticator_and_it_shows(self):
+        from cluster.models import MoneyAuth
+        from cluster.testing import open_money
+        owner = get_user_model().objects.create_user("owner", password="owner-password-1")
+        self.client.force_login(owner)
+        open_money(self.client, self.bsr)
+        auth = MoneyAuth.objects.get(user=owner, item=self.bsr)
+        self.client.force_login(self.admin)
+        self.client.post("/money/access/", {"action": "reset-auth", "auth": auth.pk})
+        auth.refresh_from_db()
+        self.assertFalse(auth.ready)
+        self.assertTrue(AuditLog.objects.filter(summary__contains="reset by the main admin").exists())
+        self.client.force_login(owner)
+        self.assertContains(self.client.get("/money/unlock/"), "was reset by")

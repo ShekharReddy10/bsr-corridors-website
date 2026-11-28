@@ -33,6 +33,8 @@ class RoomForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if self.instance.pk:
             del self.fields["beds"]  # changed with Add bed / Remove bed
+        from core.forms import hide_amounts
+        hide_amounts(self, ("deposit",))
 
 
 class BedForm(forms.ModelForm):
@@ -102,6 +104,8 @@ class TenancyForm(forms.ModelForm):
             if bed is not None and bed.room.deposit:
                 self.initial.setdefault("deposit", bed.room.deposit)  # the room's usual advance, as a suggestion
         self.fields["rent"].widget.attrs.update({"inputmode": "decimal", "placeholder": "As agreed with the resident"})
+        from core.forms import hide_amounts
+        hide_amounts(self, ("rent", "deposit", "deposit_received"))
 
     def clean(self):
         data = super().clean()

@@ -10,11 +10,13 @@ R = Membership.Role
 
 # Capabilities: view · work (bookings, check-in/out, guests, messages) · pay (record payments) · manage (rooms,
 # WhatsApp texts, backups, testing) · settings (hosts, partners, purge) · money · expenses · export · ids · delete
+# "money" is never part of a role: it comes only from the person's Money access switch, which the property's owner
+# gives (cluster/money.py) — for the main admin too.
 ROLE_CAPS = {
-    R.OWNER: {"view", "work", "pay", "manage", "settings", "money", "expenses", "export", "ids", "delete"},
+    R.OWNER: {"view", "work", "pay", "manage", "settings", "expenses", "export", "ids", "delete"},
     R.MANAGER: {"view", "work", "pay", "manage", "expenses", "export"},
     R.DESK: {"view", "work", "pay"},
-    R.ACCOUNTANT: {"view", "pay", "money", "expenses", "export"},
+    R.ACCOUNTANT: {"view", "pay", "expenses", "export"},
     R.VIEWER: {"view"},
 }
 ALL = set().union(*ROLE_CAPS.values())
@@ -53,7 +55,7 @@ STAY_ACTIONS = {"payment": {"pay"}, "pay-not-received": {"pay"}, "delete": {"wor
 
 def caps(user, membership: Membership | None) -> set:
     if user.is_superuser:
-        return ALL
+        return ALL | ({"money"} if membership is not None and membership.money_access else set())
     if membership is None:
         return set()
     c = set(ROLE_CAPS.get(membership.role, set()))
@@ -81,3 +83,6 @@ def needed(request, url_name: str, kwargs: dict) -> set:
     get_caps, post_caps = RULES.get(url_name, ({"view"}, {"work"}))
     return post_caps if post else get_caps
 RULES["pg_complaint_new"] = ({"work"}, {"work"})  # complaints list / actions: anyone may look, "work" to change
+
+# Money: anyone may open these pages; the pages themselves check money access / ownership (cluster/money.py).
+RULES.update({n: ({"view"}, {"view"}) for n in ("money_unlock", "money_lock", "money_access")})

@@ -80,7 +80,10 @@ def users(request):
     for u in people:
         u.access = [(i, held.get((u.pk, i.pk))) for i in items]
         u.access_count = sum(1 for _, m in u.access if m)
+    from cluster import money
+    controlled = {i.pk for i in items if money.controlled(i)}
     return render(request, "cluster/users.html", {"users": people, "items": items, "roles": Membership.Role.choices,
+                                                  "controlled": controlled,
                                                   "min_length": MIN_LENGTH})
 
 
@@ -92,19 +95,28 @@ def _access_text(m) -> str:
 
 
 def _save_access(user, data) -> None:
-    """One row per cluster item: a role (or no access) and the three switches. The group's log says what changed."""
+    """One row per cluster item: a role (or no access) and two switches. Money access is never set here (the
+    property's owner gives it), and once a property's owner has an authenticator, its owners can't be changed here
+    either. The group's log says what changed."""
+    from cluster import money
     roles = dict(Membership.Role.choices)
     changes = []
     for item in Item.objects.all():
-        before = _access_text(Membership.objects.filter(user=user, item=item).first())
+        existing = Membership.objects.filter(user=user, item=item).first()
+        before = _access_text(existing)
         role = data.get(f"role-{item.pk}", "")
+        if money.controlled(item) and (
+                (existing is not None and existing.role == Membership.Role.OWNER) or role == Membership.Role.OWNER):
+            continue  # owners of a property its owners control: only they change them (Money access page)
         if role not in roles:
+            if existing is not None and existing.money_access and money.controlled(item):
+                continue  # someone the owner gave money access to: the owner removes them
             Membership.objects.filter(user=user, item=item).delete()
             after = "no access"
         else:
             m, _ = Membership.objects.update_or_create(user=user, item=item, defaults={
-                "role": role, "money_access": data.get(f"money-{item.pk}") == "1",
-                "see_full_ids": data.get(f"ids-{item.pk}") == "1", "can_delete": data.get(f"delete-{item.pk}") == "1",
+                "role": role, "see_full_ids": data.get(f"ids-{item.pk}") == "1",
+                "can_delete": data.get(f"delete-{item.pk}") == "1",
             })
             after = _access_text(m)
         if after != before:

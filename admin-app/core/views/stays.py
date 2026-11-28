@@ -291,7 +291,12 @@ def stay_action(request, pk, action):
             stay.form_c_filed = not stay.form_c_filed
             services.save_stay(stay, action="form_c", summary=f"Form C marked {'filed' if stay.form_c_filed else 'not filed'}")
         elif action == "payment":
-            form = PaymentForm(request.POST)
+            data = request.POST.copy()
+            if (pr := data.get("pay_request")) and not data.get("amount"):  # confirming a UPI link: its own amount
+                link = stay.payment_requests.filter(pk=pr).first()
+                if link is not None:
+                    data["amount"] = f"{link.amount:.0f}"
+            form = PaymentForm(data)
             if not form.is_valid():
                 messages.error(request, "Enter a valid payment amount.")
                 if request.headers.get("X-Requested-With") == "fetch":
