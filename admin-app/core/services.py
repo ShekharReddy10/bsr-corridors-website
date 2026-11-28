@@ -446,6 +446,24 @@ def check_out(stay: Stay) -> Stay:
     return save_stay(stay, action="check_out", summary=f"Checked out of {stay.room}{note}")
 
 
+def release_room(stay: Stay) -> Stay:
+    """A guest already checked out who still holds tonight (left on their arrival day, e.g. checked out before this
+    was automatic): free the room from now for another guest. Their night stays charged and invoiced."""
+    if stay.status != Stay.Status.CHECKED_OUT:
+        raise ValueError("Only a checked-out guest's room can be freed.")
+    if stay.room_released_at:
+        raise ValueError("The room is already free again.")
+    if not stay.check_out or stay.check_out <= today():
+        raise ValueError("The room is already free tonight.")
+    stay.room_released_at = timezone.now()
+    with atomic():
+        stay.save(update_fields=["room_released_at"])
+        AuditLog.record("check_out", f"{stay.room} freed for tonight — the guest left on "
+                                     f"{timezone.localtime(stay.checked_out_at or stay.room_released_at):%d-%m-%Y %I:%M %p}",
+                        stay)
+    return stay
+
+
 def booked_check_out(stay: Stay) -> date | None:
     """The check-out date the stay had before it was checked out (early checkout shortens it).
     Read back from the check-out log; None means it was an open (monthly) stay."""

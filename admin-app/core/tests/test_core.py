@@ -2095,3 +2095,21 @@ class SameDayCheckoutTests(TestCase):
         s.refresh_from_db()
         self.assertEqual(s.check_out, self.t)
         self.assertIsNone(s.room_released_at)
+
+class FreeRoomLaterTests(TestCase):
+    """A guest checked out on their arrival day before freeing was automatic: the room can be freed by hand."""
+
+    def test_free_room_for_tonight_button(self):
+        _, _, rooms = make_rooms()
+        self.client.force_login(staff("free-admin"))
+        t = services.today()
+        a = stay(make_guest(), rooms["101"], 0, 1, status=Stay.Status.CHECKED_OUT)  # left today, holds tonight
+        self.assertNotIn(rooms["101"], services.free_rooms(t, t + timedelta(days=1)))
+        self.assertContains(self.client.get(f"/stays/{a.pk}/"), "for tonight</button>")
+        self.client.post(f"/stays/{a.pk}/release-room/")
+        a.refresh_from_db()
+        self.assertIsNotNone(a.room_released_at)
+        self.assertIn(rooms["101"], services.free_rooms(t, t + timedelta(days=1)))
+        self.assertNotContains(self.client.get(f"/stays/{a.pk}/"), "for tonight</button>")
+        r = self.client.post(f"/stays/{a.pk}/release-room/", follow=True)
+        self.assertContains(r, "already free")
