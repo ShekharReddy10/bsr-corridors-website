@@ -15,7 +15,7 @@
     {% field form.room %}
     {% field form.notes "span-2" %}
     <div class="field span-2"><label for="receipt">Receipt / bill <span class="muted small">(optional — photo, PDF or any file up to 25 MB, kept in Google Drive)</span></label>
-      <input id="receipt" type="file" name="receipt">
+      <input id="receipt" type="file" name="receipt" accept="image/*,application/pdf"> <button type="button" class="link-btn small" data-any-file title="Pick a video or any other kind of file">Video / other file</button>
       {% if expense.receipt_id %}<small><a href="{% url 'expense_receipt' expense.pk %}" target="_blank" rel="noopener" title="Receipt · {{ expense.reason }}" data-viewer="receipts" data-kind="{{ expense.receipt_kind }}">View current receipt</a> — choosing a new file replaces it</small>{% endif %}</div>
   </div>
   <div class="form-actions">

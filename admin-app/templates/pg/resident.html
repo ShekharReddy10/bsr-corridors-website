@@ -23,6 +23,6 @@
   <h2>ID photo</h2>
   {% if r.id_photo %}{% if 'ids' in caps %}<p><a class="btn btn-outline btn-sm" href="{% url 'pg_file' 'id' r.pk %}" target="_blank" rel="noopener" data-viewer="pg-id" data-kind="{{ r.id_kind }}" title="{{ r.name }} — ID">Open ID</a></p>{% else %}<p class="muted">Saved (only those allowed to see full IDs can open it).</p>{% endif %}{% endif %}
   {% if 'work' in caps %}<form method="post" enctype="multipart/form-data" class="inline-form">{% csrf_token %}<input type="hidden" name="action" value="id-photo">
-    <label class="field"><span class="label">{% if r.id_photo %}Replace{% else %}Upload{% endif %} (photo, PDF or video, up to 25 MB)</span><input type="file" name="file"></label><button class="btn btn-outline btn-sm">Upload</button></form>{% endif %}
+    <label class="field"><span class="label">{% if r.id_photo %}Replace{% else %}Upload{% endif %} (photo, PDF or video, up to 25 MB)</span><input type="file" name="file" accept="image/*,application/pdf"></label><button type="button" class="link-btn small" data-any-file title="Pick a video or any other kind of file">Video / other file</button><button class="btn btn-outline btn-sm">Upload</button></form>{% endif %}
 </section>
 {% endblock %}

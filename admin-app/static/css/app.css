@@ -802,3 +802,5 @@ details.waive > summary { cursor: pointer; color: var(--ink-soft); }
 .tape-add.tape-add-key { display: inline-block; width: 18px; height: 18px; line-height: 18px; font-size: .8rem; margin: 0 2px; }
 .month-add { color: var(--gold); font-weight: 700; }
 .money-btn .btn { white-space: normal; text-align: center; }
+.link-btn { background: none; border: 0; padding: 2px 4px; color: var(--gold-dark, #9a7034); text-decoration: underline; cursor: pointer; font: inherit; min-height: 0; }
+.link-btn.small { font-size: .78rem; }

@@ -677,3 +677,18 @@
     if (reloadDay.value) location.href = location.pathname + "?day=" + encodeURIComponent(reloadDay.value);
   });
 })();
+
+// File pickers open on photos and PDFs (on phones: the gallery, where WhatsApp's images are). "Video / other file"
+// opens the same picker once with every kind of file.
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-any-file]");
+  if (!btn) return;
+  const input = btn.closest("form").querySelector('input[type="file"]');
+  if (!input) return;
+  const accept = input.getAttribute("accept");
+  input.removeAttribute("accept");
+  const restore = () => { if (accept) input.setAttribute("accept", accept); };
+  input.addEventListener("change", restore, { once: true });
+  window.addEventListener("focus", () => setTimeout(restore, 800), { once: true });
+  input.click();
+});

@@ -24,7 +24,7 @@
   </dl>
   {% if 'work' in caps and t.is_open %}
   <form method="post" action="{% url 'pg_tenancy_action' t.pk 'agreement' %}" enctype="multipart/form-data" class="inline-form">{% csrf_token %}
-    <label class="field"><span class="label">Rental agreement (photo, PDF or any file, up to 25 MB)</span><input type="file" name="file"></label><button class="btn btn-outline btn-sm">Upload</button></form>
+    <label class="field"><span class="label">Rental agreement (photo, PDF or any file, up to 25 MB)</span><input type="file" name="file" accept="image/*,application/pdf"></label><button type="button" class="link-btn small" data-any-file title="Pick a video or any other kind of file">Video / other file</button><button class="btn btn-outline btn-sm">Upload</button></form>
   {% endif %}
 </section>
 

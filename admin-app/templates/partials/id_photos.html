@@ -8,7 +8,8 @@ this stay (tap to view), + to choose new ones (they wait in a list until "Upload
     {% for p in row.used %}<a class="idp-chip idp-{{ p.kind }}" href="{% url 'id_photo' p.pk %}" target="_blank" rel="noopener" title="{{ p.name }}" data-viewer="ids" data-kind="{{ p.kind }}">{{ forloop.counter }}</a>{% empty %}<span class="idp-none">no ID</span>{% endfor %}
     <form method="post" action="{% url 'id_photos_upload' stay.pk %}" enctype="multipart/form-data" class="photo-upload" data-stage data-busy-text="Uploading {{ row.person }}’s files…">{% csrf_token %}
       <input type="hidden" name="next" value="{{ request.get_full_path }}"><input type="hidden" name="person" value="{{ row.person }}">
-      <label class="idp-add" title="Add {{ row.person }}’s ID — photos, PDFs or videos"><span>+</span><input type="file" name="photo" multiple hidden data-stage-input></label>
+      <label class="idp-add" title="Add {{ row.person }}’s ID — photos, PDFs or videos"><span>+</span><input type="file" name="photo" multiple hidden data-stage-input accept="image/*,application/pdf"></label>
+      <button type="button" class="link-btn small" data-any-file title="Pick a video or any other kind of file">Video / other file</button>
       <div class="stage-list" data-stage-list hidden></div>
       <noscript><button class="btn btn-outline btn-sm">Upload</button></noscript>
     </form>
