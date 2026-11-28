@@ -20,9 +20,6 @@
     <form method="post" action="{% url 'stay_action' stay.pk 'check-out' %}" data-confirm="{% if today < stay.check_out and today > stay.check_in %}Guest is booked until {{ stay.check_out|date:'d-m-Y' }}. Check out today (early checkout)?{% elif stay.check_out and today > stay.check_out %}Guest was booked only until {{ stay.check_out|date:'d-m-Y' }}. If they stayed the extra nights, tap Cancel and use Extend first so those nights are charged. Check out anyway?{% endif %}"{% if wa_departure and g.phone %} data-wa-open="{% url 'stay_whatsapp' stay.pk %}?t=checkout"{% endif %}{% if invoice_pending %} data-busy="Checking out and generating the invoice…"{% endif %}>{% csrf_token %}<button class="btn btn-primary">Check out{% if wa_departure and g.phone %} &amp; send message{% endif %}</button></form>
     <form method="post" action="{% url 'stay_action' stay.pk 'undo-check-in' %}" data-confirm="Undo check-in? The stay goes back to upcoming.">{% csrf_token %}<button class="btn btn-ghost">Undo check-in</button></form>
   {% elif stay.status == 'checked_out' %}
-    {% if not stay.room_released_at and stay.check_out and stay.check_out > today %}
-    <form method="post" action="{% url 'stay_action' stay.pk 'release-room' %}" data-confirm="{{ g.name }} has left. Free {{ stay.room }} for tonight so another guest can have it? Their night stays charged.">{% csrf_token %}<button class="btn btn-primary">Free {{ stay.room }} for tonight</button></form>
-    {% endif %}
     <form method="post" action="{% url 'stay_action' stay.pk 'undo-check-out' %}" class="inline-form" data-confirm="Undo check-out? {{ g.name }} goes back to checked in.">{% csrf_token %}
       <label>Stays until <input type="date" name="check_out" value="{{ booked_check_out|date:'Y-m-d' }}"{% if stay.kind != 'monthly' %} required{% endif %}></label>
       {% if stay.kind == 'monthly' %}<small class="muted">Leave empty to keep it open (monthly)</small>{% endif %}

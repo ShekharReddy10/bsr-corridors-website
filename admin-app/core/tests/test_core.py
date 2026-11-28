@@ -1,12 +1,13 @@
 import io
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from unittest import skipUnless
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import IntegrityError, connection, transaction
+from django.utils import timezone
 from django.test import TestCase, override_settings
 
 from cluster.testing import open_money
@@ -1172,7 +1173,10 @@ class InvoiceTests(TestCase):
                  check_out=date(2026, 11, 18), total_amount=Decimal(4500), source="walk_in",
                  status=Stay.Status.CHECKED_IN)
         services.save_stay(s, action="create", summary="test")
-        self.assertEqual(invoice.number(s), "261115-261118-101")
+        self.assertEqual(invoice.number(s), "261115-261118-101")  # not checked in through the app: no times
+        s.checked_in_at = timezone.make_aware(datetime(2026, 11, 15, 14, 5))
+        self.assertEqual(invoice.number(s), "2611151405-261118-101")  # check-in time (HHMM) once known
+        s.checked_in_at = None
         pt = RoomType.objects.create(name="Penthouse", max_guests=4)
         self.assertEqual(invoice.room_code(Room.objects.create(number="PH", room_type=pt)), "601")
         services.add_payment(s, Decimal(4500), "upi")
@@ -1325,7 +1329,9 @@ class InvoiceTests(TestCase):
         # Early check-out: the invoice follows the new dates, and the check-out message carries the link.
         self.client.post(f"/stays/{s.pk}/check-out/")
         s.refresh_from_db()
-        self.assertEqual(invoice.number(s), f"{s.check_in:%y%m%d}-{T:%y%m%d}-101")
+        went = timezone.localtime(s.checked_out_at)
+        self.assertEqual(invoice.number(s), f"{s.check_in:%y%m%d}-{T:%y%m%d}{went:%H%M}-101")  # check-out time too
+        self.assertEqual(invoice.left_at(invoice.parts(s)), went)  # printed as Check-out: dd-mm-yyyy (Day) hh:mm AM
         text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/?t=checkout")["Location"]).query)["text"][0]
         self.assertIn("invoice", text.lower())
         self.assertEqual(self.client.get(f"/invoice/{invoice.token(s)}/").status_code, 200)
@@ -1411,6 +1417,7 @@ class InvoiceTests(TestCase):
             self.client.post(f"/stays/{s.pk}/payment/", {"amount": "1000", "mode": "upi"})
             self.assertEqual(calls, [])
             self.client.post(f"/stays/{s.pk}/check-out/")
+            s.refresh_from_db()  # the number carries the check-out time
             self.assertEqual(calls, [(f"{invoice.number(s)} Ravi Kumar.pdf", f"invoice_{s.pk}")])
             self.client.post(f"/stays/{s.pk}/payment/", {"amount": "2000", "mode": "cash"})  # not regenerated
             self.assertEqual(len(calls), 1)
@@ -2138,23 +2145,51 @@ class SameDayCheckoutTests(TestCase):
         self.assertEqual(s.check_out, self.t)
         self.assertIsNone(s.room_released_at)
 
-class FreeRoomLaterTests(TestCase):
-    """A guest checked out on their arrival day before freeing was automatic: the room can be freed by hand."""
+class FreeRoomAfterCheckoutTests(TestCase):
+    """Check-out alone frees the room — no extra button (the user, 2026-11-28). Guests checked out before that was
+    automatic are freed by migration 0034. The calendar marks such a free night with "+"."""
 
-    def test_free_room_for_tonight_button(self):
+    def test_check_out_frees_the_room_and_calendar_shows_plus(self):
         _, _, rooms = make_rooms()
         self.client.force_login(staff("free-admin"))
         t = services.today()
-        a = stay(make_guest(), rooms["101"], 0, 1, status=Stay.Status.CHECKED_OUT)  # left today, holds tonight
-        self.assertNotIn(rooms["101"], services.free_rooms(t, t + timedelta(days=1)))
-        self.assertContains(self.client.get(f"/stays/{a.pk}/"), "for tonight</button>")
-        self.client.post(f"/stays/{a.pk}/release-room/")
+        a = stay(make_guest(), rooms["101"], 0, 1, status=Stay.Status.CHECKED_IN)
+        self.client.post(f"/stays/{a.pk}/check-out/")
         a.refresh_from_db()
+        self.assertEqual(a.status, Stay.Status.CHECKED_OUT)
         self.assertIsNotNone(a.room_released_at)
         self.assertIn(rooms["101"], services.free_rooms(t, t + timedelta(days=1)))
         self.assertNotContains(self.client.get(f"/stays/{a.pk}/"), "for tonight</button>")
-        r = self.client.post(f"/stays/{a.pk}/release-room/", follow=True)
-        self.assertContains(r, "already free")
+        self.assertNotContains(self.client.get("/"), "for tonight</button>")
+        cal = self.client.get("/calendar/").content.decode()
+        self.assertIn(f'room={rooms["101"].pk}&check_in={t:%Y-%m-%d}" title="Guest checked out', cal)
+        self.assertIn("+ Add stay", self.client.get(f"/calendar/room/{rooms['101'].pk}/").content.decode())
+        # once the next guest is booked for tonight, no "+" any more
+        stay(Guest.objects.create(name="Next Guest"), rooms["101"], 0, 1)
+        self.assertNotIn('title="Guest checked out', self.client.get("/calendar/").content.decode())
+
+    def test_migration_frees_rooms_of_earlier_check_outs(self):
+        import importlib
+        from django.apps import apps as django_apps
+        from django.db import connection
+        fix = importlib.import_module("core.migrations.0034_release_left_rooms")
+        _, _, rooms = make_rooms()
+        t = services.today()
+        old = stay(make_guest(), rooms["101"], 0, 1, status=Stay.Status.CHECKED_OUT, checked_out_at=timezone.now())
+        done = stay(Guest.objects.create(name="Left Yesterday"), rooms["102"], -2, 1, status=Stay.Status.CHECKED_OUT,
+                    checked_out_at=timezone.now() - timedelta(days=1))
+        self.assertNotIn(rooms["101"], services.free_rooms(t, t + timedelta(days=1)))
+
+        class Editor:
+            pass
+        ed = Editor()
+        ed.connection = connection
+        fix.forwards(django_apps, ed)
+        old.refresh_from_db()
+        done.refresh_from_db()
+        self.assertIsNotNone(old.room_released_at)
+        self.assertIsNone(done.room_released_at)  # its nights were all before it left: nothing to free
+        self.assertIn(rooms["101"], services.free_rooms(t, t + timedelta(days=1)))
 
 
 class MoneyPrivacyTests(TestCase):

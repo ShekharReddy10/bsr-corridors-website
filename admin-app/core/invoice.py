@@ -9,8 +9,9 @@ By hand: any other platform booking gets an invoice for the whole stay only when
 
 An invoice exists once it is generated. Until then no link is sent and the guest's link doesn't open.
 
-The number is built from the invoiced nights: first night (YYMMDD) - check-out (YYMMDD) - room number (3 digits; the
-penthouse is 601), e.g. 261115-261118-101. It follows the stay's dates and room, so it is never stored.
+The number is built from the invoiced nights: first night (YYMMDD + check-in time HHMM) - check-out (YYMMDD + check-out
+time HHMM) - room number (3 digits; the penthouse is 601), e.g. 2611151405-2611181130-101; a time not known yet (not
+checked in / out) is left out. It follows the stay's dates and room, so it is never stored.
 
 Guests open their invoice through a signed link (no login), which only ever shows that one invoice.
 """
@@ -22,6 +23,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from django.core import signing
+from django.utils import timezone
 from fpdf import FPDF
 
 from cluster.current import name as hotel_name
@@ -106,12 +108,32 @@ def eligible(stay: Stay) -> bool:
     return bool(_auto_parts(stay))
 
 
+def arrived_at(ps: list[Part]):
+    """When the guest checked in, for an invoice starting on their arrival (local time), else None."""
+    first = ps[0]
+    if first.stay.checked_in_at and first.start == first.stay.check_in:
+        return timezone.localtime(first.stay.checked_in_at)
+    return None
+
+
+def left_at(ps: list[Part]):
+    """When the guest checked out (local time), once they have; else None."""
+    last = ps[-1].stay
+    if last.status == Stay.Status.CHECKED_OUT and last.checked_out_at:
+        return timezone.localtime(last.checked_out_at)
+    return None
+
+
 def number(stay: Stay, ps: list[Part] | None = None) -> str:
+    """First night and check-out day, each with the check-in / check-out time (HHMM, 24-hour) once known, then the
+    room: e.g. 2611151405-2611181130-101."""
     ps = parts(stay) if ps is None else ps
     if not ps:
         return ""
     end = ps[-1].end or today()
-    return f"{ps[0].start:%y%m%d}-{end:%y%m%d}-{room_code(ps[-1].stay.room)}"
+    came, went = arrived_at(ps), left_at(ps)
+    return (f"{ps[0].start:%y%m%d}{f'{came:%H%M}' if came else ''}-"
+            f"{end:%y%m%d}{f'{went:%H%M}' if went else ''}-{room_code(ps[-1].stay.room)}")
 
 
 def token(stay: Stay) -> str:
@@ -326,8 +348,9 @@ def pdf(stay: Stay) -> bytes:
         source = "Direct"
     billed = [("Name", guest.name), ("Phone", guest.phone), ("Address", guest.address)]
     stay_rows = [("Room", f"{rooms} - {inv.stay.room.room_type.name}"),
-                 ("Check-in", f"{start:%d-%m-%Y} ({start:%a})"),
-                 ("Check-out", f"{end:%d-%m-%Y} ({end:%a})" if end else "Ongoing (monthly)"),
+                 ("Check-in", f"{start:%d-%m-%Y} ({start:%a})" + (f" {came:%I:%M %p}" if (came := arrived_at(inv.parts)) else "")),
+                 ("Check-out", (f"{end:%d-%m-%Y} ({end:%a})" + (f" {went:%I:%M %p}" if (went := left_at(inv.parts)) else ""))
+                  if end else "Ongoing (monthly)"),
                  ("Guests", f"{first.num_guests}    Nights: {nights}"),
                  ("Booked via", source)]
     half = width / 2

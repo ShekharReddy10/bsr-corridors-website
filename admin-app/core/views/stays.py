@@ -267,9 +267,6 @@ def stay_action(request, pk, action):
             if stay.amount_paid:
                 messages.info(request, f"₹{stay.amount_paid:,.0f} was paid on this booking — it is treated as refunded "
                                        f"and no longer counts in revenue.")
-        elif action == "release-room":
-            services.release_room(stay)
-            messages.success(request, f"{stay.room} is free again for tonight — you can book another guest into it.")
         elif action == "undo-check-out":
             services.undo_check_out(stay, parse_date(request.POST.get("check_out") or ""))
             messages.success(request, f"Check-out undone. {stay.guest.name} is checked in to {stay.room} again.")

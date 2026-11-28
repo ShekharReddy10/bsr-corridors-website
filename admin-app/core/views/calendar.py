@@ -19,6 +19,34 @@ def _bar_class(stay: Stay) -> str:
     return " ".join(classes)
 
 
+def _nights(stay: Stay, start: date, end: date):
+    d, last = max(stay.check_in, start), min(stay.check_out or end, end)
+    while d < last:
+        yield d
+        d += timedelta(days=1)
+
+
+def _free_after_checkout(stays, start: date, end: date, t: date) -> dict[int, set]:
+    """Nights (today onwards) a room is free again because its guest checked out that day — left early, or on the
+    day they came (room released): the calendar offers "+ Add stay" there. {room_id: {dates}}"""
+    held: dict[int, set] = {}
+    for s in stays:
+        if not s.room_released_at:
+            held.setdefault(s.room_id, set()).update(_nights(s, start, end))
+    out: dict[int, set] = {}
+    for s in stays:
+        if s.status != Stay.Status.CHECKED_OUT:
+            continue
+        if s.room_released_at:  # left on the day they came: the nights they had booked
+            days = set(_nights(s, start, end))
+        else:  # left (early or on time): from their check-out day
+            days = {s.check_out} if s.check_out and start <= s.check_out < end else set()
+        free = {d for d in days if d >= t and d not in held.get(s.room_id, set())}
+        if free:
+            out.setdefault(s.room_id, set()).update(free)
+    return out
+
+
 def tape_chart(request):
     """Rooms (rows) × dates (columns) with stays drawn as bars."""
     t = today()
@@ -53,6 +81,7 @@ def tape_chart(request):
             }
         )
 
+    plus = _free_after_checkout(stays, start, end, t)
     day_list = [
         {"date": d, "is_today": d == t, "is_weekend": d.weekday() >= 5, "col": i + 2}
         for i, d in enumerate(start + timedelta(days=n) for n in range(days))
@@ -60,7 +89,8 @@ def tape_chart(request):
     context = {
         "days": day_list,
         "day_count": days,
-        "rows": [{"room": r, "bars": bars[r.pk]} for r in rooms],
+        "rows": [{"room": r, "bars": bars[r.pk],
+                  "plus": [{"date": d, "col": (d - start).days + 2} for d in sorted(plus.get(r.pk, ()))]} for r in rooms],
         "start": start,
         "prev": start - timedelta(days=days),
         "next": start + timedelta(days=days),
@@ -86,8 +116,11 @@ def room_month(request, pk):
     grid_start, grid_end = weeks[0][0], weeks[-1][-1] + timedelta(days=1)
     stays = list(Stay.objects.live().overlapping(grid_start, grid_end).filter(room=room).select_related("guest"))
 
-    def stay_on(d):
-        return next((s for s in stays if s.check_in <= d and (s.check_out is None or d < s.check_out)), None)
+    def stay_on(d):  # a guest who left on their arrival day doesn't hold the night: the room shows free
+        return next((s for s in stays if not s.room_released_at
+                     and s.check_in <= d and (s.check_out is None or d < s.check_out)), None)
+
+    freed = {d for days in _free_after_checkout(stays, grid_start, grid_end, t).values() for d in days}
 
     prev_month = (first - timedelta(days=1)).replace(day=1)
     next_month = (first + timedelta(days=32)).replace(day=1)
@@ -96,7 +129,7 @@ def room_month(request, pk):
         "month": first,
         "weeks": [
             [{"date": d, "in_month": d.month == first.month, "is_today": d == t, "stay": stay_on(d),
-              "starts": (s := stay_on(d)) is not None and s.check_in == d} for d in week]
+              "starts": (s := stay_on(d)) is not None and s.check_in == d, "freed": d in freed} for d in week]
             for week in weeks
         ],
         "prev": prev_month.strftime("%Y-%m"),
