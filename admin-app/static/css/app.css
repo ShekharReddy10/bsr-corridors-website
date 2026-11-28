@@ -801,3 +801,4 @@ details.waive > summary { cursor: pointer; color: var(--ink-soft); }
 .tape-add:hover { filter: brightness(1.08); }
 .tape-add.tape-add-key { display: inline-block; width: 18px; height: 18px; line-height: 18px; font-size: .8rem; margin: 0 2px; }
 .month-add { color: var(--gold); font-weight: 700; }
+.money-btn .btn { white-space: normal; text-align: center; }
