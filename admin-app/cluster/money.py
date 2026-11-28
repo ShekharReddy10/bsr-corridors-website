@@ -2,7 +2,7 @@
 
 - A person sees amounts only for a property where they have **money access**. The main admin is no exception.
 - Seeing them needs that property's **money password** (set by its owner) and a 6-digit code from the person's own
-  **authenticator app** for that property. It then stays open for 30 minutes, for that property only.
+  **authenticator app** for that property — owners too. It then stays open for 6 hours, for that property only.
 - Money access (and who is an owner) is given on the property's Money access page: by an **owner** of the property who
   has set up their authenticator, confirming with a code. Until the property has such an owner, the main admin sets
   it up (that's how the first owner is named). The main admin can reset someone's authenticator; it is logged.
@@ -23,7 +23,7 @@ from django.utils import timezone
 
 from .models import Membership, MoneyAuth
 
-UNLOCK_SECONDS = 30 * 60
+UNLOCK_SECONDS = 6 * 3600  # decided with the user (2026-11-28): 6 hours, for everyone, owners included
 STEP = 30  # seconds per code
 HIDDEN = "₹ ••••"
 
@@ -115,7 +115,8 @@ def auth_for(user, item, create: bool = False) -> MoneyAuth | None:
 def controllers(item):
     """Owners with money access and their authenticator set up: they decide who sees this property's money."""
     ready = MoneyAuth.objects.filter(item=item, confirmed_at__isnull=False).exclude(secret="").values("user_id")
-    return Membership.objects.filter(item=item, role=Membership.Role.OWNER, money_access=True, user_id__in=ready)
+    return Membership.objects.filter(item=item, role=Membership.Role.OWNER, grants__permission__code="money",
+                                     user_id__in=ready)
 
 
 def controlled(item) -> bool:
@@ -129,7 +130,7 @@ def may_manage(user, item) -> bool:
     return bool(getattr(user, "is_superuser", False))
 
 
-# ── Unlocked (per person, per property, for 30 minutes) ───────────────────────
+# ── Unlocked (per person, per property, for 6 hours) ──────────────────────────
 
 
 def _key(item) -> str:
@@ -141,6 +142,15 @@ def unlocked(request, item=None) -> bool:
     if item is None or not has_access(request.user, item):
         return False
     return request.session.get(_key(item), 0) > time.time()
+
+
+def open_until(request, item=None):
+    """When this person's money at this property closes again (a local datetime), or None if it isn't open."""
+    item = item or getattr(request, "item", None)
+    if not unlocked(request, item):
+        return None
+    from datetime import datetime
+    return timezone.localtime(datetime.fromtimestamp(request.session[_key(item)], tz=timezone.get_current_timezone()))
 
 
 def unlock(request, item) -> None:

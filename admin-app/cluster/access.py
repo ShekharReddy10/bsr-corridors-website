@@ -54,18 +54,14 @@ STAY_ACTIONS = {"payment": {"pay"}, "pay-not-received": {"pay"}, "delete": {"wor
 
 
 def caps(user, membership: Membership | None) -> set:
+    """What the person may do at the item: their role's set, plus each permission given to them there (permissions
+    table — a permission's code is the capability the pages check, e.g. money, ids, delete)."""
+    perms = membership.perms() if membership is not None else set()
     if user.is_superuser:
-        return ALL | ({"money"} if membership is not None and membership.money_access else set())
+        return ALL | ({"money"} & perms)  # the main admin: everything but money, unless it's been given to him
     if membership is None:
         return set()
-    c = set(ROLE_CAPS.get(membership.role, set()))
-    if membership.money_access:
-        c.add("money")
-    if membership.see_full_ids:
-        c.add("ids")
-    if membership.can_delete:
-        c.add("delete")
-    return c
+    return set(ROLE_CAPS.get(membership.role, set())) | perms
 
 
 def needed(request, url_name: str, kwargs: dict) -> set:

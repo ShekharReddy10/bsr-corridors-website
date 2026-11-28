@@ -75,14 +75,14 @@ def unlock(request):
             auth.save(update_fields=["confirmed_at", "reset_by", "reset_at"])
             AuditLog.record("money_access", f"{_name(user)} set up their authenticator for the money pages")
         money.unlock(request, item)
-        AuditLog.record("money_unlock", f"Amounts opened by {_name(user)} (for {money.UNLOCK_SECONDS // 60} minutes)")
+        AuditLog.record("money_unlock", f"Amounts opened by {_name(user)} (for {money.UNLOCK_SECONDS // 3600} hours)")
         return redirect(_next(request))
     uri = money.setup_uri(auth) if setting_up else ""
     return render(request, "core/money_unlock.html", {
         "setting_up": setting_up, "has_password": has_password, "may_set_password": may_set_password,
         "qr": money.qr_svg(uri) if uri else "", "secret": " ".join(auth.secret[i:i + 4] for i in range(0, len(auth.secret), 4)),
         "reset": auth if auth.reset_at else None, "min_length": MIN_LENGTH, "next": _next(request),
-        "minutes": money.UNLOCK_SECONDS // 60,
+        "hours": money.UNLOCK_SECONDS // 3600,
     })
 
 
@@ -130,10 +130,11 @@ def access(request):
                 return redirect("money_access")
         changes = []
         if action == "add-me" and user.is_superuser and not controlled:
-            m, _ = Membership.objects.update_or_create(user=user, item=item,
-                                                       defaults={"role": R.OWNER, "money_access": True})
+            m, _ = Membership.objects.update_or_create(user=user, item=item, defaults={"role": R.OWNER})
+            m.grant("money", by=_name(user))
             changes.append(f"{_name(user)}: owner with money access")
         else:
+            plan = []
             for m in members:
                 owner = request.POST.get(f"owner-{m.pk}") == "1"
                 has_money = request.POST.get(f"money-{m.pk}") == "1" or owner  # owners always see the money
@@ -141,13 +142,16 @@ def access(request):
                 if (role, has_money) != (m.role, m.money_access):
                     changes.append(f"{_name(m.user)}: {'owner' if owner else m.get_role_display().lower()}"
                                    f"{', money access' if has_money else ', no money access'}")
-                    m.role, m.money_access = role, has_money
+                plan.append((m, role, has_money))
             ready = {a.user_id for a in auths.values() if a.ready}
-            if controlled and not any(m.role == R.OWNER and m.money_access and m.user_id in ready for m in members):
+            if controlled and not any(role == R.OWNER and has_money and m.user_id in ready for m, role, has_money in plan):
                 messages.error(request, "Keep at least one owner with money access and an authenticator.")
                 return redirect("money_access")
-            for m in members:
-                m.save(update_fields=["role", "money_access"])
+            for m, role, has_money in plan:
+                if m.role != role:
+                    m.role = role
+                    m.save(update_fields=["role"])
+                m.grant("money", has_money, by=_name(user))
         if changes:
             AuditLog.record("money_access", f"Money access changed by {_name(user)}: {'; '.join(changes)}")
             Activity.record("access", f"{item.name}: money access — {'; '.join(changes)}", item)

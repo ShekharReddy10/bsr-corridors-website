@@ -54,10 +54,13 @@ class ClusterTests(TransactionTestCase):
         User = get_user_model()
         self.admin = User.objects.create_superuser("boss", password="boss-password-1")
 
-    def login(self, role=None, item=None, **switches):
+    def login(self, role=None, item=None, *perms):
+        """A login with a role at the item, plus permissions from the table (e.g. "money", "ids")."""
         user = get_user_model().objects.create_user(f"u-{role}-{getattr(item, 'code', 'none')}", password="x" * 12)
         if role:
-            Membership.objects.create(user=user, item=item, role=role, **switches)
+            m = Membership.objects.create(user=user, item=item, role=role)
+            for code in perms:
+                m.grant(code)
         self.client.force_login(user)
         return user
 
@@ -117,7 +120,7 @@ class ClusterTests(TransactionTestCase):
         self.assertEqual(self.client.get("/p/pgone/stays/").status_code, 200)
         self.assertEqual(self.client.post("/p/pgone/stays/new/", {}).status_code, 403)
         self.client.logout()
-        self.login(R.MANAGER, self.pg, money_access=True)
+        self.login(R.MANAGER, self.pg, "money")
         self.assertNotEqual(self.client.get("/p/pgone/revenue/").status_code, 403)
         self.assertNotEqual(self.client.get("/p/pgone/expenses/").status_code, 403)  # asks for the money password
 
@@ -396,7 +399,7 @@ class ArchiveTests(TransactionTestCase):
         self.assertFalse(Guest.objects.filter(pk=g.pk).exists())
         self.assertTrue(Activity.objects.filter(action="archive", summary__contains="1 stays").exists())
         owner = get_user_model().objects.create_user("owner", password="x" * 12)
-        Membership.objects.create(user=owner, item=self.bsr, role=R.OWNER, money_access=True)
+        Membership.objects.create(user=owner, item=self.bsr, role=R.OWNER).grant("money")
         self.client.force_login(owner)
         self.assertRedirects(self.client.get("/properties/archive/"), "/properties/", fetch_redirect_response=False)
         home = self.client.get("/properties/?all")

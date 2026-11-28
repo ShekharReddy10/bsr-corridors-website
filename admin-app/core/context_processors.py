@@ -36,7 +36,13 @@ def app(request):
 
     item = getattr(request, "item", None)
     from cluster.branding import logo_url
-    return {"item_logo": logo_url(item),"HOTEL_NAME": hotel_name(), "wa_welcome": wa_welcome, "wa_departure": wa_departure,
+
+    @cache
+    def money_until():
+        from cluster import money
+        return money.open_until(request, item) if item is not None else None
+
+    return {"item_logo": logo_url(item), "money_until": money_until,"HOTEL_NAME": hotel_name(), "wa_welcome": wa_welcome, "wa_departure": wa_departure,
             "open_complaints": open_complaints if item is not None and item.kind != "hotel" else 0,
             "wa_buttons": wa_buttons, "item": item, "caps": getattr(request, "caps", set()),
             "theme": item.colors if item else None, "my_items": my_items, "CLUSTER_NAME": settings.CLUSTER_NAME}

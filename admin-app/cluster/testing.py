@@ -17,8 +17,9 @@ def open_money(client, item=None, password: str = "secret1", user=None, owner: b
     from core.views.revenue import HASH_KEY
     item = item or Item.objects.get(is_default=True)
     user = user or get_user_model().objects.get(pk=client.session["_auth_user_id"])
-    Membership.objects.update_or_create(user=user, item=item, defaults={
-        "role": Membership.Role.OWNER if owner else Membership.Role.ACCOUNTANT, "money_access": True})
+    m, _ = Membership.objects.update_or_create(user=user, item=item, defaults={
+        "role": Membership.Role.OWNER if owner else Membership.Role.ACCOUNTANT})
+    m.grant("money")
     MoneyAuth.objects.update_or_create(user=user, item=item, defaults={
         "secret": money.new_secret(), "confirmed_at": timezone.now()})
     with current.using(item):

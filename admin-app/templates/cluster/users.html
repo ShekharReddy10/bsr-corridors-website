@@ -13,7 +13,7 @@
       <form method="post" class="access-form">{% csrf_token %}<input type="hidden" name="action" value="access"><input type="hidden" name="user" value="{{ u.pk }}">
         <h3>Where they can work</h3>
         <div class="table-wrap"><table class="table access-table">
-          <thead><tr><th>Property</th><th>Role</th><th>Money</th><th>Full IDs</th><th>Delete</th></tr></thead>
+          <thead><tr><th>Property</th><th>Role</th>{% for p in permissions %}<th title="{{ p.description }}">{{ p.name }}</th>{% endfor %}</tr></thead>
           <tbody>
           {% for i, m in u.access %}
             <tr>
@@ -22,14 +22,12 @@
                 <option value="">No access</option>
                 {% for value, label in roles %}{% if value != 'owner' or i.pk not in controlled %}<option value="{{ value }}" {% if m and m.role == value %}selected{% endif %}>{{ label }}</option>{% endif %}{% endfor %}
               </select>{% endif %}</td>
-              <td data-label="Money">{% if m.money_access %}<span class="ok">✓</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-              <td data-label="Full IDs"><input type="checkbox" name="ids-{{ i.pk }}" value="1" {% if m.see_full_ids %}checked{% endif %} aria-label="Can see full ID numbers at {{ i.name }}"></td>
-              <td data-label="Delete"><input type="checkbox" name="delete-{{ i.pk }}" value="1" {% if m.can_delete %}checked{% endif %} aria-label="Can delete at {{ i.name }}"></td>
+              {% for p in permissions %}<td data-label="{{ p.name }}">{% if p.owner_controlled and i.pk in controlled %}{% if m and p.code in m.perms %}<span class="ok" title="Given by the owner">✓</span>{% else %}<span class="muted" title="Given by the owner">—</span>{% endif %}{% else %}<input type="checkbox" name="perm-{{ i.pk }}-{{ p.code }}" value="1" {% if m and p.code in m.perms %}checked{% endif %} aria-label="{{ p.name }} at {{ i.name }}">{% endif %}</td>{% endfor %}
             </tr>
           {% endfor %}
           </tbody>
         </table></div>
-        <p class="muted small">Owner / partner: everything in that property. Manager: daily work, rooms. Front desk: bookings, check-in/out, payments, messages. Accountant: payments, exports. View only: looks, changes nothing. The switches add full ID numbers or deleting. <b>Money</b> (seeing any amount) is given only by the property’s owner on its Money access page — once a property’s owner has set up their authenticator, its owners are changed there too.</p>
+        <p class="muted small">Owner / partner: everything in that property. Manager: daily work, rooms. Front desk: bookings, check-in/out, payments, messages. Accountant: payments, exports. View only: looks, changes nothing. Tick a permission to add it to the role at that property: {% for p in permissions %}<b>{{ p.name }}</b> — {{ p.description|lower }}{% if not forloop.last %}; {% endif %}{% endfor %}. Once a property’s owner has set up their authenticator, <b>money</b> and its owners are given only by the owner, on its Money access page (shown here as ✓ / —).</p>
         <button class="btn btn-primary btn-sm">Save access</button>
       </form>
       <form method="post" class="inline-form">{% csrf_token %}<input type="hidden" name="action" value="reset"><input type="hidden" name="user" value="{{ u.pk }}">

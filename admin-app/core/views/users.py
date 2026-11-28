@@ -7,7 +7,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model, update_session_auth_hash
 from django.shortcuts import get_object_or_404, redirect, render
 
-from cluster.models import Activity, Item, Membership
+from cluster.models import Activity, Item, Membership, Permission
 
 
 MIN_LENGTH = 10
@@ -52,7 +52,7 @@ def users(request):
                 messages.success(request, f"Login created for {u.get_full_name() or username}. Share the password with them privately.")
         elif action == "access":
             u = get_object_or_404(User, pk=request.POST.get("user"), is_superuser=False)
-            _save_access(u, request.POST)
+            _save_access(u, request.POST, by=request.user.get_full_name() or request.user.username)
             messages.success(request, f"Access saved for {u.get_full_name() or u.username}.")
         elif action in {"reset", "toggle"}:
             u = get_object_or_404(User, pk=request.POST.get("user"))
@@ -84,20 +84,22 @@ def users(request):
     controlled = {i.pk for i in items if money.controlled(i)}
     return render(request, "cluster/users.html", {"users": people, "items": items, "roles": Membership.Role.choices,
                                                   "controlled": controlled,
+                                                  "permissions": list(Permission.objects.all()),
                                                   "min_length": MIN_LENGTH})
 
 
 def _access_text(m) -> str:
     if m is None:
         return "no access"
-    extra = [w for w, on in (("money", m.money_access), ("full IDs", m.see_full_ids), ("delete", m.can_delete)) if on]
+    names = dict(Permission.objects.values_list("code", "name"))
+    extra = [names.get(code, code).lower() for code in sorted(m.perms())]
     return m.get_role_display() + (f" + {', '.join(extra)}" if extra else "")
 
 
-def _save_access(user, data) -> None:
-    """One row per cluster item: a role (or no access) and two switches. Money access is never set here (the
-    property's owner gives it), and once a property's owner has an authenticator, its owners can't be changed here
-    either. The group's log says what changed."""
+def _save_access(user, data, by: str = "") -> None:
+    """One row per property: a role (or no access) and a tick for each permission in the permissions table. Once a
+    property's owner has an authenticator, its owners and owner-given permissions (money) are changed only by them
+    (Money access page). The group's log says what changed."""
     from cluster import money
     roles = dict(Membership.Role.choices)
     changes = []
@@ -114,10 +116,11 @@ def _save_access(user, data) -> None:
             Membership.objects.filter(user=user, item=item).delete()
             after = "no access"
         else:
-            m, _ = Membership.objects.update_or_create(user=user, item=item, defaults={
-                "role": role, "see_full_ids": data.get(f"ids-{item.pk}") == "1",
-                "can_delete": data.get(f"delete-{item.pk}") == "1",
-            })
+            m, _ = Membership.objects.update_or_create(user=user, item=item, defaults={"role": role})
+            for perm in Permission.objects.all():  # every permission in the table: ticked or not
+                if perm.owner_controlled and money.controlled(item):
+                    continue  # the owner gives this one now (Money access page)
+                m.grant(perm.code, data.get(f"perm-{item.pk}-{perm.code}") == "1", by=by)
             after = _access_text(m)
         if after != before:
             changes.append(f"{item.name}: {before} → {after}")

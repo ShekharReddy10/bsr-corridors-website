@@ -131,10 +131,6 @@ class Membership(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="memberships")
     item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name="memberships")
     role = models.CharField(max_length=12, choices=Role.choices, default=Role.DESK)
-    money_access = models.BooleanField("Money access", default=False,
-                                       help_text="Revenue, profit and settlements (still behind the money password)")
-    see_full_ids = models.BooleanField("Can see full ID numbers", default=False)
-    can_delete = models.BooleanField("Can delete", default=False)
 
     class Meta:
         db_table = "cluster_memberships"
@@ -142,6 +138,69 @@ class Membership(models.Model):
 
     def __str__(self):
         return f"{self.user} @ {self.item}: {self.get_role_display()}"
+
+    # Permissions (on top of the role): rows in the Grant table, one per permission given at this property.
+
+    def perms(self) -> set[str]:
+        if not hasattr(self, "_perm_cache"):
+            self._perm_cache = (set(self.grants.values_list("permission__code", flat=True)) if self.pk else set())
+        return self._perm_cache
+
+    def has(self, code: str) -> bool:
+        return code in self.perms()
+
+    def grant(self, code: str, on: bool = True, by: str = "") -> bool:
+        """Give (or take away) a permission; True if it changed."""
+        perm = Permission.objects.get(code=code)
+        if on:
+            _, changed = Grant.objects.get_or_create(membership=self, permission=perm, defaults={"granted_by": by[:60]})
+        else:
+            changed = bool(Grant.objects.filter(membership=self, permission=perm).delete()[0])
+        self.__dict__.pop("_perm_cache", None)
+        return changed
+
+    @property
+    def money_access(self) -> bool:
+        return self.has("money")
+
+    def refresh_from_db(self, *args, **kwargs):
+        self.__dict__.pop("_perm_cache", None)
+        return super().refresh_from_db(*args, **kwargs)
+
+
+class Permission(models.Model):
+    """Something a person may do at a property on top of their role (see money, see full ID numbers, delete, …).
+    New ones are added as rows; the main admin gives them to people in Users & access."""
+
+    code = models.SlugField(max_length=30, unique=True, help_text="What the app checks, e.g. money")
+    name = models.CharField(max_length=60)
+    description = models.CharField(max_length=200, blank=True)
+    owner_controlled = models.BooleanField(default=False, help_text="Once the property's owner has an authenticator, "
+                                           "only its owners give this (on its Money access page)")
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = "cluster_permissions"
+        ordering = ["sort_order", "name"]
+
+    def __str__(self):
+        return self.name
+
+
+class Grant(models.Model):
+    """This person has this permission at this property."""
+
+    membership = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="grants")
+    permission = models.ForeignKey(Permission, on_delete=models.CASCADE, related_name="grants")
+    granted_by = models.CharField(max_length=60, blank=True)
+    granted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "cluster_grants"
+        constraints = [models.UniqueConstraint(fields=["membership", "permission"], name="cluster_grant_once")]
+
+    def __str__(self):
+        return f"{self.membership}: {self.permission}"
 
 
 class Activity(models.Model):

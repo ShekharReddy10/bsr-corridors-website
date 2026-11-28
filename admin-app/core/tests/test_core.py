@@ -22,8 +22,9 @@ def staff(username, password="test-pass-123456"):
     """A login with full access to BSR Corridors — what every existing login gets when the cluster arrives."""
     from cluster.models import Item, Membership
     user = get_user_model().objects.create_user(username, password=password)
-    Membership.objects.create(user=user, item=Item.objects.get(is_default=True), role=Membership.Role.OWNER,
-                              money_access=True, see_full_ids=True, can_delete=True)
+    m = Membership.objects.create(user=user, item=Item.objects.get(is_default=True), role=Membership.Role.OWNER)
+    for code in ("money", "ids", "delete"):
+        m.grant(code)
     return user
 
 def make_rooms():
@@ -2179,7 +2180,7 @@ class MoneyPrivacyTests(TestCase):
         import re
         for leak in ("5,678", "5678", "1,357", "1357"):
             self.assertNotIn(leak, page, re.findall(r".{80}" + leak + r".{40}", page))
-        self.assertNotIn("Show amounts", page)  # no money access: no button
+        self.assertNotIn("Check money", page)  # no money permission: no button
         # Editing the stay: the price isn't sent to the page and can't be changed — and is kept when saving.
         form = self.client.get(f"/stays/{self.s.pk}/edit/").content.decode()
         self.assertNotIn("5678", form)
@@ -2224,7 +2225,7 @@ class MoneyPrivacyTests(TestCase):
         # The front desk still needs the money password and their own authenticator.
         self.client.force_login(self.desk)
         self.assertNotIn("5,678", self.client.get(f"/stays/{self.s.pk}/").content.decode())
-        self.assertContains(self.client.get(f"/stays/{self.s.pk}/"), "Show amounts")
+        self.assertContains(self.client.get(f"/stays/{self.s.pk}/"), "Check money")
         self.client.get("/money/unlock/")
         self.client.post("/money/unlock/", {"password": "owner-pass-1", "code": code_now(self.desk, self.bsr)})
         self.assertIn("5,678", self.client.get(f"/stays/{self.s.pk}/").content.decode())
@@ -2266,3 +2267,50 @@ class MoneyPrivacyTests(TestCase):
         self.assertTrue(AuditLog.objects.filter(summary__contains="reset by the main admin").exists())
         self.client.force_login(owner)
         self.assertContains(self.client.get("/money/unlock/"), "was reset by")
+
+
+class PermissionTableTests(TestCase):
+    """Permissions are rows in a table; the main admin gives them per person per property (Users & access)."""
+
+    def setUp(self):
+        from cluster.models import Item, Membership
+        self.bsr = Item.objects.get(is_default=True)
+        self.admin = get_user_model().objects.create_superuser("boss", password="boss-password-1")
+        self.desk = get_user_model().objects.create_user("desk", password="desk-password-1")
+        self.m = Membership.objects.create(user=self.desk, item=self.bsr, role=Membership.Role.DESK)
+
+    def test_a_new_permission_is_just_a_row(self):
+        from cluster import access
+        from cluster.models import Permission
+        self.assertEqual(list(Permission.objects.values_list("code", flat=True)), ["money", "ids", "delete"])
+        Permission.objects.create(code="reports", name="See reports", description="Monthly reports", sort_order=9)
+        self.client.force_login(self.admin)
+        page = self.client.get("/properties/users/")
+        self.assertContains(page, "See reports")
+        self.assertContains(page, f'name="perm-{self.bsr.pk}-reports"')
+        self.client.post("/properties/users/", {"action": "access", "user": self.desk.pk, f"role-{self.bsr.pk}": "desk",
+                                                f"perm-{self.bsr.pk}-reports": "1", f"perm-{self.bsr.pk}-ids": "1"})
+        self.m.refresh_from_db()
+        self.assertEqual(self.m.perms(), {"reports", "ids"})
+        self.assertTrue({"reports", "ids"} <= access.caps(self.desk, self.m))  # pages check it by its code
+        self.client.post("/properties/users/", {"action": "access", "user": self.desk.pk, f"role-{self.bsr.pk}": "desk"})
+        self.m.refresh_from_db()
+        self.assertEqual(self.m.perms(), set())
+
+    def test_money_closes_after_6_hours_even_for_owners_and_button_only_for_money(self):
+        import time
+        from cluster import money
+        from cluster.testing import open_money
+        stay(make_guest(), make_rooms()[2]["101"], 0, 2)
+        self.client.force_login(self.desk)
+        self.assertNotContains(self.client.get("/"), "Check money")  # no money permission: no button
+        self.client.force_login(self.admin)
+        open_money(self.client, self.bsr)  # the owner
+        self.assertEqual(money.UNLOCK_SECONDS, 6 * 3600)
+        self.assertContains(self.client.get("/"), "Money open")
+        session = self.client.session
+        session[f"money_unlocked:{self.bsr.code}"] = time.time() - 1  # 6 hours later
+        session.save()
+        page = self.client.get("/")
+        self.assertContains(page, "Check money")  # the code is asked again
+        self.assertRedirects(self.client.get("/revenue/"), "/money/unlock/?next=/revenue/", fetch_redirect_response=False)

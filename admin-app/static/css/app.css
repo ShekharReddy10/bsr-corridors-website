@@ -787,5 +787,9 @@ details.waive > summary { cursor: pointer; color: var(--ink-soft); }
 .totp-qr { margin: 8px 0; }
 .totp-qr img { background: #fff; padding: 6px; border-radius: 10px; border: 1px solid var(--line); }
 .totp-key { font-size: .95rem; letter-spacing: .05em; user-select: all; }
-.money-toggle { margin-left: auto; }
-.money-toggle .btn { white-space: nowrap; }
+/* "Check money": top of the side menu (tablet / computer); in the top bar on phones */
+.money-btn.money-side { margin: 0 0 10px; }
+.money-btn.money-side .btn { width: 100%; justify-content: center; }
+.money-btn.money-side .btn-ghost { color: #fff; border: 1px solid rgba(255, 255, 255, .25); }
+.money-btn.money-top { margin-left: auto; }
+@media (min-width: 768px) { .money-btn.money-top { display: none; } }
