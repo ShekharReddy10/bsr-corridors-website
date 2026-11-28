@@ -761,3 +761,23 @@ details.waive > summary { cursor: pointer; color: var(--ink-soft); }
 /* A guest who left on their arrival day: a thin strip at the top, so the room's next guest that night shows too */
 .tape-bar.bar-released { z-index: 2; align-self: start; margin-top: 2px; height: 14px; padding: 0 6px; font-size: .62rem; opacity: .85; }
 .tape-bar.bar-released small { display: none; }
+
+/* ID files: the list of chosen files waiting for "Upload all" */
+.photo-upload { display: contents; }
+.stage-list { flex-basis: 100%; margin: 6px 0 2px; padding: 8px; border: 1px dashed var(--line); border-radius: 10px; background: var(--bg); display: grid; gap: 4px; }
+.stage-item { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; font-size: .88rem; }
+.stage-item.is-bad { color: var(--red); }
+.stage-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stage-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.stage-problem { color: var(--red); }
+.idp-line { flex-wrap: wrap; }
+.idp-earlier { display: grid; gap: 6px; margin: 6px 0; }
+.idp-earlier-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: center; }
+.idp-earlier-row { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.idp-all { font-size: .85rem; display: inline-flex; gap: 6px; align-items: center; }
+.idp-chip.idp-pdf, .idp-chip.idp-video, .idp-chip.idp-file { outline: 2px dashed currentColor; outline-offset: -4px; }
+
+/* The viewer: PDFs and videos as well as photos */
+.viewer-stage iframe { width: min(1000px, 96vw); height: 82vh; border: 0; border-radius: 8px; background: #fff; }
+.viewer-stage video { max-width: 96vw; max-height: 82vh; border-radius: 8px; background: #000; }
+.viewer-file { text-align: center; color: #fff; display: grid; gap: 12px; justify-items: center; }

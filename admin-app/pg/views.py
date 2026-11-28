@@ -394,31 +394,24 @@ def reveal_id(request, pk):
 
 def _upload(request, obj, what: str) -> None:
     from core import gdrive
+    from core import files
     f = request.FILES.get("file")
     if not f:
-        raise ValidationError("Choose a photo or PDF first.")
-    if f.size > 8 * 1024 * 1024:
-        raise ValidationError("That file is over 8 MB.")
+        raise ValidationError("Choose a file first (photo, PDF, video…).")
     if not gdrive.is_configured():
         raise ValidationError("Google Drive isn't connected for this property, so files can't be saved yet.")
-    from core import photos
-    head = f.read(4)
-    f.seek(0)
-    if head == b"%PDF":
-        data, mime = f.read(), "application/pdf"
-    else:
-        try:
-            data, mime = photos.prepare(f), "image/jpeg"  # made smaller, as for guest ID photos
-        except photos.BadPhoto as exc:
-            raise ValidationError(str(exc)) from exc
-    name = f"{what}-{obj.pk}-{f.name}"[:120]
-    file_id = gdrive.upload_file(data, name, mime, "pg")
+    try:
+        prepared = files.prepare(f)  # photos made smaller, as for guest IDs; PDFs and videos kept as they are
+    except files.BadFile as exc:
+        raise ValidationError(str(exc)) from exc
+    stem = (f.name.rsplit(".", 1)[0] if "." in f.name else f.name)[:80]
+    file_id = gdrive.upload_file(prepared.data, f"{what}-{obj.pk}-{stem}.{prepared.ext}", prepared.mime, "pg")
     if what == "agreement":
-        obj.agreement = file_id
-        obj.save(update_fields=["agreement"])
+        obj.agreement, obj.agreement_kind = file_id, prepared.kind
+        obj.save(update_fields=["agreement", "agreement_kind"])
     else:
-        obj.id_photo = file_id
-        obj.save(update_fields=["id_photo"])
+        obj.id_photo, obj.id_kind = file_id, prepared.kind
+        obj.save(update_fields=["id_photo", "id_kind"])
     messages.success(request, "Saved in Google Drive.")
 
 
@@ -432,11 +425,8 @@ def file(request, what, pk):
         raise Http404
     if not file_id:
         raise Http404
-    data = gdrive.fetch(file_id)
-    mime = "application/pdf" if data[:4] == b"%PDF" else "image/jpeg"
-    resp = HttpResponse(data, content_type=mime)
-    resp["Cache-Control"] = "private, max-age=600"
-    return resp
+    from core import files
+    return files.response(gdrive.fetch(file_id), f"{what}-{pk}")
 
 
 # ── Set-up: floors, room types, rooms ─────────────────────────────────────────

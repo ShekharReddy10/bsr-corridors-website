@@ -1155,7 +1155,7 @@ class InvoiceTests(TestCase):
         text = parse_qs(urlparse(self.client.get(f"/stays/{s.pk}/whatsapp/?t={t.pk}")["Location"]).query)["text"][0]
         self.assertTrue(invoice.generated_at(s))
         self.assertRegex(text, r"Your invoice \(261115-261118-101\):\nhttp://testserver/s/[A-Za-z2-9]{7}\n")
-        self.assertNotIn("data-busy", self.client.get(f"/stays/{s.pk}/").content.decode())
+        self.assertNotIn('data-busy="', self.client.get(f"/stays/{s.pk}/").content.decode())
         # Check-out generates it; the departure message then carries the guest's link.
         self.client.post(f"/stays/{s.pk}/check-out/")
         self.assertTrue(invoice.has_invoice(s))
@@ -1668,8 +1668,8 @@ class PhotoTests(TestCase):
         StayGuest.objects.create(stay=s, position=2, name="Sita")
         ids = iter(f"drive-{i}" for i in range(1, 20))
         up_url = f"/stays/{s.pk}/id-photos/upload/"
-        with mock.patch("core.gdrive.upload_photo", side_effect=lambda *a: next(ids)) as up, \
-             mock.patch("core.gdrive.fetch", return_value=b"jpeg-bytes"), mock.patch("core.gdrive.delete_file") as rm:
+        with mock.patch("core.gdrive.upload_file", side_effect=lambda *a: next(ids)) as up, \
+             mock.patch("core.gdrive.fetch", return_value=b"\xff\xd8\xffjpeg"), mock.patch("core.gdrive.delete_file") as rm:
             self.client.post(up_url, {"person": "Ravi Kumar", "photo": [self._jpeg(), self._photo("red")]})
             self.client.post(up_url, {"person": "Sita", "photo": [self._photo("blue")]})
             day = f"{s.check_in:%d-%m-%Y}"
@@ -1682,8 +1682,8 @@ class PhotoTests(TestCase):
             sent = Image.open(io.BytesIO(up.call_args_list[0][0][0]))
             self.assertEqual((sent.format, max(sent.size)), ("JPEG", 1600))  # shrunk, re-encoded
             r = self.client.get(f"/id-photos/{g.id_photos.first().pk}/")
-            self.assertEqual((r.content, r["Content-Type"]), (b"jpeg-bytes", "image/jpeg"))
-            self.assertTrue(AuditLog.objects.filter(action="reveal_id", summary__contains="ID photo").exists())
+            self.assertEqual((r.content, r["Content-Type"]), (b"\xff\xd8\xffjpeg", "image/jpeg"))
+            self.assertTrue(AuditLog.objects.filter(action="reveal_id", summary__contains="ID file").exists())
 
             # Same photo sent again → not stored twice.
             r = self.client.post(up_url, {"person": "Ravi Kumar", "photo": [self._photo("red")]}, follow=True)
@@ -1693,8 +1693,9 @@ class PhotoTests(TestCase):
             # The guest books again: earlier photos are offered to tick, none ticked yet.
             again = stay(g, self.rooms["101"], 10, 2)
             page = self.client.get(f"/stays/{again.pk}/")
-            self.assertContains(page, "Saved earlier — tick to use")
-            self.assertContains(page, "No ID photo for this stay yet")
+            self.assertContains(page, "Saved earlier for this guest — tick to use")
+            self.assertContains(page, "No ID for this stay yet")
+            self.assertContains(page, "Select all")
             red, blue = g.id_photos.get(file_id="drive-2"), g.id_photos.get(file_id="drive-3")
             self.client.post(f"/stays/{again.pk}/id-photos/use/", {"photo": [red.pk, blue.pk]})
             self.assertEqual(set(again.id_photos.all()), {red, blue})
@@ -1731,12 +1732,33 @@ class PhotoTests(TestCase):
             self.client.post(up_url, {"person": "Stranger", "photo": [self._photo("black")]})
             self.assertFalse(g.id_photos.filter(person="Stranger").exists())
             self.assertContains(self.client.get(f"/guests/{g.pk}/"), f"#{again.pk}")
-        # Not a photo → refused, nothing saved.
-        with mock.patch("core.gdrive.upload_photo") as up:
-            r = self.client.post(f"/stays/{again.pk}/id-photos/upload/",
-                                 {"person": "Sita", "photo": SimpleUploadedFile("x.pdf", b"%PDF")}, follow=True)
+        # A PDF (or a video) is kept as it is, and opens as a PDF.
+        with mock.patch("core.gdrive.upload_file", return_value="drive-pdf") as up, \
+                mock.patch("core.gdrive.fetch", return_value=b"%PDF-1.4 id card"):
+            self.client.post(f"/stays/{again.pk}/id-photos/upload/",
+                             {"person": "Sita", "photo": SimpleUploadedFile("aadhaar.pdf", b"%PDF-1.4 id card")})
+            pdf = g.id_photos.get(file_id="drive-pdf")
+            self.assertEqual((pdf.kind, pdf.name[-4:], up.call_args[0][2]), ("pdf", ".pdf", "application/pdf"))
+            r = self.client.get(f"/id-photos/{pdf.pk}/")
+            self.assertEqual(r["Content-Type"], "application/pdf")
+            self.assertContains(self.client.get(f"/stays/{again.pk}/"), 'data-kind="pdf"')
+        # Any other file is kept, but only ever downloads (never shown inside the app).
+        with mock.patch("core.gdrive.upload_file", return_value="drive-html"), \
+                mock.patch("core.gdrive.fetch", return_value=b"<html><script>x</script>"):
+            self.client.post(f"/stays/{again.pk}/id-photos/upload/",
+                             {"person": "Sita", "photo": SimpleUploadedFile("page.html", b"<html><script>x</script>",
+                                                                            content_type="image/jpeg")})
+            other = g.id_photos.get(file_id="drive-html")
+            r = self.client.get(f"/id-photos/{other.pk}/")
+            self.assertEqual((other.kind, r["Content-Type"]), ("file", "application/octet-stream"))
+            self.assertIn("attachment", r["Content-Disposition"])
+            self.assertEqual(r["X-Content-Type-Options"], "nosniff")
+        # Over 25 MB: refused.
+        with mock.patch("core.gdrive.upload_file") as up:
+            big = SimpleUploadedFile("big.mp4", b"\x00\x00\x00\x18ftypmp42" + b"0" * (25 * 1024 * 1024))
+            r = self.client.post(f"/stays/{again.pk}/id-photos/upload/", {"person": "Sita", "photo": big}, follow=True)
             up.assert_not_called()
-        self.assertContains(r, "isn’t a photo")
+        self.assertContains(r, "over 25 MB")
 
     def test_today_reminds_missing_id_photos_after_check_in(self):
         g = make_guest(name="Ravi Kumar")
@@ -1777,7 +1799,7 @@ class PhotoTests(TestCase):
     def test_receipt_on_expense(self):
         from unittest import mock
         self.client.post("/revenue/", {"password": "secret1", "confirm": "secret1"})
-        with mock.patch("core.gdrive.upload_photo", return_value="drive-r1"):
+        with mock.patch("core.gdrive.upload_file", return_value="drive-r1"):
             self.client.post("/expenses/new/", {"date": T.isoformat(), "category": "repairs", "reason": "AC repair",
                                                 "amount": "2500", "payment_mode": "upi", "receipt": self._jpeg()})
         e = Expense.objects.get()

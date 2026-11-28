@@ -13,9 +13,9 @@ class BadPhoto(ValueError):
     pass
 
 
-def prepare(upload) -> bytes:
-    if upload.size > MAX_UPLOAD:
-        raise BadPhoto("That photo is too large (over 15 MB).")
+def prepare(upload, limit: int = MAX_UPLOAD) -> bytes:
+    if upload.size > limit:
+        raise BadPhoto(f"That photo is too large (over {limit // 1024 // 1024} MB).")
     try:
         img = Image.open(upload)
         img = ImageOps.exif_transpose(img)

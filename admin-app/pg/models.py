@@ -147,6 +147,7 @@ class Resident(models.Model):
     id_type = models.CharField("ID proof", max_length=20, choices=IdType.choices, default=IdType.AADHAAR)
     id_number = EncryptedTextField("ID number", blank=True)
     id_photo = models.CharField(max_length=100, blank=True, editable=False)  # Drive file id
+    id_kind = models.CharField(max_length=6, default="image", editable=False)  # image · pdf · video · file
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=1, choices=Gender.choices, blank=True)
     occupation = models.CharField("Student / working", max_length=10, choices=Occupation.choices, blank=True)
@@ -230,6 +231,7 @@ class Tenancy(models.Model):
     last_day = models.DateField("Last day", null=True, blank=True, help_text="Set when notice is given")
     move_out = models.DateField("Moved out on", null=True, blank=True)
     agreement = models.CharField(max_length=100, blank=True, editable=False)  # Drive file id
+    agreement_kind = models.CharField(max_length=6, default="image", editable=False)  # image · pdf · video · file
     notes = models.TextField(blank=True)
     created_by = models.CharField(max_length=150, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -153,28 +153,64 @@
     fetch("/healthz/", { cache: "no-store" }).catch(() => {});
   }, 60 * 1000);
 
-  // Photo viewer: ID photos and receipts open in the page (‹ › / arrow keys / swipe between the photos in the same
-  // group, tap to zoom) instead of a new tab. Without JS the links still open the photo in a new tab.
+  // File viewer: ID files, receipts and documents open in the page — photos (tap to zoom), PDFs and videos — with
+  // ‹ › / arrow keys / swipe between the files in the same group. Other files (and phones' PDFs) get an Open button.
+  // Without JS the links still open the file in a new tab.
   let viewer, shown = [], at = 0;
   const preloaded = new Map();
-  const preload = (a) => { if (a && !preloaded.has(a.href)) { const i = new Image(); i.src = a.href; preloaded.set(a.href, i); } };
+  const kindOf = (a) => a.dataset.kind || "image";
+  const preload = (a) => {
+    if (a && kindOf(a) === "image" && !preloaded.has(a.href)) { const i = new Image(); i.src = a.href; preloaded.set(a.href, i); }
+  };
   const showPhoto = () => {
-    const a = shown[at];
-    const img = viewer.querySelector("img"), status = viewer.querySelector(".viewer-status");
-    // Clear the previous photo first: photos come from Google Drive and take a moment, and the old one staying up
-    // made it look as if ‹ › didn't change the photo.
+    const a = shown[at], kind = kindOf(a);
+    const stage = viewer.querySelector(".viewer-stage"), img = viewer.querySelector("img"), status = viewer.querySelector(".viewer-status");
+    stage.querySelectorAll("iframe, video, .viewer-file").forEach((el) => el.remove());
+    // Clear the previous file first: files come from Google Drive and take a moment.
     img.hidden = true;
     img.classList.remove("zoomed");
-    status.textContent = "Loading…";
+    img.removeAttribute("src");
     status.hidden = false;
-    img.onload = () => { if (img.src === a.href) { img.hidden = false; status.hidden = true; } };
-    img.onerror = () => { if (img.src === a.href) status.textContent = "Couldn’t load this photo — try ↗ to open it in a new tab."; };
-    img.src = a.href;
+    const openButton = (text) => {
+      status.hidden = true;
+      const box = document.createElement("div");
+      box.className = "viewer-file";
+      box.innerHTML = `<p>${text}</p><a class="btn btn-primary" target="_blank" rel="noopener"></a>`;
+      box.querySelector("a").href = a.href;
+      box.querySelector("a").textContent = kind === "pdf" ? "Open the PDF" : "Open / download";
+      stage.append(box);
+    };
+    if (kind === "image") {
+      status.textContent = "Loading…";
+      img.onload = () => { if (img.src === a.href) { img.hidden = false; status.hidden = true; } };
+      img.onerror = () => { if (img.src === a.href) openButton("This file can’t be shown here."); };
+      img.src = a.href;
+    } else if (kind === "pdf" && !MOBILE_VIEW) {
+      status.textContent = "Loading the PDF…";
+      const frame = document.createElement("iframe");
+      frame.title = a.title || "PDF";
+      frame.addEventListener("load", () => { status.hidden = true; });
+      frame.src = a.href;
+      stage.append(frame);
+    } else if (kind === "video") {
+      status.textContent = "Loading the video…";
+      const video = document.createElement("video");
+      video.controls = true;
+      video.playsInline = true;
+      video.preload = "metadata";
+      video.addEventListener("loadedmetadata", () => { status.hidden = true; });
+      video.addEventListener("error", () => { video.remove(); openButton("This video can’t play here."); });
+      video.src = a.href;
+      stage.append(video);
+    } else {
+      openButton(kind === "pdf" ? "PDF" : "This file opens outside the app.");
+    }
     if (shown.length > 1) { preload(shown[(at + 1) % shown.length]); preload(shown[(at - 1 + shown.length) % shown.length]); }
     viewer.querySelector(".viewer-title").textContent = a.title || a.textContent.trim();
     viewer.querySelector(".viewer-count").textContent = shown.length > 1 ? `${at + 1} / ${shown.length}` : "";
     viewer.querySelectorAll(".viewer-nav").forEach((b) => { b.hidden = shown.length < 2; });
   };
+  const MOBILE_VIEW = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);  // phones show PDFs outside
   const step = (d) => { if (shown.length > 1) { at = (at + d + shown.length) % shown.length; showPhoto(); } };
   const makeViewer = () => {
     viewer = document.createElement("dialog");
@@ -183,8 +219,8 @@
         <a class="viewer-open" target="_blank" rel="noopener" title="Open in a new tab">↗</a>
         <button type="button" class="viewer-close" aria-label="Close">×</button></div>
       <div class="viewer-stage"><img alt="Photo" hidden><p class="viewer-status"></p></div>
-      <button type="button" class="viewer-nav viewer-prev" aria-label="Previous photo">‹</button>
-      <button type="button" class="viewer-nav viewer-next" aria-label="Next photo">›</button>`;
+      <button type="button" class="viewer-nav viewer-prev" aria-label="Previous file">‹</button>
+      <button type="button" class="viewer-nav viewer-next" aria-label="Next file">›</button>`;
     document.body.append(viewer);
     viewer.querySelector(".viewer-close").addEventListener("click", () => viewer.close());
     viewer.querySelector(".viewer-prev").addEventListener("click", () => step(-1));
@@ -198,14 +234,21 @@
       if (e.key === "ArrowRight") step(1);
     });
     let x0 = null;
-    viewer.addEventListener("touchstart", (e) => { x0 = e.touches.length === 1 && !img.classList.contains("zoomed") ? e.touches[0].clientX : null; }, { passive: true });
+    viewer.addEventListener("touchstart", (e) => {
+      const onMedia = e.target.closest && e.target.closest("video, iframe");
+      x0 = e.touches.length === 1 && !img.classList.contains("zoomed") && !onMedia ? e.touches[0].clientX : null;
+    }, { passive: true });
     viewer.addEventListener("touchend", (e) => {
       if (x0 === null) return;
       const dx = e.changedTouches[0].clientX - x0;
       if (Math.abs(dx) > 50) step(dx < 0 ? 1 : -1);
       x0 = null;
     });
-    viewer.addEventListener("close", () => { viewer.querySelector("img").removeAttribute("src"); preloaded.clear(); });
+    viewer.addEventListener("close", () => {
+      viewer.querySelector("img").removeAttribute("src");
+      viewer.querySelectorAll("iframe, video, .viewer-file").forEach((el) => el.remove());  // stops a playing video
+      preloaded.clear();
+    });
   };
   document.addEventListener("click", (e) => {
     const a = e.target.closest("a[data-viewer]");
@@ -219,6 +262,55 @@
     showPhoto();
     viewer.showModal();
   });
+
+  // Choosing ID files: they wait in a list (add more, remove any) until "Upload all", which sends them in one go.
+  const fmtSize = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB");
+  const MAX_FILE = 25 * 1048576, MAX_TOTAL = 60 * 1048576, MAX_FILES = 10;
+  document.querySelectorAll("form[data-stage]").forEach((form) => {
+    const input = form.querySelector("[data-stage-input]"), list = form.querySelector("[data-stage-list]");
+    if (!input || !list || typeof DataTransfer === "undefined") return;
+    let picked = [];
+    const render = () => {
+      const dt = new DataTransfer();
+      picked.forEach((f) => dt.items.add(f));
+      input.files = dt.files;
+      list.hidden = picked.length === 0;
+      list.innerHTML = "";
+      const total = picked.reduce((n, f) => n + f.size, 0);
+      picked.forEach((f, i) => {
+        const row = document.createElement("div");
+        row.className = "stage-item" + (f.size > MAX_FILE ? " is-bad" : "");
+        const icon = f.type.startsWith("image/") ? "🖼" : f.type === "application/pdf" ? "📄" : f.type.startsWith("video/") ? "🎬" : "📎";
+        row.innerHTML = `<span class="stage-icon" aria-hidden="true">${icon}</span><span class="stage-name"></span>
+          <small class="muted"></small><button type="button" class="btn btn-ghost btn-sm" aria-label="Remove">×</button>`;
+        row.querySelector(".stage-name").textContent = f.name;
+        row.querySelector("small").textContent = fmtSize(f.size) + (f.size > MAX_FILE ? " — over 25 MB" : "");
+        row.querySelector("button").addEventListener("click", () => { picked.splice(i, 1); render(); });
+        list.append(row);
+      });
+      const problem = picked.some((f) => f.size > MAX_FILE) ? "Remove the files over 25 MB."
+        : picked.length > MAX_FILES ? `Up to ${MAX_FILES} files at a time.`
+        : total > MAX_TOTAL ? "Together over 60 MB — upload in two goes." : "";
+      const bar = document.createElement("div");
+      bar.className = "stage-actions";
+      bar.innerHTML = `<button class="btn btn-primary btn-sm">Upload all (${picked.length})</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-stage-clear>Clear</button><small class="stage-problem"></small>`;
+      bar.querySelector(".stage-problem").textContent = problem;
+      bar.querySelector("button.btn-primary").disabled = Boolean(problem);
+      bar.querySelector("[data-stage-clear]").addEventListener("click", () => { picked = []; render(); });
+      if (picked.length) list.append(bar);
+    };
+    input.addEventListener("change", () => {
+      const added = Array.from(input.files).filter((f) => !picked.some((p) => p.name === f.name && p.size === f.size));
+      picked = picked.concat(added);
+      render();
+    });
+  });
+
+  // "Select all" for the earlier ID files.
+  document.querySelectorAll("[data-check-all]").forEach((all) => all.addEventListener("change", () => {
+    all.closest("form").querySelectorAll('input[type="checkbox"][name="photo"]').forEach((c) => { c.checked = all.checked; });
+  }));
 
   // Close the mobile "More" sheet when tapping elsewhere
   document.addEventListener("click", (e) => {
@@ -255,15 +347,6 @@
       if (e.target === clash || e.target.closest("[data-close-dialog]")) clash.close();  // tap outside / Close
     });
   }
-
-  // Photo pickers that upload as soon as photos are chosen (ID photos on the stay page, receipts).
-  document.querySelectorAll("input[type=file][data-autosubmit]").forEach((input) => input.addEventListener("change", () => {
-    if (!input.files.length) return;
-    const text = input.closest("label").querySelector("span");
-    if (text) text.textContent = input.files.length > 1 ? `Uploading ${input.files.length} photos…` : "Uploading…";
-    busy(input.files.length > 1 ? `Uploading ${input.files.length} photos…` : "Uploading…", false);
-    input.form.submit();
-  }));
 
   // WhatsApp on a computer: get the message first, copy it, then open WhatsApp Web in the one "whatsapp" tab. If
   // WhatsApp Web is already open (or installed as an app) it sometimes doesn't fill the message in — then Ctrl+V.

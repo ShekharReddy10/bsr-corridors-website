@@ -354,6 +354,7 @@ class IdPhoto(models.Model):
     person = models.CharField(max_length=120, help_text="Whose ID this is (the main guest, guest 2, …)")
     file_id = models.CharField("Google Drive file", max_length=100)
     name = models.CharField("File name in Drive", max_length=200)
+    kind = models.CharField(max_length=6, default="image", editable=False)  # image · pdf · video · file
     # Fingerprint of the uploaded file: the same photo sent again for this guest is reused, not stored twice.
     sha256 = models.CharField(max_length=64, blank=True, db_index=True, editable=False)
     stays = models.ManyToManyField(Stay, through="StayIdPhoto", related_name="id_photos")
@@ -417,6 +418,7 @@ class Expense(models.Model):
     recurring = models.ForeignKey("RecurringExpense", null=True, blank=True, on_delete=models.SET_NULL,
                                   related_name="expenses", editable=False)
     receipt_id = models.CharField("Receipt photo (Google Drive file)", max_length=100, blank=True, editable=False)
+    receipt_kind = models.CharField(max_length=6, default="image", editable=False)  # image · pdf · video · file
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

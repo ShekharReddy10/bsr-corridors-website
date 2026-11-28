@@ -73,11 +73,13 @@ def expense_form(request, pk=None):
     if request.method == "POST" and form.is_valid():
         saved = form.save()
         if upload := request.FILES.get("receipt"):
-            if file_id := photos.store(request, upload, "receipts", f"{saved.date:%Y-%m-%d} {saved.reason[:60]} — {saved.pk}.jpg"):
+            file_id, kind, _ = photos.store(request, upload, "receipts",
+                                            f"{saved.date:%Y-%m-%d} {saved.reason[:60]} — {saved.pk}")
+            if file_id:
                 if saved.receipt_id:
                     gdrive.delete_file(saved.receipt_id)
-                saved.receipt_id = file_id
-                saved.save(update_fields=["receipt_id"])
+                saved.receipt_id, saved.receipt_kind = file_id, kind
+                saved.save(update_fields=["receipt_id", "receipt_kind"])
         AuditLog.record("expense", f"{'Updated' if obj else 'Added'} expense: {saved} — {saved.reason}")
         messages.success(request, f"Expense of ₹{saved.amount:,.0f} saved.")
         if "add_another" in request.POST:

@@ -18,13 +18,13 @@
     <dt>Notice period</dt><dd>{{ t.notice_days }} days{% if t.notice_given_on %} · given {{ t.notice_given_on|date:"d M Y" }}{% endif %}</dd>
     {% if t.last_day %}<dt>Last day</dt><dd>{{ t.last_day|date:"d M Y" }}</dd>{% endif %}
     {% if t.move_out %}<dt>Moved out</dt><dd>{{ t.move_out|date:"d M Y" }}</dd>{% endif %}
-    <dt>Agreement</dt><dd>{% if t.agreement %}<a href="{% url 'pg_file' 'agreement' t.pk %}" target="_blank" rel="noopener">Open</a>{% else %}<span class="muted">Not uploaded</span>{% endif %}</dd>
+    <dt>Agreement</dt><dd>{% if t.agreement %}<a href="{% url 'pg_file' 'agreement' t.pk %}" target="_blank" rel="noopener" data-viewer="pg-agreement" data-kind="{{ t.agreement_kind }}" title="Agreement — {{ t.resident.name }}">Open</a>{% else %}<span class="muted">Not uploaded</span>{% endif %}</dd>
     {% if t.notes %}<dt>Notes</dt><dd>{{ t.notes|linebreaksbr }}</dd>{% endif %}
     {% if t.created_by %}<dt>Added by</dt><dd>{{ t.created_by }}</dd>{% endif %}
   </dl>
   {% if 'work' in caps and t.is_open %}
   <form method="post" action="{% url 'pg_tenancy_action' t.pk 'agreement' %}" enctype="multipart/form-data" class="inline-form">{% csrf_token %}
-    <label class="field"><span class="label">Rental agreement (photo or PDF)</span><input type="file" name="file" accept="image/*,application/pdf"></label><button class="btn btn-outline btn-sm">Upload</button></form>
+    <label class="field"><span class="label">Rental agreement (photo, PDF or any file, up to 25 MB)</span><input type="file" name="file"></label><button class="btn btn-outline btn-sm">Upload</button></form>
   {% endif %}
 </section>
 
