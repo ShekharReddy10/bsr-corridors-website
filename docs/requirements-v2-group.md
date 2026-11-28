@@ -483,6 +483,38 @@ Money (revenue, profit, settlements) appears **only inside each property**, behi
 
 ---
 
+## 11a. Money privacy: the property owner's money [Asked, 2026-11-28]
+
+Each property is a client: its amounts belong to its owner.
+
+- **Every amount is hidden** (shown as ₹ ••••) — revenue, profit, expenses, a guest's bill and balance, rent,
+  advances, settlements, logs and messages on screen — for anyone who hasn't opened that property's money.
+  Guest pages (payment link, invoice, receipt) always show the guest's own amounts.
+- Opening it needs **money access** for that property, its **money password** and a 6-digit code from the person's own
+  **authenticator app** (Google / Microsoft Authenticator). It stays open 30 minutes, for that property only. A person
+  with money access to two properties has two entries in their app.
+- **The main admin is no exception.** He can't set or reset a property's money password, and Users & access no longer
+  gives money access.
+- **Money access page** (in each property): only an **owner** who has set up their authenticator can give or remove
+  money access or make someone an owner, confirming with a code. Until a property has such an owner, the main admin
+  sets it up once — that's how the first owner is named.
+- The main admin **can reset someone's authenticator** (e.g. a lost phone) [Asked]. It is written in the property's log
+  and the group's activity log, and the person sees it at their next unlock.
+- Money actions need the unlock too: expenses, exports, invoice / receipt PDFs for staff, PG move-out.
+- **Limits, said plainly:** whoever controls the hosting (Render), the database (Supabase) or a Drive backup can still
+  read the data directly; WhatsApp messages carry the amounts the guest must see. The app makes every money view
+  personal and logged; for stronger protection the owner should hold the Drive account of their property.
+
+## 11b. Same-day re-booking, and files [Asked, 2026-11-28]
+
+- A guest who checks out **on the day they arrived** keeps (and pays for) their night, but the room is **free again
+  from that moment** for another guest the same night. Check-in and check-out times show on the stay.
+- Guest IDs, expense receipts and resident documents can be **photos, PDFs, videos or any file**, up to 25 MB each.
+  Photos, PDFs and videos open in the viewer; other files only download. Files wait in a list until **Upload all**;
+  earlier files are reused by ticking them (**Select all**, **Use selected**).
+
+---
+
 ## 12. Backups and restore
 
 - Each property is backed up **every night to its own Google Drive** (7 daily, 4 weekly, 12 monthly), as today.
