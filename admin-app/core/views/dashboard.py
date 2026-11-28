@@ -31,8 +31,9 @@ def dashboard(request):
     live = Stay.objects.live().select_related("guest", "room", "room__room_type")
     in_house = live.filter(status=Stay.Status.CHECKED_IN).order_by("check_out", "room__number")
     tomorrow = t + timedelta(days=1)
-    occupied = set(live.overlapping(t, tomorrow).values_list("room_id", flat=True))
-    occupied_tomorrow = set(live.overlapping(tomorrow, tomorrow + timedelta(days=1)).values_list("room_id", flat=True))
+    holding = Stay.objects.occupying()
+    occupied = set(holding.overlapping(t, tomorrow).values_list("room_id", flat=True))
+    occupied_tomorrow = set(holding.overlapping(tomorrow, tomorrow + timedelta(days=1)).values_list("room_id", flat=True))
     rooms = list(Room.objects.filter(is_active=True).select_related("room_type"))
 
     unpaid = [

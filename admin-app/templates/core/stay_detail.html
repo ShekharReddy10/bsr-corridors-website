@@ -7,6 +7,7 @@
     <h1>{{ g.name }} <span class="status status-{{ stay.status }}">{{ stay.get_status_display }}</span></h1>
     <p class="muted">{{ stay.room }} · {{ stay.room.room_type.name }} · {{ stay.check_in|date:"D d-m-Y" }} → {% if stay.check_out %}{{ stay.check_out|date:"D d-m-Y" }} · {{ stay.nights }} night{{ stay.nights|pluralize }}{% else %}<b>open (monthly)</b> · {{ stay.nights }} night{{ stay.nights|pluralize }} so far{% endif %}</p>
     <p class="muted">Booked via <b>{{ stay.get_source_display }}</b>{% if stay.source_ref %} · Ref {{ stay.source_ref }}{% endif %}{% if stay.host %} · Host <b>{{ stay.host }}</b>{% endif %}</p>
+    {% if stay.checked_in_at or stay.checked_out_at %}<p class="muted small">{% if stay.checked_in_at %}Checked in {{ stay.checked_in_at|date:"d M, h:i A" }}{% endif %}{% if stay.checked_out_at %}{% if stay.checked_in_at %} · {% endif %}checked out {{ stay.checked_out_at|date:"d M, h:i A" }}{% endif %}{% if stay.room_released_at %} · <b>left the same day — {{ stay.room }} was free again for another guest</b>{% endif %}</p>{% endif %}
     {% if stay.transferred_to %}<p>Transferred to <b>{{ stay.transferred_to }}</b>{% if stay.transfer_reason %} · {{ stay.transfer_reason }}{% endif %}</p>{% endif %}
   </div>
   <a class="btn btn-outline" href="{% url 'stay_edit' stay.pk %}">Edit</a>

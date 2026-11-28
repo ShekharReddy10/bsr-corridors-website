@@ -82,7 +82,7 @@ def _names(key: str, default: str) -> list[str]:
 
 def conflicts(room: Room, start: date, end: date | None, exclude_ids=()):
     return (
-        Stay.objects.live()
+        Stay.objects.occupying()
         .overlapping(start, end)
         .filter(room=room)
         .exclude(pk__in=[i for i in exclude_ids if i])
@@ -93,7 +93,7 @@ def conflicts(room: Room, start: date, end: date | None, exclude_ids=()):
 
 def free_rooms(start: date, end: date | None, *, room_type=None, exclude_room=None, exclude_ids=()):
     """Active rooms with no live stay in [start, end) (ignoring the stays in exclude_ids)."""
-    busy = Stay.objects.live().overlapping(start, end).exclude(pk__in=[i for i in exclude_ids if i]).values("room_id")
+    busy = Stay.objects.occupying().overlapping(start, end).exclude(pk__in=[i for i in exclude_ids if i]).values("room_id")
     rooms = Room.objects.filter(is_active=True, status=Room.Status.ACTIVE).exclude(pk__in=busy)
     if room_type is not None:
         rooms = rooms.filter(room_type=room_type)
@@ -111,7 +111,7 @@ def save_stay(stay: Stay, *, action: str, summary: str) -> Stay:
     """Save a stay only if its room is free for all its nights. Raises StayConflict."""
     with atomic():
         _lock_room(stay.room)
-        if not stay.is_void:
+        if not stay.is_void and not stay.room_released_at:  # a released room may have a new guest: fine
             clash = conflicts(stay.room, stay.check_in, stay.check_out, exclude_ids=[stay.pk])
             if clash.exists():
                 raise StayConflict(clash)
@@ -173,7 +173,7 @@ def type_full_nights(stay: Stay, start: date, end: date) -> list[date]:
     """Nights in [start, end) on which all rooms of the stay's type are taken by other stays."""
     capacity = _rooms_of_type(stay.room.room_type).count()
     others = list(
-        Stay.objects.live().overlapping(start, end).filter(room__room_type=stay.room.room_type)
+        Stay.objects.occupying().overlapping(start, end).filter(room__room_type=stay.room.room_type)
         .exclude(pk=stay.pk).values_list("check_in", "check_out")
     )
     full, d = [], start
@@ -440,6 +440,9 @@ def check_out(stay: Stay) -> Stay:
         stay.check_out = t
     stay.status = Stay.Status.CHECKED_OUT
     stay.checked_out_at = timezone.now()
+    if stay.check_out and stay.check_out > t:  # left on the day they came: the room is free again for tonight
+        stay.room_released_at = stay.checked_out_at
+        note += f" — left the same day; room free again from {timezone.localtime(stay.checked_out_at):%I:%M %p}"
     return save_stay(stay, action="check_out", summary=f"Checked out of {stay.room}{note}")
 
 
@@ -468,6 +471,7 @@ def undo_check_out(stay: Stay, check_out: date | None) -> Stay:
     stay.status = Stay.Status.CHECKED_IN
     stay.check_out = check_out
     stay.checked_out_at = None
+    stay.room_released_at = None  # holds the room again (refused if someone else has it now)
     stay.transferred_to = stay.transfer_reason = ""
     until = f"{check_out:%d-%m-%Y}" if check_out else "open (monthly)"
     return save_stay(stay, action="undo_check_out",

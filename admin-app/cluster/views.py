@@ -46,7 +46,7 @@ def snapshot(item) -> dict:
                 return _pg_snapshot(t)
             live = Stay.objects.live()
             rooms = Room.objects.filter(is_active=True)
-            busy = set(live.overlapping(t, t + timedelta(days=1)).values_list("room_id", flat=True))
+            busy = set(Stay.objects.occupying().overlapping(t, t + timedelta(days=1)).values_list("room_id", flat=True))
             taken = len(busy)
             free = rooms.exclude(pk__in=busy).exclude(status=Room.Status.MAINTENANCE).count()
             rooms = rooms.count()

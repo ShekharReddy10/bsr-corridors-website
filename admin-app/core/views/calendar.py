@@ -12,6 +12,8 @@ RANGES = {"7": 7, "14": 14, "31": 31}
 
 def _bar_class(stay: Stay) -> str:
     classes = [f"bar-{stay.status}"]
+    if stay.room_released_at:
+        classes.append("bar-released")  # left the same day: a thin strip, the room's next guest shows too
     if stay.balance > 0 and stay.status != Stay.Status.UPCOMING:
         classes.append("bar-unpaid")
     return " ".join(classes)

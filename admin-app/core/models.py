@@ -105,6 +105,10 @@ class StayQuerySet(models.QuerySet):
         """Everything except cancelled stays and guests transferred to another hotel (their room is free)."""
         return self.exclude(status__in=Stay.VOID_STATUSES)
 
+    def occupying(self):
+        """Stays that hold their room: live ones, except guests who left on their arrival day (room released)."""
+        return self.live().filter(room_released_at__isnull=True)
+
     def overlapping(self, start, end=None):
         """Stays occupying at least one night in [start, end). end=None means "from start onwards".
         Open-ended (monthly) stays with no check-out occupy every night from check-in."""
@@ -175,6 +179,9 @@ class Stay(models.Model):
     linked_to = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="continuations")
     checked_in_at = models.DateTimeField(null=True, blank=True)
     checked_out_at = models.DateTimeField(null=True, blank=True)
+    # Left on the day they arrived: their night is still theirs (charged, invoiced), but the room is free again from
+    # this moment, so another guest can have it the same night.
+    room_released_at = models.DateTimeField("Room free again from", null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

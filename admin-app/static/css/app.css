@@ -758,3 +758,6 @@ details.waive > summary { cursor: pointer; color: var(--ink-soft); }
   .busy-logo img, .busy-overlay { animation: none; }
   .busy-ring { animation-duration: 2.4s; }
 }
+/* A guest who left on their arrival day: a thin strip at the top, so the room's next guest that night shows too */
+.tape-bar.bar-released { z-index: 2; align-self: start; margin-top: 2px; height: 14px; padding: 0 6px; font-size: .62rem; opacity: .85; }
+.tape-bar.bar-released small { display: none; }

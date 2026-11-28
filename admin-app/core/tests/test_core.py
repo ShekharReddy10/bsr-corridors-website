@@ -2032,3 +2032,44 @@ class WhatsAppOpenTests(TestCase):
         page = self.client.get(f"/stays/{s.pk}/?welcome=1").content.decode()
         self.assertIn(f"/stays/{s.pk}/whatsapp/?t={t.pk}", page)
         self.assertIn("Send caretaker contact", page)
+
+
+class SameDayCheckoutTests(TestCase):
+    """A guest who leaves on the day they arrived frees the room for another guest that same night."""
+
+    def setUp(self):
+        rt = RoomType.objects.create(name="Deluxe")
+        self.room = Room.objects.create(number="301", room_type=rt)
+        self.t = services.today()
+
+    def book(self, name):
+        guest = Guest.objects.filter(name=name).first() or Guest.objects.create(name=name)
+        s = Stay(guest=guest, room=self.room,
+                 check_in=self.t, check_out=self.t + timedelta(days=1), total_amount=Decimal(2000))
+        return services.save_stay(s, action="create", summary="test")
+
+    def test_room_free_again_after_same_day_checkout(self):
+        a = self.book("First Guest")
+        with self.assertRaises(services.StayConflict):
+            self.book("Second Guest")  # still in the room
+        services.check_in(a)
+        services.check_out(a)
+        a.refresh_from_db()
+        self.assertIsNotNone(a.room_released_at)
+        self.assertEqual((a.check_out, a.nights, a.total), (self.t + timedelta(days=1), 1, Decimal(2000)))  # still charged
+        self.assertIn(self.room, services.free_rooms(self.t, self.t + timedelta(days=1)))
+        b = self.book("Second Guest")  # same night, same room
+        services.check_in(b)
+        services.add_payment(a, Decimal(2000), "cash")  # the first guest's stay can still be changed
+        # Undoing the first checkout now clashes with the second guest.
+        with self.assertRaises(services.StayConflict):
+            services.undo_check_out(Stay.objects.get(pk=a.pk), self.t + timedelta(days=1))
+
+    def test_leaving_on_a_later_day_still_shortens_the_stay(self):
+        s = Stay(guest=Guest.objects.create(name="Long Stay"), room=self.room, check_in=self.t - timedelta(days=2),
+                 check_out=self.t + timedelta(days=3), total_amount=Decimal(5000), status=Stay.Status.CHECKED_IN)
+        services.save_stay(s, action="create", summary="test")
+        services.check_out(s)
+        s.refresh_from_db()
+        self.assertEqual(s.check_out, self.t)
+        self.assertIsNone(s.room_released_at)
